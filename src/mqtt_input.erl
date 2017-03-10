@@ -32,14 +32,15 @@
 %% API functions
 %% ====================================================================
 -export([
-	input_parser/1
-]).
-
--ifdef(TEST).
--export([
+	input_parser/1,
 	decode_remaining_length/1
 ]).
--endif.
+
+%% -ifdef(TEST).
+%% -export([
+%% 	decode_remaining_length/1
+%% ]).
+%% -endif.
 
 %% ====================================================================
 %% Internal functions

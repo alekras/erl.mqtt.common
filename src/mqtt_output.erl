@@ -32,17 +32,21 @@
 %% API functions
 %% ====================================================================
 -export([
-	packet/2
-]).
-
--ifdef(TEST).
--export([
+	packet/2,
 	encode_remaining_length/1,
 	fixed_header/3,
 	variable_header/2,
 	payload/2
 ]).
--endif.
+
+%% -ifdef(TEST).
+%% -export([
+%% 	encode_remaining_length/1,
+%% 	fixed_header/3,
+%% 	variable_header/2,
+%% 	payload/2
+%% ]).
+%% -endif.
 
 packet(connect, Conn_config) ->
 	Remaining_packet = <<(variable_header(connect, Conn_config))/binary, (payload(connect, Conn_config))/binary>>,
