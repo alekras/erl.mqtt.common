@@ -93,14 +93,13 @@ handle_call({connect, Conn_config}, From, #connection_state{end_type = client} =
 handle_call({connect, Conn_config, Callback},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = client} = State) ->
-%%	Storage:start(), %% @todo move to client(server) start ???
 	case Transport:send(Socket, packet(connect, Conn_config)) of
     ok -> 
 			New_processes = (State#connection_state.processes)#{connect => From},
 			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes},
 			case Conn_config#connect.clean_session of
 				1 -> 
-					Storage:cleanup(Conn_config#connect.client_id);
+					Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id);
 				0 ->	 
 					restore_session(New_State) 
 	    end,
@@ -111,7 +110,7 @@ handle_call({connect, Conn_config, Callback},
 ?test_fragment_set_test_flag
 
 handle_call(status, _From, #connection_state{storage = Storage} = State) ->	
-	{reply, [{session_present, State#connection_state.session_present}, {subscriptions, Storage:get_all(topic)}], State};
+	{reply, [{session_present, State#connection_state.session_present}, {subscriptions, Storage:get_all(State#connection_state.end_type, topic)}], State};
 
 ?test_fragment_break_connection
 
@@ -129,7 +128,7 @@ handle_call({publish, #publish{qos = QoS} = Params},
 	Packet = packet(publish, {Params, Packet_Id}),
 %% store message before sending
   Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = Packet_Id},
-	Storage:save(#storage_publish{key = Prim_key, document = Params}),
+	Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Params}),
 	case Transport:send(Socket, Packet) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params}},
@@ -346,7 +345,7 @@ socket_stream_process(State, Binary) ->
 				{{Pid, Ref}, Subscriptions} when is_list(Subscriptions) ->
 %% store session subscriptions
 					[ begin 
-							Storage:save(#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = Callback})
+							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = Callback})
 						end || {Topic, QoS, Callback} <- Subscriptions], %% @todo check clean_session flag
 					Pid ! {suback, Ref, Return_codes},
 					socket_stream_process(
@@ -371,7 +370,7 @@ socket_stream_process(State, Binary) ->
 					Pid ! {unsuback, Ref},
 %% discard session subscriptions
 					[ begin 
-							Storage:remove(#subs_primary_key{topic = Topic, client_id = Client_Id})
+							Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
 						end || Topic <- Topics], %% @todo check clean_session flag
 					socket_stream_process(
 						State#connection_state{
@@ -404,7 +403,7 @@ socket_stream_process(State, Binary) ->
 					      delivery_to_application(State, Topic, QoS, Payload),
 %% store PI after receiving message
                 Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-                Storage:save(#storage_publish{key = Prim_key, document = #publish{acknowleged = pubrec}}),
+                Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{acknowleged = pubrec}}),
 					      case Transport:send(Socket, packet(pubrec, Packet_Id)) of
 					        ok -> 
         				    New_processes = Processes#{Packet_Id => {undefined, #publish{topic = Topic, qos = QoS, acknowleged = pubrec}}},
@@ -422,7 +421,7 @@ socket_stream_process(State, Binary) ->
 					Pid ! {puback, Ref},
 %% discard message after pub ack
           Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-	        Storage:remove(Prim_key),
+	        Storage:remove(State#connection_state.end_type, Prim_key),
 					socket_stream_process(
 						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
 						Tail);
@@ -436,7 +435,7 @@ socket_stream_process(State, Binary) ->
 				{From, Params} ->
 %% store message before pubrel
           Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-          Storage:save(#storage_publish{key = Prim_key, document = undefined}),
+          Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = undefined}),
 					New_processes = Processes#{Packet_Id => {From, Params#publish{acknowleged = pubrec}}},
 					case Transport:send(Socket, packet(pubrel, Packet_Id)) of
 						ok -> ok; 
@@ -453,7 +452,7 @@ socket_stream_process(State, Binary) ->
 				{_From, _Params} ->
 %% discard PI before pubcomp send
           Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-          Storage:remove(Prim_key),
+          Storage:remove(State#connection_state.end_type, Prim_key),
 					New_processes = maps:remove(Packet_Id, Processes),
 					case Transport:send(Socket, packet(pubcomp, Packet_Id)) of
 						ok -> ok;
@@ -471,7 +470,7 @@ socket_stream_process(State, Binary) ->
 					Pid ! {pubcomp, Ref},
 %% discard message after pub comp
           Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-	        Storage:remove(Prim_key),
+	        Storage:remove(State#connection_state.end_type, Prim_key),
 					socket_stream_process(State#connection_state{processes = maps:remove(Packet_Id, Processes)}, Tail);
 				undefined ->
 					socket_stream_process(State, Tail)
@@ -487,14 +486,14 @@ next(Packet_Id, #connection_state{storage = Storage} = State) ->
 			true -> Packet_Id + 1 
 		end,
   Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = PI},
-	case Storage:exist(Prim_key) of
+	case Storage:exist(State#connection_state.end_type, Prim_key) of
 		false -> PI;
 		true -> next(PI, State)
 	end.
 
 get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
- 	Topic_List = Storage:get_matched_topics(#subs_primary_key{topic = Topic, client_id = Client_Id}),
+ 	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id}),
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
 is_match(Topic, TopicFilter) ->
@@ -535,7 +534,7 @@ do_callback(Callback, Args) ->
 		_ -> false
   end.
 
-restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage}) ->
- 	Records = Storage:get_all({session, Client_Id}),
+restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type}) ->
+ 	Records = Storage:get_all(End_Type, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
   [spawn(gen_server, call, [self(), {republish, Params, PI}, ?MQTT_GEN_SERVER_TIMEOUT])	|| {PI, Params} <- MessageList].

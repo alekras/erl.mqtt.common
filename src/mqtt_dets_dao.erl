@@ -32,64 +32,77 @@
 %% API functions
 %% ====================================================================
 -export([
-	start/0,
-	close/0,
-	save/1,
-	remove/1,
-	get/1,
-	get_client_topics/1,
-	get_matched_topics/1,
-	get_all/1,
-  cleanup/1,
-	cleanup/0,
-  exist/1
+	start/1,
+	close/1,
+	save/2,
+	remove/2,
+	get/2,
+	get_client_topics/2,
+	get_matched_topics/2,
+	get_all/2,
+  cleanup/2,
+	cleanup/1,
+  exist/2
 ]).
 
-start() ->
-	Session_DB =
-	case dets:open_file(session_db, [{file, "session-db.bin"}, {type, set}, {auto_save, 10000}, {keypos, #storage_publish.key}]) of
-		{ok, session_db} ->
+db_id(client) ->
+	{session_db_cli, subscription_db_cli, connectpid_db_cli};
+db_id(server) ->
+	{session_db_srv, subscription_db_srv, connectpid_db_srv}.
+	
+db_file(client) ->
+	{"session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"};
+db_file(server) ->
+	{"session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin"}.
+	
+start(End_Type) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_DB_File, Subscription_DB_File, ConnectionPid_DB_File} = db_file(End_Type),
+	case dets:open_file(Session_db, [{file, Session_DB_File}, {type, set}, {auto_save, 10000}, {keypos, #storage_publish.key}]) of
+		{ok, Session_db} ->
 			true;
 		{error, Reason1} ->
 			lager:error("Cannot open session_db dets: ~p~n", [Reason1]),
 			false
-	end,
-	Subscription_DB =
-	case dets:open_file(subscription_db, [{file, "subscription-db.bin"}, {type, set}, {auto_save, 10000}, {keypos, #storage_subscription.key}]) of
-		{ok, subscription_db} ->
+	end
+	and
+	case dets:open_file(Subscription_db, [{file, Subscription_DB_File}, {type, set}, {auto_save, 10000}, {keypos, #storage_subscription.key}]) of
+		{ok, Subscription_db} ->
 			true;
 		{error, Reason2} ->
 			lager:error("Cannot open subscription_db dets: ~p~n", [Reason2]),
 			false
-	end,
-	ConnectionPid_DB =
-	case dets:open_file(connectpid_db, [{file, "connectpid-db.bin"}, {type, set}, {auto_save, 10000}, {keypos, #storage_connectpid.client_id}]) of
-		{ok, connectpid_db} ->
+	end
+	and
+	case dets:open_file(ConnectionPid_db, [{file, ConnectionPid_DB_File}, {type, set}, {auto_save, 10000}, {keypos, #storage_connectpid.client_id}]) of
+		{ok, Connectpid_db} ->
 			true;
 		{error, Reason3} ->
 			lager:error("Cannot open connectpid_db dets: ~p~n", [Reason3]),
 			false
-	end,
-	(Session_DB and Subscription_DB and ConnectionPid_DB).
+	end.
 
-save(#storage_publish{key = Key} = Document) ->
-	case dets:insert(session_db, Document) of
+save(End_Type, #storage_publish{key = Key} = Document) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:insert(Session_db, Document) of
 		{error, Reason} ->
 			lager:error("session_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false;
 		ok ->
 			true
 	end;
-save(#storage_subscription{key = Key} = Document) ->
-	case dets:insert(subscription_db, Document) of
+save(End_Type, #storage_subscription{key = Key} = Document) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:insert(Subscription_db, Document) of
 		{error, Reason} ->
 			lager:error("subscription_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false;
 		ok ->
 			true
 	end;
-save(#storage_connectpid{client_id = Key} = Document) ->
-	case dets:insert(connectpid_db, Document) of
+save(End_Type, #storage_connectpid{client_id = Key} = Document) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:insert(ConnectionPid_db, Document) of
 		{error, Reason} ->
 			lager:error("connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false;
@@ -97,30 +110,34 @@ save(#storage_connectpid{client_id = Key} = Document) ->
 			true
 	end.
 
-remove(#primary_key{} = Key) ->
-	case dets:match_delete(session_db, #storage_publish{key = Key, _ = '_'}) of
+remove(End_Type, #primary_key{} = Key) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_delete(Session_db, #storage_publish{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
 			false;
 		ok -> true
 	end;
-remove(#subs_primary_key{} = Key) ->
-	case dets:match_delete(subscription_db, #storage_subscription{key = Key, _ = '_'}) of
+remove(End_Type, #subs_primary_key{} = Key) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_delete(Subscription_db, #storage_subscription{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
 			false;
 		ok -> true
 	end;
-remove({client_id, Key}) ->
-	case dets:match_delete(connectpid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
+remove(End_Type, {client_id, Key}) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_delete(ConnectionPid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
 			false;
 		ok -> true
 	end.
 
-get(#primary_key{} = Key) ->
-	case dets:match_object(session_db, #storage_publish{key = Key, _ = '_'}) of
+get(End_Type, #primary_key{} = Key) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_object(Session_db, #storage_publish{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
@@ -128,8 +145,9 @@ get(#primary_key{} = Key) ->
 		_ ->
 			undefined
 	end;
-get(#subs_primary_key{} = Key) -> %% @todo delete it
-	case dets:match_object(subscription_db, #storage_subscription{key = Key, _ = '_'}) of
+get(End_Type, #subs_primary_key{} = Key) -> %% @todo delete it
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_object(Subscription_db, #storage_subscription{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
@@ -137,8 +155,9 @@ get(#subs_primary_key{} = Key) -> %% @todo delete it
 		_ ->
 			undefined
 	end;
-get({client_id, Key}) ->
-	case dets:match_object(connectpid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
+get(End_Type, {client_id, Key}) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_object(ConnectionPid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
@@ -147,11 +166,13 @@ get({client_id, Key}) ->
 			undefined
 	end.
 
-get_client_topics(Client_Id) ->
+get_client_topics(End_Type, Client_Id) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
 	MatchSpec = ets:fun2ms(fun(#storage_subscription{key = #subs_primary_key{topic = Top, client_id = CI}, qos = QoS, callback = CB}) when CI == Client_Id -> {Top, QoS, CB} end),
-	dets:select(subscription_db, MatchSpec).
+	dets:select(Subscription_db, MatchSpec).
 
-get_matched_topics(#subs_primary_key{topic = Topic, client_id = Client_Id}) ->
+get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, qos = QoS, callback = CB}) when Client_Id =:= CI -> 
 					case mqtt_connection:is_match(Topic, TopicFilter) of
@@ -160,8 +181,9 @@ get_matched_topics(#subs_primary_key{topic = Topic, client_id = Client_Id}) ->
 					end;
 				(_) -> continue
 		end,
-	dets:traverse(subscription_db, Fun);
-get_matched_topics(Topic) ->
+	dets:traverse(Subscription_db, Fun);
+get_matched_topics(End_Type, Topic) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter}} = Object) -> 
 					case mqtt_connection:is_match(Topic, TopicFilter) of
@@ -169,55 +191,61 @@ get_matched_topics(Topic) ->
 						false -> continue
 					end
 		end,
-	dets:traverse(subscription_db, Fun).
+	dets:traverse(Subscription_db, Fun).
 	
-get_all({session, ClientId}) ->
-	case dets:match_object(session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
+get_all(End_Type, {session, ClientId}) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_object(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason} -> 
 			lager:error("match_object failed: ~p~n", [Reason]),
 			[];
 		R -> R
 	end;
-get_all(topic) ->
-	case dets:match_object(subscription_db, #storage_subscription{_='_'}) of 
+get_all(End_Type, topic) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_object(Subscription_db, #storage_subscription{_='_'}) of 
 		{error, Reason} -> 
 			lager:error("match_object failed: ~p~n", [Reason]),
 			[];
 		R -> [Topic || #storage_subscription{key = #subs_primary_key{topic = Topic}} <- R]
 	end.
 
-cleanup(ClientId) ->
-	case dets:match_delete(session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
+cleanup(End_Type, ClientId) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:match_delete(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason1} -> 
 			lager:error("match_delete failed: ~p~n", [Reason1]),
 			ok;
 		ok -> ok
 	end,
-	case dets:match_delete(subscription_db, #storage_connectpid{client_id = ClientId, _ = '_'}) of 
+	case dets:match_delete(Subscription_db, #storage_connectpid{client_id = ClientId, _ = '_'}) of 
 		{error, Reason2} -> 
 			lager:error("match_delete failed: ~p~n", [Reason2]),
 			ok;
 		ok -> ok
 	end,
-	remove({client_id, ClientId}).
+	remove(End_Type, {client_id, ClientId}).
 
-cleanup() ->
-	dets:delete_all_objects(session_db),
-	dets:delete_all_objects(subscription_db),
-	dets:delete_all_objects(connectpid_db).
+cleanup(End_Type) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	dets:delete_all_objects(Session_db),
+	dets:delete_all_objects(Subscription_db),
+	dets:delete_all_objects(ConnectionPid_db).
 
-exist(Key) ->
-	case dets:member(session_db, Key) of
+exist(End_Type, Key) ->
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	case dets:member(Session_db, Key) of
 		{error, Reason} ->
 			lager:error("Exist failed: key=~p reason=~p~n", [Key, Reason]),
 			false;
 		R -> R
 	end.
 
-close() -> 
-	dets:close(session_db),
-	dets:close(subscription_db),
-	dets:close(connectpid_db).
+close(End_Type) -> 
+	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	dets:close(Session_db),
+	dets:close(Subscription_db),
+	dets:close(ConnectionPid_db).
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
