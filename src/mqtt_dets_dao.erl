@@ -75,7 +75,7 @@ start(End_Type) ->
 	end
 	and
 	case dets:open_file(ConnectionPid_db, [{file, ConnectionPid_DB_File}, {type, set}, {auto_save, 10000}, {keypos, #storage_connectpid.client_id}]) of
-		{ok, Connectpid_db} ->
+		{ok, ConnectionPid_db} ->
 			true;
 		{error, Reason3} ->
 			lager:error("Cannot open connectpid_db dets: ~p~n", [Reason3]),
@@ -83,7 +83,7 @@ start(End_Type) ->
 	end.
 
 save(End_Type, #storage_publish{key = Key} = Document) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, _, _} = db_id(End_Type),
 	case dets:insert(Session_db, Document) of
 		{error, Reason} ->
 			lager:error("session_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
@@ -92,7 +92,7 @@ save(End_Type, #storage_publish{key = Key} = Document) ->
 			true
 	end;
 save(End_Type, #storage_subscription{key = Key} = Document) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	case dets:insert(Subscription_db, Document) of
 		{error, Reason} ->
 			lager:error("subscription_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
@@ -101,7 +101,7 @@ save(End_Type, #storage_subscription{key = Key} = Document) ->
 			true
 	end;
 save(End_Type, #storage_connectpid{client_id = Key} = Document) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, _, ConnectionPid_db} = db_id(End_Type),
 	case dets:insert(ConnectionPid_db, Document) of
 		{error, Reason} ->
 			lager:error("connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
@@ -111,7 +111,7 @@ save(End_Type, #storage_connectpid{client_id = Key} = Document) ->
 	end.
 
 remove(End_Type, #primary_key{} = Key) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, _, _} = db_id(End_Type),
 	case dets:match_delete(Session_db, #storage_publish{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
@@ -119,7 +119,7 @@ remove(End_Type, #primary_key{} = Key) ->
 		ok -> true
 	end;
 remove(End_Type, #subs_primary_key{} = Key) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	case dets:match_delete(Subscription_db, #storage_subscription{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
@@ -127,7 +127,7 @@ remove(End_Type, #subs_primary_key{} = Key) ->
 		ok -> true
 	end;
 remove(End_Type, {client_id, Key}) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, _, ConnectionPid_db} = db_id(End_Type),
 	case dets:match_delete(ConnectionPid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
@@ -136,7 +136,7 @@ remove(End_Type, {client_id, Key}) ->
 	end.
 
 get(End_Type, #primary_key{} = Key) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, _, _} = db_id(End_Type),
 	case dets:match_object(Session_db, #storage_publish{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
@@ -146,7 +146,7 @@ get(End_Type, #primary_key{} = Key) ->
 			undefined
 	end;
 get(End_Type, #subs_primary_key{} = Key) -> %% @todo delete it
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	case dets:match_object(Subscription_db, #storage_subscription{key = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
@@ -156,7 +156,7 @@ get(End_Type, #subs_primary_key{} = Key) -> %% @todo delete it
 			undefined
 	end;
 get(End_Type, {client_id, Key}) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, _, ConnectionPid_db} = db_id(End_Type),
 	case dets:match_object(ConnectionPid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error("Get failed: key=~p reason=~p~n", [Key, Reason]),
@@ -167,12 +167,12 @@ get(End_Type, {client_id, Key}) ->
 	end.
 
 get_client_topics(End_Type, Client_Id) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	MatchSpec = ets:fun2ms(fun(#storage_subscription{key = #subs_primary_key{topic = Top, client_id = CI}, qos = QoS, callback = CB}) when CI == Client_Id -> {Top, QoS, CB} end),
 	dets:select(Subscription_db, MatchSpec).
 
 get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, qos = QoS, callback = CB}) when Client_Id =:= CI -> 
 					case mqtt_connection:is_match(Topic, TopicFilter) of
@@ -183,7 +183,7 @@ get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client
 		end,
 	dets:traverse(Subscription_db, Fun);
 get_matched_topics(End_Type, Topic) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter}} = Object) -> 
 					case mqtt_connection:is_match(Topic, TopicFilter) of
@@ -194,7 +194,7 @@ get_matched_topics(End_Type, Topic) ->
 	dets:traverse(Subscription_db, Fun).
 	
 get_all(End_Type, {session, ClientId}) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, _, _} = db_id(End_Type),
 	case dets:match_object(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason} -> 
 			lager:error("match_object failed: ~p~n", [Reason]),
@@ -202,7 +202,7 @@ get_all(End_Type, {session, ClientId}) ->
 		R -> R
 	end;
 get_all(End_Type, topic) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{_, Subscription_db, _} = db_id(End_Type),
 	case dets:match_object(Subscription_db, #storage_subscription{_='_'}) of 
 		{error, Reason} -> 
 			lager:error("match_object failed: ~p~n", [Reason]),
@@ -211,7 +211,7 @@ get_all(End_Type, topic) ->
 	end.
 
 cleanup(End_Type, ClientId) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, Subscription_db, _} = db_id(End_Type),
 	case dets:match_delete(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason1} -> 
 			lager:error("match_delete failed: ~p~n", [Reason1]),
@@ -233,7 +233,7 @@ cleanup(End_Type) ->
 	dets:delete_all_objects(ConnectionPid_db).
 
 exist(End_Type, Key) ->
-	{Session_db, Subscription_db, ConnectionPid_db} = db_id(End_Type),
+	{Session_db, _, _} = db_id(End_Type),
 	case dets:member(Session_db, Key) of
 		{error, Reason} ->
 			lager:error("Exist failed: key=~p reason=~p~n", [Key, Reason]),

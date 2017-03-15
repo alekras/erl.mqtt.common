@@ -57,11 +57,6 @@ db_id(client) ->
 db_id(server) ->
 	"mqtt_db_srv".
 	
-db_file(client) ->
-	{"session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"};
-db_file(server) ->
-	{"session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin"}.
-	
 start(End_Type) ->
 	R = my:start_client(),
 	lager:info("Starting MySQL ~p",[R]),
@@ -70,7 +65,7 @@ start(End_Type) ->
 		name = mqtt_storage,
 		host = ?MYSQL_SERVER_HOST_NAME, 
 		port = ?MYSQL_SERVER_PORT,
-		database = DB_name,
+%		database = DB_name,
 		user = ?MYSQL_USER, 
 		password = ?MYSQL_PASSWORD, 
 		flags = #client_options{}
@@ -81,7 +76,7 @@ start(End_Type) ->
   		R1 = connection:execute_query(Conn, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
 			lager:debug("create DB: ~p", [R1]),
 
-%			datasource:select_db(mqtt_storage, DB_name),
+			datasource:select_db(mqtt_storage, DB_name),
 
 			Query1 =
 				"CREATE TABLE IF NOT EXISTS session ("
