@@ -71,12 +71,22 @@ start(End_Type) ->
 		flags = #client_options{}
 	},
 	case my:new_datasource(DS_def) of
-		{ok, Pid} ->
-			Conn = datasource:get_connection(mqtt_storage),
-  		R1 = connection:execute_query(Conn, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
-			lager:debug("create DB: ~p", [R1]),
+		{ok, _Pid} ->
+			Connect = datasource:get_connection(mqtt_storage),
+  		R0 = connection:execute_query(Connect, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
+			lager:debug("create DB: ~p", [R0]),
+  		datasource:return_connection(mqtt_storage, Connect);
+		#mysql_error{} -> ok
+	end,
+  datasource:close(mqtt_storage),
 
-			datasource:select_db(mqtt_storage, DB_name),
+	case my:new_datasource(DS_def#datasource{database = DB_name}) of
+		{ok, Pid} ->
+ 			Conn = datasource:get_connection(mqtt_storage),
+%%   		R1 = connection:execute_query(Conn, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
+%% 			lager:debug("create DB: ~p", [R1]),
+%% 
+%% 			datasource:select_db(mqtt_storage, DB_name),
 
 			Query1 =
 				"CREATE TABLE IF NOT EXISTS session ("
