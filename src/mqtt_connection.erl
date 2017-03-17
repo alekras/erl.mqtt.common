@@ -60,10 +60,10 @@
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 init(#connection_state{end_type = server} = State) ->
-	lager:debug(" >>> init mqtt connection with state: ~120p~n", [State]),
+	lager:debug(" [server] init mqtt connection with state: ~120p~n", [State]),
 	gen_server:enter_loop(?MODULE, [], State, ?MQTT_GEN_SERVER_TIMEOUT);
 init(#connection_state{end_type = client} = State) ->
-	lager:debug(" >>> init mqtt connection with state: ~120p~n", [State]),
+	lager:debug(" [client] init mqtt connection with state: ~120p~n", [State]),
 	{ok, State};
 init(#mqtt_client_error{} = Error) ->
 	lager:error(" >>> init mqtt connection stops with error: ~120p~n", [Error]),
@@ -300,7 +300,14 @@ socket_stream_process(State, Binary) ->
 %			lager:debug(" message: Packet:~p~n", [Packet]),
 			Transport:send(Socket, Packet),
 %			lager:debug(" message: state:~p~n", [State]),
-			socket_stream_process(State#connection_state{config = Config, session_present = SP, packet_id = next(Packet_Id, State)}, Tail);
+			New_State = State#connection_state{config = Config, session_present = SP},
+			case Config#connect.clean_session of
+				1 -> 
+					Storage:cleanup(State#connection_state.end_type, Config#connect.client_id);
+				0 ->	 
+					restore_session(New_State) 
+	    end,
+			socket_stream_process(New_State#connection_state{packet_id = next(Packet_Id, New_State)}, Tail);
 			
 		{connack, SP, CRC, Msg, Tail} ->
 			case maps:get(connect, Processes, undefined) of
