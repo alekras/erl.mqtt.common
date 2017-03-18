@@ -60,13 +60,13 @@
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 init(#connection_state{end_type = server} = State) ->
-	lager:debug(" [server] init mqtt connection with state: ~120p~n", [State]),
+	lager:debug([{endtype, server}], "init mqtt connection with state: ~120p~n", [State]),
 	gen_server:enter_loop(?MODULE, [], State, ?MQTT_GEN_SERVER_TIMEOUT);
 init(#connection_state{end_type = client} = State) ->
-	lager:debug(" [client] init mqtt connection with state: ~120p~n", [State]),
+	lager:debug([{endtype, client}], "init mqtt connection with state: ~120p~n", [State]),
 	{ok, State};
 init(#mqtt_client_error{} = Error) ->
-	lager:error(" >>> init mqtt connection stops with error: ~120p~n", [Error]),
+	lager:error("init mqtt connection stops with error: ~120p~n", [Error]),
 	{stop, Error}.
 
 %% handle_call/3
@@ -197,7 +197,7 @@ handle_call(disconnect,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, false)) of
     ok -> 
-			lager:info("Client ~p is disconnected.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
 			{stop, normal, State};
 		{error, closed} -> {stop, normal, State};
 		{error, Reason} -> {reply, {error, Reason}, State}
@@ -244,12 +244,12 @@ handle_cast(_Msg, State) ->
 handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket} = State) ->
 			New_State = socket_stream_process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 			{noreply, New_State};
-handle_info({tcp_closed, Socket}, State = #connection_state{socket = Socket, transport = Transport}) ->
-			lager:warning("handle_info tcp closed, state:~p~n", [State]),
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, transport = Transport} = State) ->
+			lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
 			Transport:close(Socket),
 			{stop, normal, State};
 handle_info(Info, State) ->
-			lager:warning("handle_info unknown message: ~p state:~p~n", [Info, State]),
+			lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
 			{noreply, State}.
 
 %% ====================================================================
@@ -292,7 +292,7 @@ socket_stream_process(State, Binary) ->
 	case input_parser(Binary) of
 
 		{connect, Config, Tail} ->
-			lager:debug("connect: ~p~n", [Config]),
+			lager:debug([{endtype, State#connection_state.end_type}], "connect: ~p~n", [Config]),
 			%% @todo check credentials here
 			Packet_Id = State#connection_state.packet_id,
 			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end, %% @todo check session in DB
@@ -323,7 +323,7 @@ socket_stream_process(State, Binary) ->
 
 		{pingreq, Tail} ->
 			Packet = packet(pingresp, true),
-			lager:debug("socket_stream_process pingresp: Packet:~p~n", [Packet]),
+			lager:debug([{endtype, State#connection_state.end_type}], "socket_stream_process pingresp: Packet:~p~n", [Packet]),
 			Transport:send(Socket, Packet),
 			socket_stream_process(State, Tail);
 
@@ -344,7 +344,7 @@ socket_stream_process(State, Binary) ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
 			Packet = packet(suback, {Return_Codes, Packet_Id}),
 			Transport:send(Socket, Packet),
-			lager:debug(" subscribe completed: packet:~p~n   Subscriptions:~p~n", [Packet, Subscriptions]),
+			lager:debug([{endtype, State#connection_state.end_type}], " subscribe completed: packet:~p~n   Subscriptions:~p~n", [Packet, Subscriptions]),
 			socket_stream_process(State, Tail);
 
 		{suback, Packet_Id, Return_codes, Tail} ->
@@ -368,7 +368,7 @@ socket_stream_process(State, Binary) ->
 			%% @todo delete subcribtion for the client
 			Packet = packet(unsuback, Packet_Id),
 			Transport:send(Socket, Packet),
-			lager:debug(" unsubscribe completed for ~p. unsuback packet:~p~n", [Topics, Packet]),
+			lager:debug([{endtype, State#connection_state.end_type}], " unsubscribe completed for ~p. unsuback packet:~p~n", [Topics, Packet]),
 			socket_stream_process(State, Tail);
 		
 		{unsuback, Packet_Id, Tail} ->
@@ -483,7 +483,7 @@ socket_stream_process(State, Binary) ->
 					socket_stream_process(State, Tail)
 			end;
 		_ ->
-			lager:debug("unparsed message: ~p state:~p~n", [Binary, State]),
+			lager:debug([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
 			State#connection_state{tail = Binary}
 	end.
 
