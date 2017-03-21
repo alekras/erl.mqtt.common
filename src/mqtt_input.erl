@@ -94,7 +94,7 @@ input_parser(Binary) ->
 			{connect, Config, Tail};
 
 		<<?CONNACK_PACK_TYPE, 2:8, 0:7, SP:1, Connect_Return_Code:8, Tail/binary>> -> {connack, SP, Connect_Return_Code, return_code_response(Connect_Return_Code), Tail};
-		<<?PUBLISH_PACK_TYPE, _DUP:1, QoS:2, _RETAIN:1, Bin/binary>> ->
+		<<?PUBLISH_PACK_TYPE, DUP:1, QoS:2, RETAIN:1, Bin/binary>> ->
 			{RestBin, Length} = decode_remaining_length(Bin),
 			<<L:16, TopicBin:L/binary, RestBin1/binary>> = RestBin,
 			Topic = unicode:characters_to_list(TopicBin, utf8),
@@ -102,13 +102,13 @@ input_parser(Binary) ->
 				0 ->
 					PL = Length - L - 2,
 					<<Payload:PL/binary, Tail/binary>> = RestBin1,
-%					io:format(user, " >>> PUBLISH (QoS = 0) received: Length=~p L=~p Topic=~p Payload=~p Tail=~p~n", [Length, L, Topic, Payload, Tail]),
 					{publish, 0, 0, Topic, Payload, Tail};
 				_ when (QoS =:= 1) orelse (QoS =:= 2) ->
 					PL = Length - L - 4,
 					<<Packet_Id:16, Payload:PL/binary, Tail/binary>> = RestBin1,
 %					io:format(user, " >>> PUBLISH (QoS = ~p) received: Pk_Id=~p Length=~p L=~p Topic=~p Payload=~p Tail=~p~n", [QoS, Packet_Id, Length, L, Topic, Payload, Tail]),
-					{publish, QoS, Packet_Id, Topic, Payload, Tail};
+%					{publish, QoS, Packet_Id, Topic, Payload, Tail};
+					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload}, Packet_Id, Tail};
 				_ -> true
 			end;
 		<<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {puback, Packet_Id, Tail};

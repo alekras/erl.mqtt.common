@@ -342,9 +342,15 @@ socket_stream_process(State, Binary) ->
 
 		{subscribe, Packet_Id, Subscriptions, Tail} ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
+%% store session subscriptions
+			lager:debug([{endtype, State#connection_state.end_type}], "store session subscriptions:~p from client:~p~n", [Subscriptions, Client_Id]),
+			[ begin 
+					lager:debug([{endtype, State#connection_state.end_type}], "save subscribtion: Topic=~p QoS=~p~n", [Topic, QoS]),
+					Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = not_defined_yet})
+				end || {Topic, QoS} <- Subscriptions],
 			Packet = packet(suback, {Return_Codes, Packet_Id}),
 			Transport:send(Socket, Packet),
-			lager:debug([{endtype, State#connection_state.end_type}], " subscribe completed: packet:~p~n   Subscriptions:~p~n", [Packet, Subscriptions]),
+			lager:debug([{endtype, State#connection_state.end_type}], "subscribe completed: packet:~p~n", [Packet]),
 			socket_stream_process(State, Tail);
 
 		{suback, Packet_Id, Return_codes, Tail} ->
@@ -365,7 +371,10 @@ socket_stream_process(State, Binary) ->
 			end;
 		
 		{unsubscribe, Packet_Id, Topics, Tail} ->
-			%% @todo delete subcribtion for the client
+%% discard session subscriptions
+			[ begin 
+					Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
+				end || Topic <- Topics],
 			Packet = packet(unsuback, Packet_Id),
 			Transport:send(Socket, Packet),
 			lager:debug([{endtype, State#connection_state.end_type}], " unsubscribe completed for ~p. unsuback packet:~p~n", [Topics, Packet]),
