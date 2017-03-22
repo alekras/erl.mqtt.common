@@ -308,7 +308,7 @@ socket_stream_process(State, Binary) ->
 					restore_session(New_State) 
 	    end,
 			socket_stream_process(New_State#connection_state{packet_id = next(Packet_Id, New_State)}, Tail);
-			
+
 		{connack, SP, CRC, Msg, Tail} ->
 			case maps:get(connect, Processes, undefined) of
 				{Pid, Ref} ->
@@ -397,14 +397,14 @@ socket_stream_process(State, Binary) ->
 					socket_stream_process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, QoS, Packet_Id, Topic, Payload, Tail} ->
+		{publish, #publish{qos = QoS, topic = Topic, payload = Payload} = Record, Packet_Id, Tail} ->
 			case QoS of
 				0 -> 	
-					delivery_to_application(State, Topic, QoS, Payload),
+					delivery_to_application(State, Record),
 					socket_stream_process(State, Tail);
 				?test_fragment_skip_send_puback
 				1 ->
-					delivery_to_application(State, Topic, QoS, Payload),
+					delivery_to_application(State, Record),
 					case Transport:send(Socket, packet(puback, Packet_Id)) of
 						ok -> ok;
 						{error, _Reason} -> ok
@@ -416,7 +416,7 @@ socket_stream_process(State, Binary) ->
 						case	maps:is_key(Packet_Id, Processes) of
 							true -> State;
 							false -> 
-					      delivery_to_application(State, Topic, QoS, Payload),
+					      delivery_to_application(State, Record),
 %% store PI after receiving message
                 Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
                 Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{acknowleged = pubrec}}),
@@ -530,7 +530,7 @@ topic_regexp(TopicFilter) ->
 %	io:format(user, " after # replacement: ~p ~n", [R2]),
 	"^" ++ R2 ++ "$".
 
-delivery_to_application(State, Topic, QoS, Payload) ->
+delivery_to_application(State, #publish{topic = Topic, qos = QoS, payload = Payload}) ->
 	case get_topic_attributes(State, Topic) of
     [] -> do_callback(State#connection_state.default_callback, [{{Topic, QoS}, QoS, Payload}]);
 		List ->
