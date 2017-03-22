@@ -102,7 +102,7 @@ input_parser(Binary) ->
 				0 ->
 					PL = Length - L - 2,
 					<<Payload:PL/binary, Tail/binary>> = RestBin1,
-					{publish, 0, 0, Topic, Payload, Tail};
+					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload}, 0, Tail};
 				_ when (QoS =:= 1) orelse (QoS =:= 2) ->
 					PL = Length - L - 4,
 					<<Packet_Id:16, Payload:PL/binary, Tail/binary>> = RestBin1,
