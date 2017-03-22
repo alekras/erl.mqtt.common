@@ -48,7 +48,7 @@ handle_call({publish, #publish{qos = QoS} = Params}, {_, Ref}, State) when ((QoS
 
 -define(test_fragment_skip_send_puback, 
 				1 when State#connection_state.test_flag =:= skip_send_puback ->
-					delivery_to_application(State, Topic, QoS, Payload),
+					delivery_to_application(State, Record),
 					socket_stream_process(State, Tail);
 ).
 

@@ -397,7 +397,7 @@ socket_stream_process(State, Binary) ->
 					socket_stream_process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, #publish{qos = QoS, topic = Topic, payload = Payload} = Record, Packet_Id, Tail} ->
+		{publish, #publish{qos = QoS, topic = Topic} = Record, Packet_Id, Tail} ->
 			case QoS of
 				0 -> 	
 					delivery_to_application(State, Record),
