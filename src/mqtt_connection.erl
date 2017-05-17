@@ -248,6 +248,13 @@ handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, transport =
 			lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
 			Transport:close(Socket),
 			{stop, normal, State};
+handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
+			New_State = socket_stream_process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
+			{noreply, New_State};
+handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, transport = Transport} = State) ->
+			lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
+			Transport:close(Socket),
+			{stop, normal, State};
 handle_info(Info, State) ->
 			lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
 			{noreply, State}.
@@ -297,9 +304,7 @@ socket_stream_process(State, Binary) ->
 			Packet_Id = State#connection_state.packet_id,
 			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end, %% @todo check session in DB
 			Packet = packet(connack, {SP, 0}),
-%			lager:debug(" message: Packet:~p~n", [Packet]),
 			Transport:send(Socket, Packet),
-%			lager:debug(" message: state:~p~n", [State]),
 			New_State = State#connection_state{config = Config, session_present = SP},
 			case Config#connect.clean_session of
 				1 -> 
@@ -307,6 +312,8 @@ socket_stream_process(State, Binary) ->
 				0 ->	 
 					restore_session(New_State) 
 	    end,
+			New_Client_Id = Config#connect.client_id,
+			Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
 			socket_stream_process(New_State#connection_state{packet_id = next(Packet_Id, New_State)}, Tail);
 
 		{connack, SP, CRC, Msg, Tail} ->
@@ -322,8 +329,8 @@ socket_stream_process(State, Binary) ->
 			end;
 
 		{pingreq, Tail} ->
+			%% @todo keep-alive concern.
 			Packet = packet(pingresp, true),
-			lager:debug([{endtype, State#connection_state.end_type}], "socket_stream_process pingresp: Packet:~p~n", [Packet]),
 			Transport:send(Socket, Packet),
 			socket_stream_process(State, Tail);
 
@@ -491,6 +498,12 @@ socket_stream_process(State, Binary) ->
 				undefined ->
 					socket_stream_process(State, Tail)
 			end;
+
+		{disconnect, Tail} ->
+			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
+			%% @todo stop the process, close the socket !!!
+			socket_stream_process(State, Tail);
+
 		_ ->
 			lager:debug([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
 			State#connection_state{tail = Binary}
@@ -530,7 +543,7 @@ topic_regexp(TopicFilter) ->
 %	io:format(user, " after # replacement: ~p ~n", [R2]),
 	"^" ++ R2 ++ "$".
 
-delivery_to_application(State, #publish{topic = Topic, qos = QoS, payload = Payload}) ->
+delivery_to_application(#connection_state{end_type = client} = State, #publish{topic = Topic, qos = QoS, payload = Payload}) ->
 	case get_topic_attributes(State, Topic) of
     [] -> do_callback(State#connection_state.default_callback, [{{Topic, QoS}, QoS, Payload}]);
 		List ->
@@ -541,6 +554,24 @@ delivery_to_application(State, #publish{topic = Topic, qos = QoS, payload = Payl
 			  end
 				|| {TopicQoS, Callback} <- List
 			]
+	end;
+delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, #publish{topic = Topic_Params, qos = QoS_Params, payload = Payload} = Params) ->
+%	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, Topic),
+%	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
+	case Storage:get_matched_topics(server, Topic_Params) of
+    [] ->
+			lager:debug([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [Topic_Params, QoS_Params, Payload]);
+		List ->
+			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+			[
+			  case Storage:get(server, {client_id, Client_Id}) of
+					undefined -> 
+						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+					Pid ->
+						server_publish(Pid, Params)
+			  end
+				|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS, callback = Callback} <- List
+			]
 	end.
 
 do_callback(Callback, Args) ->
@@ -548,6 +579,31 @@ do_callback(Callback, Args) ->
 	  {M, F} -> spawn(M, F, Args);
 	  F when is_function(F) -> spawn(fun() -> apply(F, Args) end);
 		_ -> false
+  end.
+
+server_publish(Pid, Params) -> 
+	lager:debug([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
+	case gen_server:call(Pid, {publish, Params}, ?MQTT_GEN_SERVER_TIMEOUT) of
+		{ok, Ref} -> 
+			case Params#publish.qos of
+				0 -> ok;
+				1 ->
+					receive
+						{puback, Ref} -> 
+							ok
+					after ?MQTT_GEN_SERVER_TIMEOUT ->
+						#mqtt_client_error{type = publish, source = "mqtt_client:publish/2", message = "puback timeout"}
+					end;
+				2 ->
+					receive
+						{pubcomp, Ref} -> 
+							ok
+					after ?MQTT_GEN_SERVER_TIMEOUT ->
+						#mqtt_client_error{type = publish, source = "mqtt_client:publish/2", message = "pubcomp timeout"}
+					end
+			end;
+		{error, Reason} ->
+				#mqtt_client_error{type = publish, source = "mqtt_client:publish/2", message = Reason}
   end.
 
 restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type}) ->
