@@ -4,3 +4,5 @@
 /subscription-db-cli.bin
 /_build/
 /log/
+/erl.mqtt.common-vsn-1.0.4.zip
+/rebar.lock
