@@ -37,7 +37,8 @@
 
 -export([	
 	is_match/2,
-	topic_regexp/1
+	topic_regexp/1,
+	server_publish/2
 ]).
 
 -import(mqtt_output, [packet/2]).
@@ -568,7 +569,7 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage} 
 					undefined -> 
 						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 					Pid ->
-						server_publish(Pid, Params)
+						erlang:spawn(?MODULE, server_publish, [Pid, Params])
 			  end
 				|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS, callback = Callback} <- List
 			]

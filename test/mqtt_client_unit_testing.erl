@@ -169,7 +169,7 @@ input_parser() ->
 							 mqtt_input:input_parser(<<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
 	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
-	?assertEqual({publish, 0, 0, "Topic", <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, <<1:8, 1:8>>}, 
+	?assertEqual({publish, #publish{topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>}, 0, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#30:8, 13:8, 5:16, "Topic", 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
 %					{publish, QoS, Packet_Id, Topic, Payload, Tail};
 	?assertEqual({publish, #publish{qos = 1, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>}, 100, <<1:8, 1:8>>}, 

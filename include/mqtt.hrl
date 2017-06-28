@@ -76,6 +76,13 @@
 	}
 ).
 
+-record(user,
+	{
+		user_id :: string(),
+		password :: binary()
+	}
+).
+
 -record(connection_state, 
   { socket :: port(),
 		transport :: atom(),

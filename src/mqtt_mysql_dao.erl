@@ -116,9 +116,22 @@ start(End_Type) ->
 				" pid tinyblob,"
 				" PRIMARY KEY (client_id)"
 				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
-  		R4 = connection:execute_query(Conn, Query3),
+			R4 = connection:execute_query(Conn, Query3),
 			lager:debug([{endtype, End_Type}], "create connectpid table: ~p", [R4]),
-  		datasource:return_connection(mqtt_storage, Conn),
+
+			if End_Type == server ->
+					Query4 =
+						"CREATE TABLE IF NOT EXISTS users ("
+						"user_id char(25) DEFAULT '',"
+						" password tinyblob,"
+						" PRIMARY KEY (user_id)"
+						" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
+  				R5 = connection:execute_query(Conn, Query4),
+					lager:debug([{endtype, End_Type}], "create users table: ~p", [R5]);
+				 true -> ok
+			end,
+
+			datasource:return_connection(mqtt_storage, Conn),
 			Pid;
 		#mysql_error{} -> ok
 	end.
@@ -142,7 +155,12 @@ save(End_Type, #storage_connectpid{client_id = Client_Id, pid = Pid}) ->
 	Query = ["REPLACE INTO connectpid VALUES ('",
 		Client_Id, "',x'",
 		binary_to_hex(term_to_binary(Pid)), "')"],
-	execute_query(End_Type, Query).
+	execute_query(End_Type, Query);
+save(server, #user{user_id = User_Id, password = Pswd}) ->
+	Query = ["REPLACE INTO users VALUES ('",
+		User_Id, "',x'",
+		binary_to_hex(term_to_binary(crypto:hash(md5, Pswd))), "')"],
+	execute_query(server, Query).
 
 remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 	Query = ["DELETE FROM session WHERE client_id='",
@@ -156,7 +174,10 @@ remove(End_Type, #subs_primary_key{client_id = Client_Id, topic = Topic}) ->
 	execute_query(End_Type, Query);
 remove(End_Type, {client_id, Client_Id}) ->
 	Query = ["DELETE FROM connectpid WHERE client_id='", Client_Id, "'"],
-	execute_query(End_Type, Query).
+	execute_query(End_Type, Query);
+remove(server, {user_id, User_Id}) ->
+	Query = ["DELETE FROM users WHERE user_id='", User_Id, "'"],
+	execute_query(server, Query).
 
 get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 	Query = ["SELECT publish_rec FROM session WHERE client_id='",
@@ -181,6 +202,14 @@ get(End_Type, {client_id, Client_Id}) ->
 	case execute_query(End_Type, Query) of
 		[] -> undefined;
 		[[Pid]] -> binary_to_term(Pid)
+	end;
+get(server, {user_id, User_Id}) ->
+	Query = [
+		"SELECT password FROM users WHERE user_id='",
+		User_Id, "'"],
+	case execute_query(server, Query) of
+		[] -> undefined;
+		[[Password]] -> binary_to_term(Password)
 	end.
 
 get_client_topics(End_Type, Client_Id) ->
