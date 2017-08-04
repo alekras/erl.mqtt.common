@@ -98,13 +98,15 @@ handle_call({connect, Conn_config, Callback},
     ok -> 
 			New_processes = (State#connection_state.processes)#{connect => From},
 			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes},
+			New_State_2 =
 			case Conn_config#connect.clean_session of
 				1 -> 
-					Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id);
+					Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
+					New_State;
 				0 ->	 
 					restore_session(New_State) 
 	    end,
-			{reply, {ok, Ref}, New_State};
+			{reply, {ok, Ref}, New_State_2};
     {error, Reason} -> {reply, {error, Reason}, State}
   end;
 
@@ -140,7 +142,7 @@ handle_call({publish, #publish{qos = QoS} = Params},
 handle_call({republish, undefined, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
-%	io:format(user, " >>> re-publish request undefined, PI: ~p.~n", [Packet_Id]),
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request undefined, PI: ~p.~n", [Packet_Id]),
 	Packet = packet(pubrel, Packet_Id),
 	case Transport:send(Socket, Packet) of
 		ok ->
@@ -151,7 +153,7 @@ handle_call({republish, undefined, Packet_Id},
 handle_call({republish, #publish{topic = undefined, acknowleged = pubrec}, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
-%	io:format(user, " >>> re-publish request #publish{topic = undefined, acknowleged = pubrec}, PI: ~p.~n", [Packet_Id]),
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request #publish{topic = undefined, acknowleged = pubrec}, PI: ~p.~n", [Packet_Id]),
 	Packet = packet(pubrec, Packet_Id),
 	case Transport:send(Socket, Packet) of
 		ok ->
@@ -162,7 +164,7 @@ handle_call({republish, #publish{topic = undefined, acknowleged = pubrec}, Packe
 handle_call({republish, Params, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
-%	io:format(user, " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
 	Packet = packet(publish, {Params#publish{dup = 1}, Packet_Id}),
   case Transport:send(Socket, Packet) of
     ok -> 
@@ -302,20 +304,40 @@ socket_stream_process(State, Binary) ->
 		{connect, Config, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], "connect: ~p~n", [Config]),
 			%% @todo check credentials here
+			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
+			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
+			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
+%			lager:debug([{endtype, State#connection_state.end_type}], "Client pid: ~p~n", [ClientPid]),
+			if ClientPid =:= undefined -> ok;
+				 is_pid(ClientPid) -> try gen_server:call(ClientPid, disconnect) catch _:_ -> ok end;
+				 true -> ok
+			end,
+			Resp_code =
+			if Encrypted_password_db =/= Encrypted_password_cli -> 5;
+				 true -> 0
+			end,
 			Packet_Id = State#connection_state.packet_id,
-			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end, %% @todo check session in DB
-			Packet = packet(connack, {SP, 0}),
+			SP = 
+			if Config#connect.clean_session =:= 0 -> 1; true -> 0 end, %% @todo check session in DB
+			Packet = packet(connack, {SP, Resp_code}),
 			Transport:send(Socket, Packet),
+			if Resp_code =:= 0 ->
 			New_State = State#connection_state{config = Config, session_present = SP},
+					New_State_2 =
 			case Config#connect.clean_session of
 				1 -> 
-					Storage:cleanup(State#connection_state.end_type, Config#connect.client_id);
+							Storage:cleanup(State#connection_state.end_type, Config#connect.client_id),
+							New_State;
 				0 ->	 
 					restore_session(New_State) 
 	    end,
 			New_Client_Id = Config#connect.client_id,
 			Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
-			socket_stream_process(New_State#connection_state{packet_id = next(Packet_Id, New_State)}, Tail);
+					socket_stream_process(New_State_2#connection_state{packet_id = next(Packet_Id, New_State_2)}, Tail);
+				true ->
+					Transport:close(Socket),
+					socket_stream_process(State, Tail)
+			end;
 
 		{connack, SP, CRC, Msg, Tail} ->
 			case maps:get(connect, Processes, undefined) of
@@ -405,7 +427,8 @@ socket_stream_process(State, Binary) ->
 					socket_stream_process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, #publish{qos = QoS, topic = Topic} = Record, Packet_Id, Tail} ->
+		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(State, Record),
@@ -422,15 +445,17 @@ socket_stream_process(State, Binary) ->
 				2 ->
 					New_State = 
 						case	maps:is_key(Packet_Id, Processes) of
-							true -> State;
-							false -> 
-					      delivery_to_application(State, Record),
+							true when Dup =:= 0 -> State;
+							_ -> 
+								if  State#connection_state.end_type =:= client -> delivery_to_application(State, Record);
+										true -> none
+								end,
 %% store PI after receiving message
                 Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-                Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{acknowleged = pubrec}}),
+								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{acknowleged = pubrec}}),
 					      case Transport:send(Socket, packet(pubrec, Packet_Id)) of
 					        ok -> 
-        				    New_processes = Processes#{Packet_Id => {undefined, #publish{topic = Topic, qos = QoS, acknowleged = pubrec}}},
+										New_processes = Processes#{Packet_Id => {{self(), undefined}, #publish{topic = Topic, qos = QoS, acknowleged = pubrec}}},
 				        	  State#connection_state{processes = New_processes};
 						      {error, _Reason} -> State
 					      end
@@ -472,10 +497,20 @@ socket_stream_process(State, Binary) ->
 		?test_fragment_skip_rcv_pubrel
 		?test_fragment_skip_send_pubcomp
 		{pubrel, Packet_Id, Tail} ->
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p  ~p.~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{_From, _Params} ->
+					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
+					if
+						State#connection_state.end_type =:= server ->
+							case Storage:get(State#connection_state.end_type, Prim_key) of
+								#storage_publish{document = Record} ->
+									delivery_to_application(State, Record);
+								_ -> none
+							end;
+						true -> none
+					end,
 %% discard PI before pubcomp send
-          Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
           Storage:remove(State#connection_state.end_type, Prim_key),
 					New_processes = maps:remove(Packet_Id, Processes),
 					case Transport:send(Socket, packet(pubcomp, Packet_Id)) of
@@ -556,7 +591,7 @@ delivery_to_application(#connection_state{end_type = client} = State, #publish{t
 				|| {TopicQoS, Callback} <- List
 			]
 	end;
-delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, #publish{topic = Topic_Params, qos = QoS_Params, payload = Payload} = Params) ->
+delivery_to_application(#connection_state{end_type = server, storage = Storage}, #publish{topic = Topic_Params, qos = QoS_Params, payload = Payload} = Params) ->
 %	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, Topic),
 %	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 	case Storage:get_matched_topics(server, Topic_Params) of
@@ -569,13 +604,18 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage} 
 					undefined -> 
 						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 					Pid ->
+						if QoS_Params > TopicQoS -> 
+								erlang:spawn(?MODULE, server_publish, [Pid, Params#publish{qos = TopicQoS}]);
+							true ->
 						erlang:spawn(?MODULE, server_publish, [Pid, Params])
 			  end
-				|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS, callback = Callback} <- List
+			  end
+				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, qos = TopicQoS} <- List
 			]
 	end.
 
 do_callback(Callback, Args) ->
+	lager:debug([{endtype, client}], "Client invokes callback function ~p with Args:~p~n", [Callback, Args]),
   case Callback of
 	  {M, F} -> spawn(M, F, Args);
 	  F when is_function(F) -> spawn(fun() -> apply(F, Args) end);
@@ -607,7 +647,25 @@ server_publish(Pid, Params) ->
 				#mqtt_client_error{type = publish, source = "mqtt_client:publish/2", message = Reason}
   end.
 
-restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type}) ->
+restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type} = State) ->
+	lager:debug([{endtype, End_Type}], "Enter restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, State#connection_state.processes]),
  	Records = Storage:get_all(End_Type, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-  [spawn(gen_server, call, [self(), {republish, Params, PI}, ?MQTT_GEN_SERVER_TIMEOUT])	|| {PI, Params} <- MessageList].
+	lager:debug([{endtype, End_Type}], "In restore session: MessageList = ~128p~n", [MessageList]),
+	New_State = lists:foldl(fun restore_prosess_list/2, State, MessageList),
+  [spawn(gen_server, call, [self(), {republish, Params, PI}, ?MQTT_GEN_SERVER_TIMEOUT])	|| {PI, Params} <- MessageList],
+	lager:debug([{endtype, End_Type}], "Exit restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, New_State#connection_state.processes]),
+	New_State.
+
+restore_prosess_list({Packet_Id, undefined}, State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list(undefined, PI: ~p).~n", [Packet_Id]),
+	New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), undefined}, #publish{acknowleged = pubrec}}},
+	State#connection_state{processes = New_processes};
+restore_prosess_list({Packet_Id, #publish{topic = undefined, acknowleged = pubrec}}, State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list #publish{topic = undefined, acknowleged = pubrec}, PI: ~p.~n", [Packet_Id]),
+	New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), undefined}, #publish{acknowleged = pubrec}}},
+	State#connection_state{processes = New_processes};
+restore_prosess_list({Packet_Id, Params}, State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
+	New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), undefined}, Params}},
+	State#connection_state{processes = New_processes}.

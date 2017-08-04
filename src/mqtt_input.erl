@@ -163,10 +163,10 @@ decode_rl(<<CB:1, EncodedByte:7, Binary/binary>>, MP, L) ->
 		true -> {Binary, NewL}
 	end.
 
-parse_subscription(<<>>, Subscriptions) -> Subscriptions;
+parse_subscription(<<>>, Subscriptions) -> lists:reverse(Subscriptions);
 parse_subscription(<<Size:16, Topic:Size/binary, QoS:8, BinartRest/binary>>, Subscriptions) ->
 	parse_subscription(BinartRest, [{Topic, QoS} | Subscriptions]).
 
-parse_unsubscription(<<>>, Topics) -> Topics;
+parse_unsubscription(<<>>, Topics) -> lists:reverse(Topics);
 parse_unsubscription(<<Size:16, Topic:Size/binary, BinartRest/binary>>, Topics) ->
 	parse_unsubscription(BinartRest, [Topic | Topics]).
