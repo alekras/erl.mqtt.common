@@ -147,7 +147,7 @@ save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_
 	Query = ["REPLACE INTO subscription VALUES ('",
 		Client_Id, "','",
 		Topic, "','",
-		mqtt_connection:topic_regexp(Topic), "',",
+		mqtt_socket_stream:topic_regexp(Topic), "',",
 		integer_to_list(QoS), ",x'",
 		binary_to_hex(CBin), "')"],
 		execute_query(End_Type, Query);

@@ -169,12 +169,12 @@ input_parser() ->
 							 mqtt_input:input_parser(<<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
 	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
-	?assertEqual({publish, #publish{topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>}, 0, <<1:8, 1:8>>}, 
+	?assertEqual({publish, #publish{topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 0, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#30:8, 13:8, 5:16, "Topic", 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
 %					{publish, QoS, Packet_Id, Topic, Payload, Tail};
-	?assertEqual({publish, #publish{qos = 1, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>}, 100, <<1:8, 1:8>>}, 
+	?assertEqual({publish, #publish{qos = 1, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 100, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#32:8, 15:8, 5:16, "Topic", 100:16, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
-	?assertEqual({publish, #publish{qos = 2, dup = 1, retain = 1, topic = "Топик", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>}, 101, <<1:8, 1:8>>}, 
+	?assertEqual({publish, #publish{qos = 2, dup = 1, retain = 1, topic = "Топик", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 101, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#3D:8, 20:8, 10:16, "Топик"/utf8, 101:16, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
 	?assertEqual({puback, 101, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#40:8, 2:8, 101:16, 1:8, 1:8>>)),
@@ -208,11 +208,11 @@ encode_remaining_length() ->
   ?passed.
 
 is_match() ->
-	?assert(mqtt_connection:is_match("Winter/Feb/23", "Winter/+/23")),
-	?assert(mqtt_connection:is_match("Season/Spring/Month/March/25", "Season/+/Month/+/25")),
-	?assert(mqtt_connection:is_match("Winter/Feb/23", "Winter/#")),
-	?assert(mqtt_connection:is_match("/Feb/23", "/+/23")),
-	?assert(mqtt_connection:is_match("/Feb/23", "/Feb/23")),
-	?assertNot(mqtt_connection:is_match("/Feb/23", "/February/23")),
+	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "Winter/+/23")),
+	?assert(mqtt_socket_stream:is_match("Season/Spring/Month/March/25", "Season/+/Month/+/25")),
+	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "Winter/#")),
+	?assert(mqtt_socket_stream:is_match("/Feb/23", "/+/23")),
+	?assert(mqtt_socket_stream:is_match("/Feb/23", "/Feb/23")),
+	?assertNot(mqtt_socket_stream:is_match("/Feb/23", "/February/23")),
 
 	?passed.

@@ -25,8 +25,8 @@
     will_topic = "" :: string(),
     will_message = <<>> :: binary(),
     clean_session = 1 :: 0 | 1,
-    keep_alive :: integer()
-  }
+		keep_alive :: integer()
+	}
 ).
 
 -record(publish,
@@ -35,7 +35,8 @@
 		dup = 0 :: 0 | 1,
 		qos = 0 :: 0 | 1 | 2,
 		retain = 0 :: 0 | 1,
-		acknowleged = none :: none | pubrec | pubrel,
+		last_sent = none :: none | publish | pubrec | pubrel | pubcomp,
+		dir = out :: in | out, 
 		payload = <<>> :: binary()
 	}
 ).

@@ -102,13 +102,11 @@ input_parser(Binary) ->
 				0 ->
 					PL = Length - L - 2,
 					<<Payload:PL/binary, Tail/binary>> = RestBin1,
-					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload}, 0, Tail};
+					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload, dir = in}, 0, Tail};
 				_ when (QoS =:= 1) orelse (QoS =:= 2) ->
 					PL = Length - L - 4,
 					<<Packet_Id:16, Payload:PL/binary, Tail/binary>> = RestBin1,
-%					io:format(user, " >>> PUBLISH (QoS = ~p) received: Pk_Id=~p Length=~p L=~p Topic=~p Payload=~p Tail=~p~n", [QoS, Packet_Id, Length, L, Topic, Payload, Tail]),
-%					{publish, QoS, Packet_Id, Topic, Payload, Tail};
-					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload}, Packet_Id, Tail};
+					{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload, dir = in}, Packet_Id, Tail};
 				_ -> true
 			end;
 		<<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {puback, Packet_Id, Tail};
