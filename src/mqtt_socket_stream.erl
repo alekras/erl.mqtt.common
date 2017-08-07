@@ -35,7 +35,8 @@
 -export([
 	process/2,
 	is_match/2,
-	topic_regexp/1
+	topic_regexp/1,
+	server_publish/2
 ]).
 
 -import(mqtt_output, [packet/2]).
