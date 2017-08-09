@@ -185,15 +185,16 @@ process(State, Binary) ->
 				0 -> 	
 					delivery_to_application(State, Record),
 					process(State, Tail);
-				?test_fragment_skip_send_puback
+%%				?test_fragment_skip_send_puback
 				1 ->
 					delivery_to_application(State, Record),
-					case Transport:send(Socket, packet(puback, Packet_Id)) of
+					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Packet_Id) end,
+					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
 					end,
 					process(State, Tail);
-				?test_fragment_skip_send_pubrec
+%%				?test_fragment_skip_send_pubrec
 				2 ->
 					New_State = 
 						case maps:is_key(Packet_Id, Processes) of
@@ -208,7 +209,8 @@ process(State, Binary) ->
 %% store PI after receiving message
 								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{last_sent = pubrec}}),
-								case Transport:send(Socket, packet(pubrec, Packet_Id)) of
+								Packet = if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>; true -> packet(pubrec, Packet_Id) end,
+								case Transport:send(Socket, Packet) of
 									ok -> 
 										New_processes = Processes#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
 										State#connection_state{processes = New_processes};
@@ -235,15 +237,16 @@ process(State, Binary) ->
 			end;
 
 		?test_fragment_skip_rcv_pubrec
-		?test_fragment_skip_send_pubrel
+%%		?test_fragment_skip_send_pubrel
 		{pubrec, Packet_Id, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
 %% store message before pubrel
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
+					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Packet_Id) end,
 					New_State =
-					case Transport:send(Socket, packet(pubrel, Packet_Id)) of
+					case Transport:send(Socket, Packet) of
 						ok -> 
 							New_processes = Processes#{Packet_Id => {From, Params#publish{last_sent = pubrel}}},
 							State#connection_state{processes = New_processes}; 
@@ -254,7 +257,7 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_pubrel
-		?test_fragment_skip_send_pubcomp
+%%		?test_fragment_skip_send_pubcomp
 		{pubrel, Packet_Id, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
@@ -271,8 +274,9 @@ process(State, Binary) ->
 					end,
 %% discard PI before pubcomp send
 					Storage:remove(State#connection_state.end_type, Prim_key),
+					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Packet_Id) end,
 					New_State =
-					case Transport:send(Socket, packet(pubcomp, Packet_Id)) of
+					case Transport:send(Socket, Packet) of
 						ok ->
 							New_processes = maps:remove(Packet_Id, Processes),
 							State#connection_state{processes = New_processes};
@@ -318,13 +322,13 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id}),
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
-delivery_to_application(#connection_state{end_type = client} = State, #publish{topic = Topic, qos = QoS, payload = Payload}) ->
+delivery_to_application(#connection_state{end_type = client} = State, #publish{topic = Topic, qos = QoS, dup = Dup, payload = Payload}) ->
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(State#connection_state.default_callback, [{{Topic, QoS}, QoS, Payload}]);
+		[] -> do_callback(State#connection_state.default_callback, [{{Topic, undefined}, QoS, Dup, Payload}]);
 		List ->
 			[
-				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Payload}]) of
-					false -> do_callback(State#connection_state.default_callback, [{{Topic, QoS}, QoS, Payload}]);
+				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Payload}]) of
+					false -> do_callback(State#connection_state.default_callback, [{{Topic, TopicQoS}, QoS, Dup, Payload}]);
 					_ -> ok
 				end
 				|| {TopicQoS, Callback} <- List

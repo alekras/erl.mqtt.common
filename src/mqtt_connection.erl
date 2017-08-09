@@ -41,7 +41,6 @@
 ]).
 
 -import(mqtt_output, [packet/2]).
--import(mqtt_input, [input_parser/1]).
 
 %% ====================================================================
 %% Behavioural functions
@@ -122,12 +121,13 @@ handle_call({publish, #publish{qos = 0} = Params},
 	Transport:send(Socket, packet(publish, Params)),
 	{reply, {ok, Ref}, State};
 
-?test_fragment_skip_send_publish
+%%?test_fragment_skip_send_publish
 
 handle_call({publish, #publish{qos = QoS} = Params}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	Packet = packet(publish, {Params, Packet_Id}),
+%	Packet = packet(publish, {Params, Packet_Id}),
+	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, {Params, Packet_Id}) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
 	Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = Packet_Id},
