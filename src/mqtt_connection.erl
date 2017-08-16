@@ -29,7 +29,7 @@
 -include("mqtt.hrl").
 -include("mqtt_macros.hrl").
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 %% ====================================================================
 %% API functions
@@ -202,8 +202,8 @@ handle_call(disconnect,
 		ok -> 
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
 			{stop, normal, State};
-		{error, closed} -> {stop, normal, State};
-		{error, Reason} -> {reply, {error, Reason}, State}
+		{error, closed} -> {stop, shutdown, State};
+		{error, Reason} -> {stop, {shutdown, Reason}, State}
 	end;
 
 handle_call({pingreq, Callback},
@@ -247,16 +247,17 @@ handle_cast(_Msg, State) ->
 handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket} = State) ->
 			New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 			{noreply, New_State};
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, transport = Transport} = State) ->
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket} = State) ->
 			lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
-			Transport:close(Socket),
-			{stop, normal, State};
+	{stop, shutdown, State};
 handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
 			New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 			{noreply, New_State};
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, transport = Transport} = State) ->
+handle_info({ssl_closed, Socket}, #connection_state{socket = Socket} = State) ->
 			lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
-			Transport:close(Socket),
+	{stop, shutdown, State};
+handle_info(disconnect, State) ->
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
 			{stop, normal, State};
 handle_info(Info, State) ->
 			lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
@@ -271,20 +272,29 @@ handle_info(Info, State) ->
 			| {shutdown, term()}
 			| term().
 %% ====================================================================
-terminate(_Reason, _State) ->
-%	io:format(user, " >>> terminate ~p~n~p~n", [_Reason, _State]),
+terminate(Reason, #connection_state{socket = Socket, transport = Transport, end_type = client} = State) ->
+	lager:warning([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	Transport:close(Socket),
+	ok;
+terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
+	lager:warning([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	if (Config#connect.will =:= 1) and (Reason =:= shutdown) ->
+				List = Storage:get_matched_topics(server, Config#connect.will_topic),
+				lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+				[
+					case Storage:get(server, {client_id, Client_Id}) of
+						undefined -> 
+							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+						Pid ->
+							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
+							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, #publish{topic = Topic, qos = QoS, retain = Config#connect.will_retain, payload = Config#connect.will_message}])
+					end
+					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS} <- List
+				];
+			true -> ok
+	end,
+	Transport:close(Socket),
 	ok.
-
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
-%% @private
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
-code_change(_OldVsn, State, _Extra) ->
-		{ok, State}.
 
 %% ====================================================================
 %% Internal functions

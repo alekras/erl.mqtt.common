@@ -118,6 +118,15 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>}),
  	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>}),
 
+	Storage:save(server, #publish{topic = "AK", payload = <<"Payload A">>}),
+	Storage:save(server, #publish{topic = "AK/Test", payload = <<"Payload B">>}),
+	Storage:save(server, #publish{topic = "AK/Do", payload = <<"Payload C">>}),
+	Storage:save(server, #publish{topic = "/Season/December", payload = <<"Payload D">>}),
+	Storage:save(server, #publish{topic = "/Season/December", payload = <<"Payload DD">>}),
+	Storage:save(server, #publish{topic = "Season/December/01", payload = <<"Payload E">>}),
+	Storage:save(server, #publish{topic = "Season/December/02", payload = <<"Payload F">>}),
+	Storage:save(server, #publish{topic = "Season/May/21", payload = <<"Payload G">>}),
+
 	R = Storage:get_all(server, {session, "lemon"}),
 %	?debug_Fmt("::test:: after create session ~p", [R]),	
 	?assertEqual(3, length(R)),
@@ -155,6 +164,25 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	?assertEqual(undefined, R2a),
 	R3 = Storage:get(server, {user_id, "alex"}),
  	?assertEqual(crypto:hash(md5, <<"aaaaaaa">>), R3),
+	R4a = Storage:get(server, {topic, "AK"}),
+%	?debug_Fmt("::test:: read returns R4a ~120p", [R4a]),	
+	?assertEqual([#publish{topic = "AK", payload = <<"Payload A">>}], R4a),
+	R4b = Storage:get(server, {topic, "AK/#"}),
+%	?debug_Fmt("::test:: read returns R4b ~120p", [R4b]),	
+	?assertEqual(2, length(R4b)),
+	?assert(lists:member({publish,"AK/Test",0,0,0,none,out,<<"Payload B">>}, R4b)),
+	?assert(lists:member({publish,"AK/Do",0,0,0,none,out,<<"Payload C">>}, R4b)),
+	R4c = Storage:get(server, {topic, "Season/+/#"}),
+%	?debug_Fmt("::test:: read returns R4c ~120p", [R4c]),	
+	?assertEqual(3, length(R4c)),
+	?assert(lists:member(#publish{topic = "Season/December/01", payload = <<"Payload E">>}, R4c)),
+	?assert(lists:member(#publish{topic = "Season/December/02", payload = <<"Payload F">>}, R4c)),
+	?assert(lists:member(#publish{topic = "Season/May/21", payload = <<"Payload G">>}, R4c)),
+	R4d = Storage:get(server, {topic, "/Season/December"}),
+%	?debug_Fmt("::test:: read returns R4d ~120p", [R4d]),	
+	?assertEqual(2, length(R4d)),
+	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload D">>}, R4d)),
+	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload DD">>}, R4d)),
 	?passed
 end}.
 
@@ -216,5 +244,11 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R1 = Storage:get(server, {user_id, "fedor"}),
 %	?debug_Fmt("::test:: after delete ~p", [R1]),	
 	?assertEqual(undefined, R1),
+	
+	Storage:remove(server, {topic,"/Season/December"}),
+	R2 = Storage:get(server, {topic,"/Season/December"}),
+%	?debug_Fmt("::test:: after delete ~p", [R2]),	
+	?assertEqual([], R2),
+
 	?passed
 end}.

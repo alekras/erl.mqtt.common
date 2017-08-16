@@ -23,9 +23,9 @@ handle_call({set_test_flag, Flag}, _From, State) ->
 ).
 
 -define(test_fragment_break_connection, 
-handle_call({publish, _}, _, #connection_state{test_flag = break_connection, transport = Transport} = State) ->
-	Transport:close(State#connection_state.socket),
-	{stop, normal, State};
+handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = State) ->
+%	Transport:close(State#connection_state.socket),
+	{stop, shutdown, State};
 ).
 
 -define(test_fragment_skip_rcv_publish, 

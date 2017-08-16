@@ -6,3 +6,8 @@
 /log/
 /erl.mqtt.common-vsn-1.0.4.zip
 /rebar.lock
+/retain-db-srv.bin
+/session-db-srv.bin
+/subscription-db-srv.bin
+/users-db-srv.bin
+/connectpid-db-srv.bin

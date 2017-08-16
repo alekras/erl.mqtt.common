@@ -48,7 +48,10 @@
 db_id(client) ->
 	[session_db_cli, subscription_db_cli, connectpid_db_cli];
 db_id(server) ->
-	[session_db_srv, subscription_db_srv, connectpid_db_srv, users_db_srv].
+	[session_db_srv, subscription_db_srv, connectpid_db_srv, users_db_srv, retain_db_srv].
+
+db_type(client) -> [set, set, set];
+db_type(server) -> [set, set, set, set, duplicate_bag].
 
 db_id(1, client) -> session_db_cli;
 db_id(1, server) -> session_db_srv;
@@ -56,24 +59,25 @@ db_id(2, client) -> subscription_db_cli;
 db_id(2, server) -> subscription_db_srv;
 db_id(3, client) -> connectpid_db_cli;
 db_id(3, server) -> connectpid_db_srv;
-db_id(4, server) -> users_db_srv.
+db_id(4, server) -> users_db_srv;
+db_id(5, server) -> retain_db_srv.
 
 db_file(client) ->
 	["session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"];
 db_file(server) ->
-	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin"].
+	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin"].
 	
 start(End_Type) ->
-	L = lists:zip(db_id(End_Type), db_file(End_Type)),
+	L = lists:zip3(db_id(End_Type), db_file(End_Type), db_type(End_Type)),
 	L1 = [ 
-		case dets:open_file(DB_ID, [{file, DB_File}, {type, set}, {auto_save, 10000}, {keypos, 2}]) of
+		case dets:open_file(DB_ID, [{file, DB_File}, {type, DB_Type}, {auto_save, 10000}, {keypos, 2}]) of
 			{ok, DB_ID} ->
 				true;
 			{error, Reason1} ->
 				lager:error([{endtype, End_Type}], "Cannot open ~p dets: ~p~n", [DB_ID, Reason1]),
 				false
 		end
-	|| {DB_ID, DB_File} <- L],
+	|| {DB_ID, DB_File, DB_Type} <- L],
 	lists:foldl(fun(E, A) -> E and A end, true, L1).
 
 save(End_Type, #storage_publish{key = Key} = Document) ->
@@ -107,7 +111,16 @@ save(server, #user{user_id = Key, password = Pswd} = Doc) ->
 	User_db = db_id(4, server),
 	case dets:insert(User_db, Doc#user{password = crypto:hash(md5, Pswd)}) of
 		{error, Reason} ->
-			lager:error([{endtype, server}], "connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
+			lager:error([{endtype, server}], "user_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
+			false;
+		ok ->
+			true
+	end;
+save(server, #publish{topic = Topic} = Doc) ->
+	Retain_db = db_id(5, server),
+	case dets:insert(Retain_db, #storage_retain{topic = Topic, document = Doc}) of
+		{error, Reason} ->
+			lager:error([{endtype, server}], "retain_db: Insert failed: ~p; reason ~p~n", [Topic, Reason]),
 			false;
 		ok ->
 			true
@@ -142,6 +155,14 @@ remove(server, {user_id, Key}) ->
 	case dets:match_delete(User_db, #user{user_id = Key, _ = '_'}) of
 		{error, Reason} ->
 			lager:error([{endtype, server}], "Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
+			false;
+		ok -> true
+	end;
+remove(server, {topic, Topic}) ->
+	Retain_db = db_id(5, server),
+	case dets:match_delete(Retain_db, #storage_retain{topic = Topic, _ = '_'}) of
+		{error, Reason} ->
+			lager:error([{endtype, server}], "Delete is failed for topic: ~p with error code: ~p~n", [Topic, Reason]),
 			false;
 		ok -> true
 	end.
@@ -185,7 +206,17 @@ get(server, {user_id, Key}) ->
 		[#user{password = Pswd}] -> Pswd;
 		_ ->
 			undefined
-	end.
+	end;
+get(server, {topic, TopicFilter}) ->
+	Retain_db = db_id(5, server),
+	Fun =
+		fun (#storage_retain{topic = Topic, document = Doc}) -> 
+					case mqtt_socket_stream:is_match(Topic, TopicFilter) of
+						true -> {continue, Doc};
+						false -> continue
+					end
+		end,
+	dets:traverse(Retain_db, Fun).
 
 get_client_topics(End_Type, Client_Id) ->
 	Subscription_db = db_id(2, End_Type),
@@ -254,7 +285,12 @@ cleanup(End_Type) ->
 	ConnectionPid_db = db_id(3, End_Type),
 	dets:delete_all_objects(Session_db),
 	dets:delete_all_objects(Subscription_db),
-	dets:delete_all_objects(ConnectionPid_db).
+	dets:delete_all_objects(ConnectionPid_db),
+	if End_Type =:= server ->
+			Retain_db = db_id(5, server),
+			dets:delete_all_objects(Retain_db);
+		true -> ok
+	end.
 
 exist(End_Type, Key) ->
 	Session_db = db_id(1, End_Type),
@@ -266,12 +302,7 @@ exist(End_Type, Key) ->
 	end.
 
 close(End_Type) -> 
-	Session_db = db_id(1, End_Type),
-	Subscription_db = db_id(2, End_Type),
-	ConnectionPid_db = db_id(3, End_Type),
-	dets:close(Session_db),
-	dets:close(Subscription_db),
-	dets:close(ConnectionPid_db).
+	[dets:close(Db_Id) || Db_Id <- db_id(End_Type)].
 %% ====================================================================
 %% Internal functions
 %% ====================================================================

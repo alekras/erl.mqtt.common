@@ -73,16 +73,16 @@ start(End_Type) ->
 	case my:new_datasource(DS_def) of
 		{ok, _Pid} ->
 			Connect = datasource:get_connection(mqtt_storage),
-  		R0 = connection:execute_query(Connect, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
+			R0 = connection:execute_query(Connect, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
 			lager:debug([{endtype, End_Type}], "create DB: ~p", [R0]),
-  		datasource:return_connection(mqtt_storage, Connect);
+  			datasource:return_connection(mqtt_storage, Connect);
 		#mysql_error{} -> ok
 	end,
   datasource:close(mqtt_storage),
 
 	case my:new_datasource(DS_def#datasource{database = DB_name}) of
 		{ok, Pid} ->
- 			Conn = datasource:get_connection(mqtt_storage),
+			Conn = datasource:get_connection(mqtt_storage),
 %%   		R1 = connection:execute_query(Conn, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
 %% 			lager:debug([{endtype, End_Type}], "create DB: ~p", [R1]),
 %% 
@@ -95,8 +95,8 @@ start(End_Type) ->
 				" publish_rec blob,"
 				" PRIMARY KEY (client_id, packet_id)"
 				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
-  		R2 = connection:execute_query(Conn, Query1),
-			lager:debug([{endtype, End_Type}], "create session table: ~p", [R2]),
+			R1 = connection:execute_query(Conn, Query1),
+			lager:debug([{endtype, End_Type}], "create session table: ~p", [R1]),
 
 			Query2 =
 				"CREATE TABLE IF NOT EXISTS subscription ("
@@ -107,8 +107,8 @@ start(End_Type) ->
 				" callback blob,"
 				" PRIMARY KEY (topic, client_id)"
 				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
-  		R3 = connection:execute_query(Conn, Query2),
-			lager:debug([{endtype, End_Type}], "create subscription table: ~p", [R3]),
+			R2 = connection:execute_query(Conn, Query2),
+			lager:debug([{endtype, End_Type}], "create subscription table: ~p", [R2]),
 
 			Query3 =
 				"CREATE TABLE IF NOT EXISTS connectpid ("
@@ -116,8 +116,8 @@ start(End_Type) ->
 				" pid tinyblob,"
 				" PRIMARY KEY (client_id)"
 				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
-			R4 = connection:execute_query(Conn, Query3),
-			lager:debug([{endtype, End_Type}], "create connectpid table: ~p", [R4]),
+			R3 = connection:execute_query(Conn, Query3),
+			lager:debug([{endtype, End_Type}], "create connectpid table: ~p", [R3]),
 
 			if End_Type == server ->
 					Query4 =
@@ -126,8 +126,17 @@ start(End_Type) ->
 						" password tinyblob,"
 						" PRIMARY KEY (user_id)"
 						" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
-  				R5 = connection:execute_query(Conn, Query4),
-					lager:debug([{endtype, End_Type}], "create users table: ~p", [R5]);
+					R4 = connection:execute_query(Conn, Query4),
+					lager:debug([{endtype, End_Type}], "create users table: ~p", [R4]),
+
+					Query5 =
+						"CREATE TABLE IF NOT EXISTS retain ("
+						"topic varchar(512) DEFAULT '',"
+						" publish_rec blob"
+%						", PRIMARY KEY (topic)"
+						" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
+					R5 = connection:execute_query(Conn, Query5),
+					lager:debug([{endtype, End_Type}], "create retain table: ~p", [R5]);
 				 true -> ok
 			end,
 
@@ -160,6 +169,11 @@ save(server, #user{user_id = User_Id, password = Pswd}) ->
 	Query = ["REPLACE INTO users VALUES ('",
 		User_Id, "',x'",
 		binary_to_hex(term_to_binary(crypto:hash(md5, Pswd))), "')"],
+	execute_query(server, Query);
+save(server, #publish{topic = Topic} = Document) ->
+	Query = ["REPLACE INTO retain VALUES ('",
+		Topic, "',x'",
+		binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(server, Query).
 
 remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
@@ -177,6 +191,9 @@ remove(End_Type, {client_id, Client_Id}) ->
 	execute_query(End_Type, Query);
 remove(server, {user_id, User_Id}) ->
 	Query = ["DELETE FROM users WHERE user_id='", User_Id, "'"],
+	execute_query(server, Query);
+remove(server, {topic, Topic}) ->
+	Query = ["DELETE FROM retain WHERE topic='", Topic, "'"],
 	execute_query(server, Query).
 
 get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
@@ -210,7 +227,10 @@ get(server, {user_id, User_Id}) ->
 	case execute_query(server, Query) of
 		[] -> undefined;
 		[[Password]] -> binary_to_term(Password)
-	end.
+	end;
+get(server, {topic, TopicFilter}) ->
+	Query = ["SELECT * FROM retain"],
+	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_socket_stream:is_match(Topic, TopicFilter)].
 
 get_client_topics(End_Type, Client_Id) ->
 	Query = ["SELECT topic, qos, callback FROM subscription WHERE client_id='", Client_Id, "'"],
@@ -257,12 +277,17 @@ cleanup(End_Type, Client_Id) ->
 
 cleanup(End_Type) ->
 	Conn = datasource:get_connection(mqtt_storage),
-  R1 = connection:execute_query(Conn, "DELETE FROM session"),
+	R1 = connection:execute_query(Conn, "DELETE FROM session"),
 	lager:debug([{endtype, End_Type}], "session delete: ~p", [R1]),
-  R2 = connection:execute_query(Conn, "DELETE FROM subscription"),
+	R2 = connection:execute_query(Conn, "DELETE FROM subscription"),
 	lager:debug([{endtype, End_Type}], "subscription delete: ~p", [R2]),
-  R3 = connection:execute_query(Conn, "DELETE FROM connectpid"),
+	R3 = connection:execute_query(Conn, "DELETE FROM connectpid"),
 	lager:debug([{endtype, End_Type}], "connectpid delete: ~p", [R3]),
+	if End_Type =:= server ->
+		R4 = connection:execute_query(Conn, "DELETE FROM retain"),
+		lager:debug([{endtype, End_Type}], "retain delete: ~p", [R4]);
+		true -> ok
+	end,
 	datasource:return_connection(mqtt_storage, Conn).
 
 exist(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->

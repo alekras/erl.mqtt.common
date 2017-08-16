@@ -55,6 +55,13 @@
 	}
 ).
 
+-record(storage_retain,
+	{
+    topic :: string(),
+		document :: #publish{}
+	}
+).
+
 -record(subs_primary_key,
 	{
     topic :: string(),

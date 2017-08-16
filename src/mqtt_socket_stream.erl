@@ -70,7 +70,7 @@ process(State, Binary) ->
 			end,
 			Packet_Id = State#connection_state.packet_id,
 			SP = 
-			if Config#connect.clean_session =:= 0 -> 1; true -> 0 end, %% @todo check session in DB
+			if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			Packet = packet(connack, {SP, Resp_code}),
 			Transport:send(Socket, Packet),
 			if Resp_code =:= 0 ->
@@ -87,7 +87,7 @@ process(State, Binary) ->
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
 					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2)}, Tail);
 				true ->
-					Transport:close(Socket),
+					self() ! disconnect,
 					process(State, Tail)
 			end;
 
@@ -305,7 +305,7 @@ process(State, Binary) ->
 
 		{disconnect, Tail} ->
 			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
-			%% @todo stop the process, close the socket !!!
+			self() ! disconnect, %% @todo stop the process, close the socket !!!
 			process(State, Tail);
 
 		_ ->
