@@ -94,17 +94,18 @@
 -record(connection_state, 
   { socket :: port(),
 		transport :: atom(),
-		config :: #connect{},
+		config = #connect{} :: #connect{},
 		storage = mqtt_dets_dao :: atom(),
 		end_type = client :: client | server,
 		default_callback :: tuple(),
 		session_present :: 0 | 1,
-		connected = 0 :: 0 | 1,
+		connected = 0 :: 0 | 1, %% is used ?
 		packet_id = 100 :: integer(),
 %%		subscriptions = #{} :: map(), %% @todo keep in persistance storage
 		processes = #{} :: map(), %% @todo keep in persistance storage for QoS =1,2
 		tail = <<>> :: binary(),
-		ping_count = 0 :: integer(),
+		ping_count = 0 :: integer(), %% is used ?
+		timer_ref :: reference(), %% for keep_alive
 		test_flag :: atom() %% for testing only
   }
 ).

@@ -244,24 +244,31 @@ handle_cast(_Msg, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket} = State) ->
-			New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
-			{noreply, New_State};
+handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type = server} = State) ->
+	Timer_Ref = keep_alive_timer((State#connection_state.config)#connect.keep_alive, State#connection_state.timer_ref),
+	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
+	{noreply, New_State#connection_state{timer_ref = Timer_Ref}};
+handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type = client} = State) ->
+	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
+	{noreply, New_State};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket} = State) ->
-			lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
 	{stop, shutdown, State};
 handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
-			New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
-			{noreply, New_State};
+	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
+	{noreply, New_State};
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket} = State) ->
-			lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
 	{stop, shutdown, State};
 handle_info(disconnect, State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
-			{stop, normal, State};
+	{stop, normal, State};
+handle_info({timeout, TimerRef, Msg} = Info, State) ->
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
+	{stop, normal, State};
 handle_info(Info, State) ->
-			lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
-			{noreply, State}.
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
+	{noreply, State}.
 
 %% ====================================================================
 %% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
@@ -287,7 +294,15 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 						Pid ->
 							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
-							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, #publish{topic = Topic, qos = QoS, retain = Config#connect.will_retain, payload = Config#connect.will_message}])
+							Params = #publish{topic = Topic, 
+																qos = QoS, 
+																retain = Config#connect.will_retain, 
+																payload = Config#connect.will_message},
+							if (Config#connect.will_retain =:= 1) ->
+									Storage:save(server, Params);
+								true -> ok
+							end,
+							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])
 					end
 					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS} <- List
 				];
@@ -311,29 +326,25 @@ next(Packet_Id, #connection_state{storage = Storage} = State) ->
 		true -> next(PI, State)
 	end.
 
-
 restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type} = State) ->
 	lager:debug([{endtype, End_Type}], "Enter restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, State#connection_state.processes]),
 	Records = Storage:get_all(End_Type, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
 	lager:debug([{endtype, End_Type}], "In restore session: MessageList = ~128p~n", [MessageList]),
 	New_State = lists:foldl(fun restore_state/2, State, MessageList),
-%	[spawn(gen_server, call, [self(), {republish, Params, PI}, ?MQTT_GEN_SERVER_TIMEOUT])	|| {PI, Params} <- MessageList],
 	lager:debug([{endtype, End_Type}], "Exit restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, New_State#connection_state.processes]),
 	New_State.
 
-%% restore_prosess_list({Packet_Id, undefined}, State) ->
-%% 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list(undefined, PI: ~p).~n", [Packet_Id]),
-%% 	New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), undefined}, #publish{acknowleged = pubrec}}},
-%% 	State#connection_state{processes = New_processes};
-%% restore_prosess_list({Packet_Id, #publish{topic = undefined, acknowleged = pubrec}}, State) ->
-%% 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list #publish{topic = undefined, acknowleged = pubrec}, PI: ~p.~n", [Packet_Id]),
-%% 	New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), undefined}, #publish{acknowleged = pubrec}}},
-%% 	State#connection_state{processes = New_processes};
 restore_state({Packet_Id, Params}, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
 	Pid = spawn(gen_server, call, [self(), {republish, Params, Packet_Id}, ?MQTT_GEN_SERVER_TIMEOUT]),
 	New_processes = (State#connection_state.processes)#{Packet_Id => {{Pid, undefined}, Params}},
 	State#connection_state{processes = New_processes}.
 
+keep_alive_timer(undefined, undefined) -> undefined;
+keep_alive_timer(Keep_Alive_Time, undefined) ->
+	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout);
+keep_alive_timer(Keep_Alive_Time, Timer_Ref) ->
+	erlang:cancel_timer(Timer_Ref),
+	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout).
 

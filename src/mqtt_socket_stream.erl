@@ -124,14 +124,24 @@ process(State, Binary) ->
 
 		{subscribe, Packet_Id, Subscriptions, Tail} ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
-%% store session subscriptions
-			lager:debug([{endtype, State#connection_state.end_type}], "store session subscriptions:~p from client:~p~n", [Subscriptions, Client_Id]),
-			[ begin 
-					lager:debug([{endtype, State#connection_state.end_type}], "save subscribtion: Topic=~p QoS=~p~n", [Topic, QoS]),
-					Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = not_defined_yet})
-				end || {Topic, QoS} <- Subscriptions],
 			Packet = packet(suback, {Return_Codes, Packet_Id}),
 			Transport:send(Socket, Packet),
+%% store session subscriptions
+			lager:debug([{endtype, State#connection_state.end_type}], "store session subscriptions:~p from client:~p~n", [Subscriptions, Client_Id]),
+
+			[ begin %% Topic, QoS - new subscriptions
+					lager:debug([{endtype, State#connection_state.end_type}], "save subscription: Topic=~p QoS=~p~n", [Topic, QoS]),
+					Storage:save(State#connection_state.end_type,
+													#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id},
+																																				qos = QoS, 
+																																				callback = not_defined_yet}
+												),
+					lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n", [Storage:get(State#connection_state.end_type, {topic, Topic})]),
+					[ begin
+							QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
+							erlang:spawn(?MODULE, server_publish, [self(), Params#publish{qos = QoS_4_Retain}])
+						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
+				end || {Topic, QoS} <- Subscriptions],
 			lager:debug([{endtype, State#connection_state.end_type}], "subscribe completed: packet:~p~n", [Packet]),
 			process(State, Tail);
 
@@ -334,12 +344,23 @@ delivery_to_application(#connection_state{end_type = client} = State, #publish{t
 				|| {TopicQoS, Callback} <- List
 			]
 	end;
-delivery_to_application(#connection_state{end_type = server, storage = Storage}, #publish{topic = Topic_Params, qos = QoS_Params, payload = Payload} = Params) ->
-%	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, Topic),
-%	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
-	case Storage:get_matched_topics(server, Topic_Params) of
+delivery_to_application(#connection_state{end_type = server, storage = Storage}, 
+												#publish{topic = Params_Topic, qos = Params_QoS, payload = Payload, retain = Retain} = Params) ->
+
+	if (Retain =:= 1) and (Payload =:= <<>>) ->
+				Storage:remove(server, {topic, Params_Topic});
+			(Retain =:= 1) and (Params_QoS =:= 0) ->
+				Storage:remove(server, {topic, Params_Topic}),
+				Storage:save(server, Params);
+			(Retain =:= 1) ->
+				Storage:save(server, Params);
+			true -> ok
+	end,
+
+	case Storage:get_matched_topics(server, Params_Topic) of
+		[] when Retain =:= 1 -> ok;
 		[] ->
-			lager:warning([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [Topic_Params, QoS_Params, Payload]);
+			lager:warning([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [Params_Topic, Params_QoS, Payload]);
 		List ->
 			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
 			[
@@ -347,11 +368,8 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage},
 					undefined -> 
 						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 					Pid ->
-						if QoS_Params > TopicQoS -> 
-								erlang:spawn(?MODULE, server_publish, [Pid, Params#publish{qos = TopicQoS}]);
-							true ->
-								erlang:spawn(?MODULE, server_publish, [Pid, Params])
-						end
+						QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
+						erlang:spawn(?MODULE, server_publish, [Pid, Params#publish{qos = QoS, retain = 0}])
 				end
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, qos = TopicQoS} <- List
 			]
@@ -398,12 +416,8 @@ server_publish(Pid, Params) ->
 is_match(Topic, TopicFilter) ->
 	{ok, Pattern} = re:compile(topic_regexp(TopicFilter)),
 	case re:run(Topic, Pattern, [global, {capture, [1], list}]) of
-		{match, _R} -> 
-%			io:format(user, " match: ~p ~n", [_R]),
-			true;
-		_E ->
-%			io:format(user, " NO match: ~p ~n", [_E]),
-			false
+		{match, _R} -> true;
+		_E ->		false
 	end.
 
 topic_regexp(TopicFilter) ->
