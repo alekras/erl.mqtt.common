@@ -263,7 +263,7 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket} = State) ->
 handle_info(disconnect, State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
 	{stop, normal, State};
-handle_info({timeout, TimerRef, Msg} = Info, State) ->
+handle_info({timeout, _TimerRef, _Msg} = Info, State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
 	{stop, normal, State};
 handle_info(Info, State) ->
