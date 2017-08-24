@@ -332,13 +332,14 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id}),
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
-delivery_to_application(#connection_state{end_type = client} = State, #publish{topic = Topic, qos = QoS, dup = Dup, payload = Payload}) ->
+delivery_to_application(#connection_state{end_type = client} = State,
+												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain, payload = Payload}) ->
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(State#connection_state.default_callback, [{{Topic, undefined}, QoS, Dup, Payload}]);
+		[] -> do_callback(State#connection_state.default_callback, [{{Topic, undefined}, QoS, Dup, Retain, Payload}]);
 		List ->
 			[
-				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Payload}]) of
-					false -> do_callback(State#connection_state.default_callback, [{{Topic, TopicQoS}, QoS, Dup, Payload}]);
+				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]) of
+					false -> do_callback(State#connection_state.default_callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]);
 					_ -> ok
 				end
 				|| {TopicQoS, Callback} <- List
@@ -376,7 +377,6 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage},
 	end.
 
 do_callback(Callback, Args) ->
-	lager:debug([{endtype, client}], "Client invokes callback function ~p with Args:~p~n", [Callback, Args]),
 	case Callback of
 		{M, F} -> spawn(M, F, Args);
 		F when is_function(F) -> spawn(fun() -> apply(F, Args) end);
@@ -422,8 +422,6 @@ is_match(Topic, TopicFilter) ->
 
 topic_regexp(TopicFilter) ->
 	R1 = re:replace(TopicFilter, "\\+", "([^/]*)", [global, {return, list}]),
-%	io:format(user, " after + replacement: ~p ~n", [R1]),
 	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),
-%	io:format(user, " after # replacement: ~p ~n", [R2]),
 	"^" ++ R2 ++ "$".
 
