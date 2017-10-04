@@ -271,7 +271,7 @@ cleanup(End_Type, ClientId) ->
 			ok;
 		ok -> ok
 	end,
-	case dets:match_delete(Subscription_db, #storage_connectpid{client_id = ClientId, _ = '_'}) of 
+	case dets:match_delete(Subscription_db, #subs_primary_key{client_id = ClientId, _ = '_'}) of 
 		{error, Reason2} -> 
 			lager:error([{endtype, End_Type}], "match_delete failed: ~p~n", [Reason2]),
 			ok;

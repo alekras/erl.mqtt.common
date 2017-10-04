@@ -300,7 +300,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 																retain = Config#connect.will_retain, 
 																payload = Config#connect.will_message},
 							if (Config#connect.will_retain =:= 1) ->
-									Storage:save(server, Params);
+									Storage:save(server, Params); %% @todo avoid duplocates
 								true -> ok
 							end,
 							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])

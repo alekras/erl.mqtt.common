@@ -181,6 +181,10 @@ remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 		Client_Id, "' and packet_id=",
 		integer_to_list(Packet_Id)],
 	execute_query(End_Type, Query);
+remove(End_Type, #subs_primary_key{client_id = Client_Id, _ = '_'}) ->
+	Query = ["DELETE FROM subscription WHERE client_id='",
+		Client_Id, "'"],
+	execute_query(End_Type, Query);
 remove(End_Type, #subs_primary_key{client_id = Client_Id, topic = Topic}) ->
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",

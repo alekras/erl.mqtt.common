@@ -206,5 +206,23 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R = Storage:get(client, #primary_key{client_id = "lemon", packet_id = 101}),
 %	?debug_Fmt("::test:: after delete ~p", [R]),	
 	?assertEqual(undefined, R),
+	
+	Storage:remove(client, #subs_primary_key{topic = "Winter/+", client_id = "orange"}),
+	R1 = Storage:get(client, #subs_primary_key{topic = "Winter/+", client_id = "orange"}),
+%	?debug_Fmt("::test:: after delete ~p", [R1]),	
+	?assertEqual(undefined, R1),
+	R2 = Storage:get_all(client, topic),	
+%	?debug_Fmt("::test:: read returns ~120p", [R2]),	
+	?assertEqual(7, length(R2)),
+	
+	Storage:remove(client, #subs_primary_key{client_id = "apple", _='_'}),
+	R3 = Storage:get(client, #subs_primary_key{topic = "+/December", client_id = "apple"}),
+%	?debug_Fmt("::test:: after delete ~p", [R3]),	
+	?assertEqual(undefined, R3),
+	R4 = Storage:get_all(client, topic),	
+%	?debug_Fmt("::test:: read returns ~120p", [R4]),	
+	?assertEqual(5, length(R4)),
+	
+
 	?passed
 end}.
