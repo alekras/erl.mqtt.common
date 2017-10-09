@@ -299,14 +299,18 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 																qos = QoS, 
 																retain = Config#connect.will_retain, 
 																payload = Config#connect.will_message},
-							if (Config#connect.will_retain =:= 1) ->
-									Storage:save(server, Params); %% @todo avoid duplocates
-								true -> ok
-							end,
 							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])
 					end
 					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS} <- List
-				];
+				],
+				if (Config#connect.will_retain =:= 1) ->
+						Params1 = #publish{topic = Config#connect.will_topic, 
+															qos = Config#connect.will_qos, 
+															retain = Config#connect.will_retain, 
+															payload = Config#connect.will_message},
+						Storage:save(server, Params1); %% @todo avoid duplocates
+					true -> ok
+				end;
 			true -> ok
 	end,
 	Transport:close(Socket),

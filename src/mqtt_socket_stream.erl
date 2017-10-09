@@ -69,10 +69,7 @@ process(State, Binary) ->
 				 true -> 0
 			end,
 			Packet_Id = State#connection_state.packet_id,
-			SP = 
-			if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
-			Packet = packet(connack, {SP, Resp_code}),
-			Transport:send(Socket, Packet),
+			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			if Resp_code =:= 0 ->
 					New_State = State#connection_state{config = Config, session_present = SP},
 					New_State_2 =
@@ -85,8 +82,12 @@ process(State, Binary) ->
 					end,
 					New_Client_Id = Config#connect.client_id,
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
+					Packet = packet(connack, {SP, Resp_code}),
+					Transport:send(Socket, Packet),
 					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2)}, Tail);
 				true ->
+					Packet = packet(connack, {SP, Resp_code}),
+					Transport:send(Socket, Packet),
 					self() ! disconnect,
 					process(State, Tail)
 			end;
@@ -124,8 +125,6 @@ process(State, Binary) ->
 
 		{subscribe, Packet_Id, Subscriptions, Tail} ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
-			Packet = packet(suback, {Return_Codes, Packet_Id}),
-			Transport:send(Socket, Packet),
 %% store session subscriptions
 			lager:debug([{endtype, State#connection_state.end_type}], "store session subscriptions:~p from client:~p~n", [Subscriptions, Client_Id]),
 
@@ -142,7 +141,9 @@ process(State, Binary) ->
 							erlang:spawn(?MODULE, server_publish, [self(), Params#publish{qos = QoS_4_Retain}])
 						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
 				end || {Topic, QoS} <- Subscriptions],
+			Packet = packet(suback, {Return_Codes, Packet_Id}),
 			lager:debug([{endtype, State#connection_state.end_type}], "subscribe completed: packet:~p~n", [Packet]),
+			Transport:send(Socket, Packet),
 			process(State, Tail);
 
 		{suback, Packet_Id, Return_codes, Tail} ->
@@ -235,10 +236,10 @@ process(State, Binary) ->
 		{puback, Packet_Id, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
-					Pid ! {puback, Ref},
 %% discard message after pub ack
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:remove(State#connection_state.end_type, Prim_key),
+					Pid ! {puback, Ref},
 					process(
 						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
 						Tail);
@@ -298,7 +299,7 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_pubcomp
 		{pubcomp, Packet_Id, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p.~n", [Packet_Id]),
+%			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
 					case Pid of
