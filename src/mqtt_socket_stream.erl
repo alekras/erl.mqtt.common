@@ -53,6 +53,11 @@ process(State, Binary) ->
 	Storage = State#connection_state.storage,
 	case input_parser(Binary) of
 
+		{connect, undefined, Tail} ->
+			lager:alert([{endtype, State#connection_state.end_type}], "Connection packet connot be parsed: ~p~n", [Tail]),
+			self() ! disconnect,
+			process(State, <<>>);
+
 		{connect, Config, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], "connect: ~p~n", [Config]),
 			%% check credentials 
@@ -321,7 +326,8 @@ process(State, Binary) ->
 
 		_ ->
 			lager:debug([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
-			State#connection_state{tail = Binary}
+			self() ! disconnect,
+			process(State, <<>>)
 	end.
 
 %% ====================================================================

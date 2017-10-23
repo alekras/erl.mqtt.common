@@ -131,7 +131,12 @@ variable_header(connect, Config) ->
 	end,
 	Clean_Session = Config#connect.clean_session,
 	Keep_alive = Config#connect.keep_alive,
-	<<4:16, "MQTT", 4:8, User:1, Password:1, Will_retain:1, Will_QoS:2, Will:1, Clean_Session:1, 0:1, Keep_alive:16>>;
+	case Config#connect.version of
+		'3.1.1' -> 
+			<<4:16, "MQTT", 4:8, User:1, Password:1, Will_retain:1, Will_QoS:2, Will:1, Clean_Session:1, 0:1, Keep_alive:16>>;
+		'3.1' ->
+			<<6:16, "MQIsdp", 3:8, User:1, Password:1, Will_retain:1, Will_QoS:2, Will:1, Clean_Session:1, 0:1, Keep_alive:16>>
+	end;
 variable_header(publish, {Topic}) ->
 	TopicBin = unicode:characters_to_binary(Topic, utf8),
 	<<(byte_size(TopicBin)):16, TopicBin/binary>>;

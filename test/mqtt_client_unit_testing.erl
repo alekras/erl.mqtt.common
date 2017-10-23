@@ -95,6 +95,41 @@ packet_output() ->
 	),
 %	io:format(user, " value=~256p~n", [Value1_2]),
 	?assertEqual(<<16,56,0,4,"MQTT"/utf8,4,246,3,232,0,9,"publisher"/utf8,0,8,"Last_msg"/utf8,0,9,"Good bye!",0,5,"guest"/utf8,0,5,"guest">>, Value1_2),
+	Value1_3 = mqtt_output:packet(
+								connect,
+								#connect{
+									client_id = "publisher",
+									user_name = "guest",
+									password = <<"guest">>,
+									will = 0,
+									will_message = <<>>,
+									will_topic = [],
+									clean_session = 1,
+									keep_alive = 1000,
+									version = '3.1'
+								} 
+	),
+%	io:format(user, "~n value 1_3 = ~256p~n", [Value1_3]),
+	?assertEqual(<<16,37,0,6,"MQIsdp"/utf8,3,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest">>, Value1_3),
+	
+	Value1_4 = mqtt_output:packet(
+								connect,
+								#connect{
+									client_id = "publisher",
+									user_name = "guest",
+									password = <<"guest">>,
+									will = 1,
+									will_qos = 2,
+									will_retain = 1,
+									will_message = <<"Good bye!">>,
+									will_topic = "Last_msg",
+									clean_session = 1,
+									keep_alive = 1000,
+									version = '3.1'
+								} 
+	),
+%	io:format(user, "~n value 1_4= ~256p~n", [Value1_4]),
+	?assertEqual(<<16,58,0,6,"MQIsdp"/utf8,3,246,3,232,0,9,"publisher"/utf8,0,8,"Last_msg"/utf8,0,9,"Good bye!",0,5,"guest"/utf8,0,5,"guest">>, Value1_4),
 
 	Value2 = mqtt_output:packet(connack, {1, 2}),
 %	io:format(user, " value=~256p~n", [Value2]),
@@ -167,6 +202,8 @@ input_parser() ->
 					}, 
 	?assertEqual({connect, Config, <<7:8,7:8>>}, 
 							 mqtt_input:input_parser(<<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
+	?assertEqual({connect, Config#connect{version = '3.1'}, <<7:8,7:8>>}, 
+							 mqtt_input:input_parser(<<16,37,0,6,"MQIsdp"/utf8,3,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
 	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
 	?assertEqual({publish, #publish{topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 0, <<1:8, 1:8>>}, 

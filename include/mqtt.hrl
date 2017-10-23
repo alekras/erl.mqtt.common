@@ -25,7 +25,8 @@
     will_topic = "" :: string(),
     will_message = <<>> :: binary(),
     clean_session = 1 :: 0 | 1,
-		keep_alive :: integer()
+		keep_alive :: integer(),
+		version = '3.1.1' :: '3.1' | '3.1.1'
 	}
 ).
 
