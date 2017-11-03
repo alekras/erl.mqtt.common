@@ -195,6 +195,18 @@ handle_call({unsubscribe, Topics},
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
+handle_call(disconnect,
+						{_, Ref} = From,
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+	case Transport:send(Socket, packet(disconnect, false)) of
+		ok -> 
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
+			New_processes = (State#connection_state.processes)#{disconnect => From},
+			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes}};
+		{error, closed} -> {stop, shutdown, State};
+		{error, Reason} -> {stop, {shutdown, Reason}, State}
+	end;
+
 handle_call({pingreq, Callback},
 						_From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
@@ -224,7 +236,7 @@ handle_cast(disconnect,
 	case Transport:send(Socket, packet(disconnect, false)) of
 		ok -> 
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
-			{noreply, State#connection_state{connected = 0}};
+			{stop, shutdown, State#connection_state{connected = 0}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
 	end;
@@ -289,8 +301,14 @@ handle_info(Info, State) ->
 			| {shutdown, term()}
 			| term().
 %% ====================================================================
-terminate(Reason, #connection_state{socket = Socket, transport = Transport, end_type = client} = State) ->
+terminate(Reason, #connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
 	lager:warning([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	case maps:get(connect, Processes, undefined) of
+		{Pid, Ref} ->
+			Pid ! {disconnected, Ref};
+		undefined ->
+			ok
+	end,
 	Transport:close(Socket),
 	ok;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
