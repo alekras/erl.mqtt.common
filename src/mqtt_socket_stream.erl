@@ -66,7 +66,7 @@ process(State, Binary) ->
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
 %			lager:debug([{endtype, State#connection_state.end_type}], "Client pid: ~p~n", [ClientPid]),
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:call(ClientPid, disconnect) catch _:_ -> ok end;
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end;
 				 true -> ok
 			end,
 			Resp_code =

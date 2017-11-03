@@ -195,17 +195,6 @@ handle_call({unsubscribe, Topics},
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
-handle_call(disconnect,
-						_From,
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, false)) of
-		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
-			{stop, normal, State};
-		{error, closed} -> {stop, shutdown, State};
-		{error, Reason} -> {stop, {shutdown, Reason}, State}
-	end;
-
 handle_call({pingreq, Callback},
 						_From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
@@ -230,6 +219,16 @@ handle_call({pingreq, Callback},
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
+handle_cast(disconnect,
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+	case Transport:send(Socket, packet(disconnect, false)) of
+		ok -> 
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
+			{stop, normal, State};
+		{error, closed} -> {stop, shutdown, State};
+		{error, Reason} -> {stop, {shutdown, Reason}, State}
+	end;
+
 handle_cast(_Msg, State) ->
 		{noreply, State}.
 
@@ -282,6 +281,7 @@ handle_info(Info, State) ->
 %% ====================================================================
 terminate(Reason, #connection_state{socket = Socket, transport = Transport, end_type = client} = State) ->
 	lager:warning([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	timer:sleep(1000), %% allow server to process disconnect message for normal exiting of connection process @todo need to find better solution
 	Transport:close(Socket),
 	ok;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->

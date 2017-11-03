@@ -76,6 +76,7 @@ input_parser(Binary) ->
 			end;
 		<<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {puback, Packet_Id, Tail};
 		<<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {pubrec, Packet_Id, Tail};
+		<<16#60:8, 2:8, Packet_Id:16, Tail/binary>> -> {pubrel, Packet_Id, Tail}; %% @todo issue with websocket client from HiveMQ
 		<<?PUBREL_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {pubrel, Packet_Id, Tail};
 		<<?PUBCOMP_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>> -> {pubcomp, Packet_Id, Tail};
 		<<?SUBSCRIBE_PACK_TYPE, Bin/binary>> ->
