@@ -104,7 +104,7 @@ handle_call({connect, Conn_config, Callback},
 				0 ->	 
 					restore_session(New_State) 
 			end,
-			{reply, {ok, Ref}, New_State_2};
+			{reply, {ok, Ref}, New_State_2#connection_state{connected = 1}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
@@ -224,7 +224,7 @@ handle_cast(disconnect,
 	case Transport:send(Socket, packet(disconnect, false)) of
 		ok -> 
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
-			{stop, normal, State};
+			{noreply, State#connection_state{connected = 0}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
 	end;
@@ -250,16 +250,26 @@ handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type =
 handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type = client} = State) ->
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State};
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket} = State) ->
+
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = server} = State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
 	{stop, shutdown, State};
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 0} = State) ->
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
+	{stop, normal, State};
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 1} = State) ->
+	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed while connected, state:~p~n", [State]),
+	{stop, shutdown, State};
+
 handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
 	Timer_Ref = keep_alive_timer((State#connection_state.config)#connect.keep_alive, State#connection_state.timer_ref),
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State#connection_state{timer_ref = Timer_Ref}};
+
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket} = State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
 	{stop, shutdown, State};
+
 handle_info(disconnect, State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
 	{stop, normal, State};
@@ -281,7 +291,6 @@ handle_info(Info, State) ->
 %% ====================================================================
 terminate(Reason, #connection_state{socket = Socket, transport = Transport, end_type = client} = State) ->
 	lager:warning([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
-	timer:sleep(1000), %% allow server to process disconnect message for normal exiting of connection process @todo need to find better solution
 	Transport:close(Socket),
 	ok;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
