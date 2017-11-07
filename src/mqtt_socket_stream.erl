@@ -59,12 +59,10 @@ process(State, Binary) ->
 			process(State, <<>>);
 
 		{connect, Config, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], "connect: ~p~n", [Config]),
 			%% check credentials 
 			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
 			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
-%			lager:debug([{endtype, State#connection_state.end_type}], "Client pid: ~p~n", [ClientPid]),
 			if ClientPid =:= undefined -> ok;
 				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end;
 				 true -> ok
@@ -89,10 +87,12 @@ process(State, Binary) ->
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
 					Packet = packet(connack, {SP, Resp_code}),
 					Transport:send(Socket, Packet),
+					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
 					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2)}, Tail);
 				true ->
 					Packet = packet(connack, {SP, Resp_code}),
 					Transport:send(Socket, Packet),
+					lager:warning([{endtype, State#connection_state.end_type}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
 					self() ! disconnect,
 					process(State, Tail)
 			end;
@@ -101,6 +101,11 @@ process(State, Binary) ->
 			case maps:get(connect, Processes, undefined) of
 				{Pid, Ref} ->
 					Pid ! {connack, Ref, SP, CRC, Msg},
+					case inet:peername(Socket) of
+						{ok, {Host, Port}} -> ok;
+						_ -> Host = undefined, Port = ""
+					end,
+					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p", [Client_Id, Host, Port]),
 					process(
 						State#connection_state{processes = maps:remove(connect, Processes), 
 																		session_present = SP},
@@ -110,7 +115,6 @@ process(State, Binary) ->
 			end;
 
 		{pingreq, Tail} ->
-			%% @todo keep-alive concern.
 			Packet = packet(pingresp, true),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
@@ -131,10 +135,8 @@ process(State, Binary) ->
 		{subscribe, Packet_Id, Subscriptions, Tail} ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
 %% store session subscriptions
-			lager:debug([{endtype, State#connection_state.end_type}], "store session subscriptions:~p from client:~p~n", [Subscriptions, Client_Id]),
 
 			[ begin %% Topic, QoS - new subscriptions
-					lager:debug([{endtype, State#connection_state.end_type}], "save subscription: Topic=~p QoS=~p~n", [Topic, QoS]),
 					Storage:save(State#connection_state.end_type,
 													#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id},
 																																				qos = QoS, 
@@ -147,7 +149,7 @@ process(State, Binary) ->
 						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
 				end || {Topic, QoS} <- Subscriptions],
 			Packet = packet(suback, {Return_Codes, Packet_Id}),
-			lager:debug([{endtype, State#connection_state.end_type}], "subscribe completed: packet:~p~n", [Packet]),
+			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
 
@@ -159,6 +161,7 @@ process(State, Binary) ->
 							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = Callback})
 						end || {Topic, QoS, Callback} <- Subscriptions], %% @todo check clean_session flag
 					Pid ! {suback, Ref, Return_codes},
+					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 					process(
 						State#connection_state{
 							processes = maps:remove(Packet_Id, Processes)
@@ -175,7 +178,7 @@ process(State, Binary) ->
 				end || Topic <- Topics],
 			Packet = packet(unsuback, Packet_Id),
 			Transport:send(Socket, Packet),
-			lager:debug([{endtype, State#connection_state.end_type}], " unsubscribe completed for ~p. unsuback packet:~p~n", [Topics, Packet]),
+			lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 			process(State, Tail);
 		
 		{unsuback, Packet_Id, Tail} ->
@@ -186,6 +189,7 @@ process(State, Binary) ->
 					[ begin 
 							Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
 						end || Topic <- Topics], %% @todo check clean_session flag
+					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is unsubscribed from topics ~p~n", [Client_Id, Topics]),
 					process(
 						State#connection_state{
 							processes = maps:remove(Packet_Id, Processes)
@@ -196,12 +200,12 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(State, Record),
 					process(State, Tail);
-%%				?test_fragment_skip_send_puback
 				1 ->
 					delivery_to_application(State, Record),
 					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Packet_Id) end,
@@ -210,7 +214,6 @@ process(State, Binary) ->
 						{error, _Reason} -> ok
 					end,
 					process(State, Tail);
-%%				?test_fragment_skip_send_pubrec
 				2 ->
 					New_State = 
 						case maps:is_key(Packet_Id, Processes) of
@@ -219,7 +222,8 @@ process(State, Binary) ->
 								State;
 							_ ->
 								case State#connection_state.end_type of 
-										client -> delivery_to_application(State, Record);
+										client -> 
+											delivery_to_application(State, Record);
 										server -> none
 								end,
 %% store PI after receiving message
@@ -273,9 +277,8 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_pubrel
-%%		?test_fragment_skip_send_pubcomp
 		{pubrel, Packet_Id, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
+%			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{_From, _Params} ->
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -322,10 +325,11 @@ process(State, Binary) ->
 		{disconnect, Tail} ->
 			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
 			self() ! disconnect, %% @todo stop the process, close the socket !!!
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected~n", [Client_Id]),
 			process(State, Tail);
 
 		_ ->
-			lager:debug([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
+			lager:error([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
 			self() ! disconnect,
 			process(State, <<>>)
 	end.
@@ -339,22 +343,25 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Topic_List = Storage:get_matched_topics(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id}),
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
-delivery_to_application(#connection_state{end_type = client} = State,
+delivery_to_application(#connection_state{end_type = client, default_callback = Default_Callback} = State,
 												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain, payload = Payload}) ->
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(State#connection_state.default_callback, [{{Topic, undefined}, QoS, Dup, Retain, Payload}]);
+		[] -> do_callback(Default_Callback, [{{Topic, undefined}, QoS, Dup, Retain, Payload}]);
 		List ->
 			[
 				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]) of
-					false -> do_callback(State#connection_state.default_callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]);
+					false -> do_callback(Default_Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]);
 					_ -> ok
 				end
 				|| {TopicQoS, Callback} <- List
 			]
-	end;
-delivery_to_application(#connection_state{end_type = server, storage = Storage}, 
-												#publish{topic = Params_Topic, qos = Params_QoS, payload = Payload, retain = Retain} = Params) ->
+	end,
+	lager:info([{endtype, State#connection_state.end_type}], 
+						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
+						 [(State#connection_state.config)#connect.client_id, Topic, QoS, Dup, Retain]);
 
+delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, 
+												#publish{topic = Params_Topic, qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Params) ->
 	if (Retain =:= 1) and (Payload =:= <<>>) ->
 				Storage:remove(server, {topic, Params_Topic});
 			(Retain =:= 1) and (Params_QoS =:= 0) ->
@@ -368,7 +375,7 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage},
 	case Storage:get_matched_topics(server, Params_Topic) of
 		[] when Retain =:= 1 -> ok;
 		[] ->
-			lager:warning([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [Params_Topic, Params_QoS, Payload]);
+			lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [Params_Topic, Params_QoS, Payload]);
 		List ->
 			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
 			[
@@ -381,7 +388,10 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage},
 				end
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, qos = TopicQoS} <- List
 			]
-	end.
+	end,
+	lager:info([{endtype, State#connection_state.end_type}], 
+						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
+						 [(State#connection_state.config)#connect.client_id, Params_Topic, Params_QoS, Dup, Retain]).
 
 do_callback(Callback, Args) ->
 	case Callback of

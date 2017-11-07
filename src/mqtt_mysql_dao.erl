@@ -29,12 +29,6 @@
 -include_lib("mysql_client/include/my.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
-%% @todo move it to env config
--define(MYSQL_SERVER_HOST_NAME, "localhost").
--define(MYSQL_SERVER_PORT, 3306).
--define(MYSQL_USER, "mqtt_user").
--define(MYSQL_PASSWORD, "mqtt_password").
-
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -58,16 +52,20 @@ db_id(server) ->
 	"mqtt_db_srv".
 	
 start(End_Type) ->
+	MYSQL_SERVER_HOST_NAME = application:get_env(mqtt_client, mysql_host, "localhost"),
+	MYSQL_SERVER_PORT = application:get_env(mqtt_client, mysql_port, 3306),
+	MYSQL_USER = application:get_env(mqtt_client, mysql_user, "mqtt_user"),
+	MYSQL_PASSWORD = application:get_env(mqtt_client, mysql_user, "mqtt_password"),
 	R = my:start_client(),
-	lager:info([{endtype, End_Type}], "Starting MySQL ~p",[R]),
+	lager:info([{endtype, End_Type}], "Starting MySQL client connection to ~p:~p status: ~p",[MYSQL_SERVER_HOST_NAME, MYSQL_SERVER_PORT, R]),
 	DB_name = db_id(End_Type),
 	DS_def = #datasource{
 		name = mqtt_storage,
-		host = ?MYSQL_SERVER_HOST_NAME, 
-		port = ?MYSQL_SERVER_PORT,
+		host = MYSQL_SERVER_HOST_NAME, 
+		port = MYSQL_SERVER_PORT,
 %		database = DB_name,
-		user = ?MYSQL_USER, 
-		password = ?MYSQL_PASSWORD, 
+		user = MYSQL_USER, 
+		password = MYSQL_PASSWORD, 
 		flags = #client_options{}
 	},
 	case my:new_datasource(DS_def) of

@@ -115,18 +115,18 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 
 ?test_fragment_break_connection
 
-handle_call({publish, #publish{qos = 0} = Params}, 
+handle_call({publish, #publish{qos = 0, topic = Topic} = Params}, 
 						{_, Ref}, 
-						#connection_state{socket = Socket, transport = Transport} = State) ->
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	Transport:send(Socket, packet(publish, Params)),
+	lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
 	{reply, {ok, Ref}, State};
 
 %%?test_fragment_skip_send_publish
 
-handle_call({publish, #publish{qos = QoS} = Params}, 
+handle_call({publish, #publish{qos = QoS, topic = Topic} = Params}, 
 						{_, Ref} = From, 
-						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-%	Packet = packet(publish, {Params, Packet_Id}),
+						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
 	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, {Params, Packet_Id}) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
@@ -135,6 +135,7 @@ handle_call({publish, #publish{qos = QoS} = Params},
 	case Transport:send(Socket, Packet) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params2Save}},
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:~p~n", [Config#connect.client_id, Topic, QoS]),
 		{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
@@ -200,8 +201,8 @@ handle_call(disconnect,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, false)) of
 		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
 			New_processes = (State#connection_state.processes)#{disconnect => From},
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
@@ -235,7 +236,7 @@ handle_cast(disconnect,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, false)) of
 		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is disconnected.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{stop, shutdown, State#connection_state{connected = 0}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
@@ -264,13 +265,13 @@ handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	{noreply, New_State};
 
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = server} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
 	{stop, shutdown, State};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 0} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
 	{stop, normal, State};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 1} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info tcp closed while connected, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
 handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
@@ -279,20 +280,20 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) -
 	{noreply, New_State#connection_state{timer_ref = Timer_Ref}};
 
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = server} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
 	{stop, shutdown, State};
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 0} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
 	{stop, normal, State};
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 1} = State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
 handle_info(disconnect, State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
 	{stop, normal, State};
 handle_info({timeout, _TimerRef, _Msg} = Info, State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
+	lager:debug([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
 	{stop, normal, State};
 handle_info(Info, State) ->
 	lager:warning([{endtype, State#connection_state.end_type}], "handle_info unknown message: ~p state:~p~n", [Info, State]),
@@ -308,7 +309,7 @@ handle_info(Info, State) ->
 			| term().
 %% ====================================================================
 terminate(Reason, #connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
-	lager:warning([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	lager:notice([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
 	Transport:close(Socket), %% we do not need if stop after tcp closed
 	case maps:get(disconnect, Processes, undefined) of
 		{Pid, Ref} ->
@@ -317,14 +318,14 @@ terminate(Reason, #connection_state{socket = Socket, transport = Transport, proc
 			ok
 	end;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
-	lager:warning([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	lager:notice([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
 	if (Config#connect.will =:= 1) and (Reason =:= shutdown) ->
 				List = Storage:get_matched_topics(server, Config#connect.will_topic),
-				lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+				lager:debug([{endtype, server}], "Will Topic list = ~128p~n", [List]),
 				[
 					case Storage:get(server, {client_id, Client_Id}) of
 						undefined -> 
-							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+							lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 						Pid ->
 							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
 							Params = #publish{topic = Topic, 
@@ -340,7 +341,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 															qos = Config#connect.will_qos, 
 															retain = Config#connect.will_retain, 
 															payload = Config#connect.will_message},
-						Storage:save(server, Params1); %% @todo avoid duplocates
+						Storage:save(server, Params1); %% @todo avoid duplocates ???
 					true -> ok
 				end;
 			true -> ok
@@ -364,12 +365,10 @@ next(Packet_Id, #connection_state{storage = Storage} = State) ->
 	end.
 
 restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type} = State) ->
-	lager:debug([{endtype, End_Type}], "Enter restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, State#connection_state.processes]),
 	Records = Storage:get_all(End_Type, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
 	lager:debug([{endtype, End_Type}], "In restore session: MessageList = ~128p~n", [MessageList]),
 	New_State = lists:foldl(fun restore_state/2, State, MessageList),
-	lager:debug([{endtype, End_Type}], "Exit restore session: Client Id = ~p Prosess List = ~128p~n", [Client_Id, New_State#connection_state.processes]),
 	New_State.
 
 restore_state({Packet_Id, Params}, State) ->
