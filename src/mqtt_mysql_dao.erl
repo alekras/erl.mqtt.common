@@ -50,12 +50,15 @@ db_id(client) ->
 	"mqtt_db_cli";
 db_id(server) ->
 	"mqtt_db_srv".
-	
+
+end_type_2_name(client) -> mqtt_client;
+end_type_2_name(server) -> mqtt_server.
+
 start(End_Type) ->
-	MYSQL_SERVER_HOST_NAME = application:get_env(mqtt_client, mysql_host, "localhost"),
-	MYSQL_SERVER_PORT = application:get_env(mqtt_client, mysql_port, 3306),
-	MYSQL_USER = application:get_env(mqtt_client, mysql_user, "mqtt_user"),
-	MYSQL_PASSWORD = application:get_env(mqtt_client, mysql_user, "mqtt_password"),
+	MYSQL_SERVER_HOST_NAME = application:get_env(end_type_2_name(End_Type), mysql_host, "localhost"),
+	MYSQL_SERVER_PORT = application:get_env(end_type_2_name(End_Type), mysql_port, 3306),
+	MYSQL_USER = application:get_env(end_type_2_name(End_Type), mysql_user, "mqtt_user"),
+	MYSQL_PASSWORD = application:get_env(end_type_2_name(End_Type), mysql_user, "mqtt_password"),
 	R = my:start_client(),
 	lager:info([{endtype, End_Type}], "Starting MySQL client connection to ~p:~p status: ~p",[MYSQL_SERVER_HOST_NAME, MYSQL_SERVER_PORT, R]),
 	DB_name = db_id(End_Type),
@@ -322,9 +325,23 @@ execute_query(End_Type, Query) ->
 	datasource:return_connection(mqtt_storage, Conn),
 	Rez.
 
-binary_to_hex(Binary) ->
-[
-    if N < 10 -> 48 + N; % 48 = $0
-       true   -> 87 + N  % 87 = ($a - 10)
-    end
- || <<N:4>> <= Binary].
+binary_to_hex(Binary) -> [conv(N) || <<N:4>> <= Binary].
+
+% 48 = $0
+% 87 = ($a - 10)
+conv(N) when N < 10 -> N + 48; 
+conv(N) -> N + 87. 
+
+%% binary_to_hex(Binary) -> binary_to_hex(Binary, []).
+%% 
+%% binary_to_hex(<<>>, Hex) -> lists:reverse(Hex);
+%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) when N < 10 ->
+%% 	binary_to_hex(Binary, [(48 + N) | Hex]);
+%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) ->
+%% 	binary_to_hex(Binary, [(87 + N) | Hex]).
+
+%% binary_to_hex(<<>>) -> [];
+%% binary_to_hex(<<N:4, Binary/bitstring>>) when N < 10 ->
+%% 	[(48 + N) | binary_to_hex(Binary)];
+%% binary_to_hex(<<N:4, Binary/bitstring>>) ->
+%% 	[(87 + N) | binary_to_hex(Binary)].

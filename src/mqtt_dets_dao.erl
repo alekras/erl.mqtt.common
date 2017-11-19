@@ -66,9 +66,12 @@ db_file(client) ->
 	["session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"];
 db_file(server) ->
 	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin"].
-	
+
+end_type_2_name(client) -> mqtt_client;
+end_type_2_name(server) -> mqtt_server.
+
 start(End_Type) ->
-	DB_Folder = application:get_env(mqtt_client, dets_home_folder, "dets-storage"),
+	DB_Folder = application:get_env(end_type_2_name(End_Type), dets_home_folder, "dets-storage"),
 	L = lists:zip3(db_id(End_Type), db_file(End_Type), db_type(End_Type)),
 	L1 = [ 
 		case dets:open_file(DB_ID, [{file, filename:join(DB_Folder, DB_File)}, {type, DB_Type}, {auto_save, 10000}, {keypos, 2}]) of
