@@ -88,7 +88,7 @@ process(State, Binary) ->
 					Packet = packet(connack, {SP, Resp_code}),
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
-					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2)}, Tail);
+					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail);
 				true ->
 					Packet = packet(connack, {SP, Resp_code}),
 					Transport:send(Socket, Packet),
@@ -108,18 +108,21 @@ process(State, Binary) ->
 					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p", [Client_Id, Host, Port]),
 					process(
 						State#connection_state{processes = maps:remove(connect, Processes), 
-																		session_present = SP},
+																		session_present = SP,
+																		connected = 1},
 						Tail);
 				undefined ->
 					process(State, Tail)
 			end;
 
 		{pingreq, Tail} ->
+			lager:info([{endtype, State#connection_state.end_type}], "Ping received to client ~p~n", [Client_Id]),
 			Packet = packet(pingresp, true),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
 
 		{pingresp, Tail} -> 
+			lager:info([{endtype, State#connection_state.end_type}], "Pong received to client ~p~n", [Client_Id]),
 			case maps:get(pingreq, Processes, undefined) of
 				{M, F} ->
 					spawn(M, F, [pong]);
@@ -326,7 +329,7 @@ process(State, Binary) ->
 			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
 			self() ! disconnect, %% @todo stop the process, close the socket !!!
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected~n", [Client_Id]),
-			process(State, Tail);
+			process(State#connection_state{connected = 0}, Tail);
 
 		_ ->
 			lager:error([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),

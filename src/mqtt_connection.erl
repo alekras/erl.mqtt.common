@@ -104,7 +104,7 @@ handle_call({connect, Conn_config, Callback},
 				0 ->	 
 					restore_session(New_State) 
 			end,
-			{reply, {ok, Ref}, New_State_2#connection_state{connected = 1}};
+			{reply, {ok, Ref}, New_State_2};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
@@ -264,13 +264,10 @@ handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State};
 
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = server} = State) ->
-	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed, state:~p~n", [State]),
-	{stop, shutdown, State};
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 0} = State) ->
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 0} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
 	{stop, normal, State};
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 1} = State) ->
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 1} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
@@ -279,13 +276,10 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) -
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State#connection_state{timer_ref = Timer_Ref}};
 
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = server} = State) ->
-	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed, state:~p~n", [State]),
-	{stop, shutdown, State};
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 0} = State) ->
+handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 0} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
 	{stop, normal, State};
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = client, connected = 1} = State) ->
+handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 1} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
