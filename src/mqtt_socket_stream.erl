@@ -101,10 +101,7 @@ process(State, Binary) ->
 			case maps:get(connect, Processes, undefined) of
 				{Pid, Ref} ->
 					Pid ! {connack, Ref, SP, CRC, Msg},
-					case inet:peername(Socket) of
-						{ok, {Host, Port}} -> ok;
-						_ -> Host = undefined, Port = ""
-					end,
+					{Host, Port} = get_peername(Transport, Socket),
 					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p", [Client_Id, Host, Port]),
 					process(
 						State#connection_state{processes = maps:remove(connect, Processes), 
@@ -445,3 +442,18 @@ topic_regexp(TopicFilter) ->
 	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),
 	"^" ++ R2 ++ "$".
 
+get_peername(ssl, Socket) ->
+	case ssl:peername(Socket) of
+		{ok, {Host, Port}} -> {Host, Port};
+		_ -> {undefined, ""}
+	end;
+get_peername(gen_tcp, Socket) ->
+	case inet:peername(Socket) of
+		{ok, {Host, Port}} -> {Host, Port};
+		_ -> {undefined, ""}
+	end;
+get_peername(mqtt_ws_handler, Socket) ->
+	case mqtt_ws_handler:peername(Socket) of
+		{ok, {Host, Port}} -> {Host, Port};
+		_ -> {undefined, ""}
+	end.
