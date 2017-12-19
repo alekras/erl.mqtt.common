@@ -360,11 +360,12 @@ delivery_to_application(#connection_state{end_type = client, default_callback = 
 						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
 						 [(State#connection_state.config)#connect.client_id, Topic, QoS, Dup, Retain]);
 
+delivery_to_application(#connection_state{end_type = server, storage = Storage}, 
+												#publish{topic = Params_Topic, payload = <<>>, retain = 1}) ->
+	Storage:remove(server, {topic, Params_Topic});
 delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, 
 												#publish{topic = Params_Topic, qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Params) ->
-	if (Retain =:= 1) and (Payload =:= <<>>) ->
-				Storage:remove(server, {topic, Params_Topic});
-			(Retain =:= 1) and (Params_QoS =:= 0) ->
+	if (Retain =:= 1) and (Params_QoS =:= 0) ->
 				Storage:remove(server, {topic, Params_Topic}),
 				Storage:save(server, Params);
 			(Retain =:= 1) ->
