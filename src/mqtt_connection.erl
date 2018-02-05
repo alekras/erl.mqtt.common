@@ -340,6 +340,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 				end;
 			true -> ok
 	end,
+	Storage:remove(State#connection_state.end_type, {client_id, Config#connect.client_id}),
 	Transport:close(Socket),
 	ok.
 

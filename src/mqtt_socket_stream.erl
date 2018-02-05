@@ -323,7 +323,7 @@ process(State, Binary) ->
 			end;
 
 		{disconnect, Tail} ->
-			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
+%%			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
 			self() ! disconnect, %% @todo stop the process, close the socket !!!
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected~n", [Client_Id]),
 			process(State#connection_state{connected = 0}, Tail);
