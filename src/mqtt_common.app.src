@@ -4,6 +4,7 @@
     {vsn, "1.0.1"},
     {modules, [
       mqtt_connection,
+      mqtt_socket_stream,
       mqtt_input,
       mqtt_output,
       mqtt_dets_dao,
@@ -12,7 +13,6 @@
     },
     {registered, []},
     {applications, [kernel, stdlib]},
-    {mod, {mqtt_common, [{vsn, "1.0.1"}]}},
     {env, [
 		]}
 	]
