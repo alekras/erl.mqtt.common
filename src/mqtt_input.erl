@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2017 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2020 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,11 +15,10 @@
 %%
 
 %% @since 2015-12-25
-%% @copyright 2015-2017 Alexei Krasnopolski
+%% @copyright 2015-2020 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
 %% @doc @todo Add description to mqtt_client_input.
-
 
 -module(mqtt_input).
 
@@ -48,6 +47,8 @@
 input_parser(<<?CONNECT_PACK_TYPE, Bin/binary>>) ->
 	{RestBin, Length} = decode_remaining_length(Bin),
 	case RestBin of
+		<<4:16, "MQTT", 5:8, RestBin0/binary>> ->
+			parse_connect_packet('5.0', Length - 10, RestBin0);
 		<<4:16, "MQTT", 4:8, RestBin0/binary>> ->
 			parse_connect_packet('3.1.1', Length - 10, RestBin0);
 		<<6:16, "MQIsdp", 3:8, RestBin0/binary>> ->
@@ -124,10 +125,22 @@ decode_rl(<<1:1, EncodedByte:7, Binary/binary>>, MP, L) ->
 	decode_rl(Binary, MP * 128, NewL).
 
 parse_connect_packet(MQTT_Version, Length, Binary) ->
+%% Retrieve Connect Flags and KeepAlive 
 	<<	User:1, Password:1, Will_retain:1, Will_QoS:2, Will:1, Clean_Session:1, _:1, 
-		Keep_Alive:16, RestBin1:Length/binary, Tail/binary>> = Binary,
+		Keep_Alive:16, RestBin0:Length/binary, Tail/binary>> = Binary,
+%% Properties Field processing
+	if MQTT_Version == '5.0' ->
+			{Properties, RestBin1} = mqtt_property:parse(RestBin0);
+		true ->
+			Properties = [],
+			RestBin1 = RestBin0
+	end,
+
+%% Retrieve Payload:
+%% Step 1: retrieve Client_id
 	<<Client_id_bin_size:16, Client_id:Client_id_bin_size/binary, RestBin2/binary>> = RestBin1,
 
+%% Step 2, 3: retrieve Will_Topic and Will_Message
 	case Will of
 		0 ->
 			WillTopic = <<>>,
@@ -137,6 +150,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			<<SizeT:16, WillTopic:SizeT/binary, SizeM:16, WillMessage:SizeM/binary, RestBin3/binary>> = RestBin2
 	end,
 
+%% Step 4: retrieve User_Name
 	case User of
 		0 ->
 			UserName = <<>>,
@@ -145,6 +159,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			<<SizeU:16, UserName:SizeU/binary, RestBin4/binary>> = RestBin3
 	end,
 
+%% Step 5: retrieve Password
 	case Password of
 		0 ->
 			Password_bin = <<>>;
@@ -153,7 +168,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 	end,
 	
 	Config = #connect{
-		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Topic, utf8),???
+		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Client_id, utf8),???
 		user_name = binary_to_list(UserName),
 		password = Password_bin,
 		will = Will,
@@ -172,5 +187,5 @@ parse_subscription(<<Size:16, Topic:Size/binary, QoS:8, BinartRest/binary>>, Sub
 	parse_subscription(BinartRest, [{Topic, QoS} | Subscriptions]).
 
 parse_unsubscription(<<>>, Topics) -> lists:reverse(Topics);
-parse_unsubscription(<<Size:16, Topic:Size/binary, BinartRest/binary>>, Topics) ->
-	parse_unsubscription(BinartRest, [Topic | Topics]).
+parse_unsubscription(<<Size:16, Topic:Size/binary, BinaryRest/binary>>, Topics) ->
+	parse_unsubscription(BinaryRest, [Topic | Topics]).
