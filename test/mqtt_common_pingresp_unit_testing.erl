@@ -1,4 +1,3 @@
-%%
 %% Copyright (C) 2015-2020 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,5 +60,4 @@ packet_output() ->
 input_parser() ->
 	?assertEqual({pingresp, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser(<<16#D0:8, 0:8, 1:8, 1:8>>)),
-
 	?passed.
