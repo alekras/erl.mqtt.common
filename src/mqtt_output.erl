@@ -32,74 +32,96 @@
 %% API functions
 %% ====================================================================
 -export([
-	packet/2
+	packet/4
 ]).
 
 -ifdef(TEST).
 -export([
-	encode_remaining_length/1,
+	encode_variable_byte_integer/1,
 	fixed_header/3,
 	variable_header/2,
 	payload/2
 ]).
 -endif.
 
-packet(connect, Conn_config) ->
+packet(connect, '5.0', Conn_config, Properties) ->
+	Remaining_packet = <<(variable_header(connect, Conn_config))/binary, (mqtt_property:to_binary(Properties))/binary, (payload(connect, Conn_config))/binary>>,
+	<<(fixed_header(connect, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
+packet(connect, _, Conn_config, _) ->
 	Remaining_packet = <<(variable_header(connect, Conn_config))/binary, (payload(connect, Conn_config))/binary>>,
 	<<(fixed_header(connect, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
-packet(connack, {SP, Connect_Return_Code}) -> <<(fixed_header(connack, 0, 2))/binary, 0:7, SP:1, Connect_Return_Code:8>>;
-packet(publish, #publish{payload = Payload} = Params) ->
+
+packet(connack, '5.0', {SP, Connect_Reason_Code}, Properties) ->
+	Props_Bin = mqtt_property:to_binary(Properties),
+	Remaining_Length = byte_size(Props_Bin) + 2,
+	<<(fixed_header(connack, 0, Remaining_Length))/binary, 0:7, SP:1, Connect_Reason_Code:8, Props_Bin/binary>>;
+packet(connack, _, {SP, Connect_Reason_Code}, _) ->
+	<<(fixed_header(connack, 0, 2))/binary, 0:7, SP:1, Connect_Reason_Code:8>>;
+
+packet(publish, MQTT_Version, #publish{payload = Payload} = Params, Properties) ->
 	Remaining_packet = <<(variable_header(publish, {Params#publish.topic}))/binary, 
 											 (payload(publish, Payload))/binary>>,
 	<<(fixed_header(publish, 
 								 {Params#publish.dup, Params#publish.qos, Params#publish.retain}, 
 								 byte_size(Remaining_packet)))/binary, 
 								 Remaining_packet/binary>>;
-packet(publish, {#publish{payload = Payload} = Params, Packet_Id}) ->
+
+packet(publish, MQTT_Version, {#publish{payload = Payload} = Params, Packet_Id}, Properties) ->
 	Remaining_packet = <<(variable_header(publish, {Params#publish.topic, Packet_Id}))/binary, 
 												(payload(publish, Payload))/binary>>,
 	<<(fixed_header(publish, 
 									{Params#publish.dup, Params#publish.qos, Params#publish.retain}, 
 									byte_size(Remaining_packet)))/binary, 
 									Remaining_packet/binary>>;
-packet(subscribe, {Subscriptions, Packet_Id}) ->
+
+packet(subscribe, MQTT_Version, {Subscriptions, Packet_Id}, Properties) ->
 	Remaining_packet = <<(variable_header(subscribe, Packet_Id))/binary, (payload(subscribe, Subscriptions))/binary>>,
 	<<(fixed_header(subscribe, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
-packet(suback, {Return_Codes, Packet_Id}) ->
+
+packet(suback, MQTT_Version, {Return_Codes, Packet_Id}, Properties) ->
 	Remaining_packet = <<(variable_header(suback, Packet_Id))/binary, (payload(suback, Return_Codes))/binary>>,
 	<<(fixed_header(suback, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
-packet(unsubscribe, {Topics, Packet_Id}) ->
+
+packet(unsubscribe, MQTT_Version, {Topics, Packet_Id}, Properties) ->
 	Remaining_packet = <<(variable_header(unsubscribe, Packet_Id))/binary, (payload(unsubscribe, Topics))/binary>>,
 	<<(fixed_header(unsubscribe, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
-packet(unsuback, Packet_Id) ->
+
+packet(unsuback, MQTT_Version, Packet_Id, Properties) ->
 	<<(fixed_header(unsuback, 0, 2))/binary, Packet_Id:16>>;
-packet(disconnect, _) ->
+
+packet(disconnect, MQTT_Version, _, Properties) ->
 	<<(fixed_header(disconnect, 0, 0))/binary>>;
-packet(pingreq, _) ->
+
+packet(pingreq, MQTT_Version, _, Properties) ->
 	<<(fixed_header(pingreq, 0, 0))/binary>>;
-packet(pingresp, _) ->
+
+packet(pingresp, MQTT_Version, _, Properties) ->
 	<<(fixed_header(pingresp, 0, 0))/binary>>;
-packet(puback, Packet_Id) ->
+
+packet(puback, MQTT_Version, Packet_Id, Properties) ->
 	<<(fixed_header(puback, 0, 2))/binary, Packet_Id:16>>;
-packet(pubrec, Packet_Id) ->
+
+packet(pubrec, MQTT_Version, Packet_Id, Properties) ->
 	<<(fixed_header(pubrec, 0, 2))/binary, Packet_Id:16>>;
-packet(pubrel, Packet_Id) ->
+
+packet(pubrel, MQTT_Version, Packet_Id, Properties) ->
 	<<(fixed_header(pubrel, 0, 2))/binary, Packet_Id:16>>;
-packet(pubcomp, Packet_Id) ->
+
+packet(pubcomp, MQTT_Version, Packet_Id, Properties) ->
 <<(fixed_header(pubcomp, 0, 2))/binary, Packet_Id:16>>.
 
 fixed_header(connect, _Flags, Length) ->
-	<<?CONNECT_PACK_TYPE, (encode_remaining_length(Length))/binary>>;
-fixed_header(connack, _Flags, _Length) ->
-	<<?CONNACK_PACK_TYPE, 2:8>>;
+	<<?CONNECT_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+fixed_header(connack, _Flags, Length) ->
+	<<?CONNACK_PACK_TYPE, Length:8>>;
 fixed_header(publish, {Dup, QoS, Retain}, Length) ->
-	<<?PUBLISH_PACK_TYPE, Dup:1, QoS:2, Retain:1, (encode_remaining_length(Length))/binary>>;
+	<<?PUBLISH_PACK_TYPE, Dup:1, QoS:2, Retain:1, (encode_variable_byte_integer(Length))/binary>>;
 fixed_header(subscribe, _Flags, Length) ->
-	<<?SUBSCRIBE_PACK_TYPE, (encode_remaining_length(Length))/binary>>;
+	<<?SUBSCRIBE_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
 fixed_header(suback, _Flags, Length) ->
-	<<?SUBACK_PACK_TYPE, (encode_remaining_length(Length))/binary>>;
+	<<?SUBACK_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
 fixed_header(unsubscribe, _Flags, Length) ->
-	<<?UNSUBSCRIBE_PACK_TYPE, (encode_remaining_length(Length))/binary>>;
+	<<?UNSUBSCRIBE_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
 fixed_header(unsuback, _Flags, _Length) ->
 	<<?UNSUBACK_PACK_TYPE, 2:8>>;
 fixed_header(puback, _Flags, _Length) ->
@@ -199,7 +221,7 @@ payload(unsubscribe, [Topic | Topics]) ->
 %% Internal functions
 %% ====================================================================
 
-encode_remaining_length(Length) ->
+encode_variable_byte_integer(Length) ->
 	encode_rl(Length, <<>>).
 
 encode_rl(0, Result) -> Result;

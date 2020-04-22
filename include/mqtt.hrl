@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2017 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2020 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,10 +23,12 @@
     will_qos = 0 :: 0 | 1 | 2,
     will_retain = 0 :: 0 | 1,
     will_topic = "" :: string(),
+		will_properties :: list(),
     will_message = <<>> :: binary(),
     clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
-		version = '3.1.1' :: '3.1' | '3.1.1'
+		properties :: list(),
+		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'
 	}
 ).
 
@@ -38,7 +40,8 @@
 		retain = 0 :: 0 | 1,
 		last_sent = none :: none | publish | pubrec | pubrel | pubcomp,
 		dir = out :: in | out, 
-		payload = <<>> :: binary()
+		payload = <<>> :: binary(),
+		properties = [] ::list()
 	}
 ).
 
@@ -149,5 +152,6 @@
 -define(PING_PACK_TYPE, 16#C0:8).
 -define(PINGRESP_PACK_TYPE, 16#D0:8).
 -define(DISCONNECT_PACK_TYPE, 16#E0:8).
+-define(AUTH_PACK_TYPE, 16#F0:8).
 
 -define(ELSE, true).
