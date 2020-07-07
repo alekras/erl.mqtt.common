@@ -23,11 +23,11 @@
     will_qos = 0 :: 0 | 1 | 2,
     will_retain = 0 :: 0 | 1,
     will_topic = "" :: string(),
-		will_properties :: list(),
+		will_properties = [] :: list(),
     will_message = <<>> :: binary(),
     clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
-		properties :: list(),
+		properties = [] :: list(),
 		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'
 	}
 ).
@@ -42,6 +42,15 @@
 		dir = out :: in | out, 
 		payload = <<>> :: binary(),
 		properties = [] ::list()
+	}
+).
+
+-record(subscription_options,
+	{
+		max_qos = 0 :: 0 | 1 | 2,
+		nolocal = 0 :: 0 | 1,
+		retain_as_published = 0 :: 0 | 1,
+		retain_handling = 0 :: 0 | 1 | 2
 	}
 ).
 

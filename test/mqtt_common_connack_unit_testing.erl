@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,20 +47,34 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
+		{"packet output", fun() -> packet_output('3.1.1') end},
+		{"packet output", fun() -> packet_output('5.0') end},
+		{"packet output", fun() -> packet_output_props('5.0') end},
+
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
+packet_output(Version) ->
+	Value = mqtt_output:packet(connack, Version, {1, 2}, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	case Version of
+		'3.1.1' ->
+			?assertEqual(<<32,2,1,2>>, Value);
+		'5.0' ->
+			?assertEqual(<<32,3,1,2,0>>, Value)
+	end,
 
-	Value2 = mqtt_output:packet(connack, {1, 2}),
-%	io:format(user, " value=~256p~n", [Value2]),
-	?assertEqual(<<32,2,1,2>>, Value2),
+	?passed.
+
+packet_output_props('5.0' = Version) ->
+	Value = mqtt_output:packet(connack, Version, {1, 24}, [{?Maximum_QoS, 2},{?Retain_Available, 1}]),
+	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<32,7,1,24, 4, 37,1, 36,2>>, Value),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
+	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
 
 	?passed.

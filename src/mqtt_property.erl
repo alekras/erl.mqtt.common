@@ -41,6 +41,7 @@ parse(Binary) ->
 to_binary(Properties) ->
 	Binary = form(Properties, <<>>),
 	Length = byte_size(Binary),
+	
 	<<(mqtt_output:encode_variable_byte_integer(Length))/binary, Binary/binary>>.
 %% ====================================================================
 %% Internal functions

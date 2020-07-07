@@ -146,6 +146,10 @@ prop_parse() ->
 	io:format(user, "~n Props = ~256p", [Prop_1]),
 	?assertEqual([{?User_Property, [{name,<<"Key Name">>}, {value,<<"Property Value">>}]}], Prop_1),
 
+	{Prop_2, _} = mqtt_property:parse(<<0>>),
+	io:format(user, "~n Empty properties = ~256p", [Prop_2]),
+	?assertEqual([], Prop_2),
+
 	?passed.
 
 prop_2_bin() ->
@@ -234,5 +238,10 @@ prop_2_bin() ->
 	Bin_1 = mqtt_property:to_binary(Prop_1),
 	io:format(user, "~n UTF-8 Pair Type = ~256p", [Bin_1]),
 	?assertEqual(<<27,?User_Property,0,8,"Key Name", 0,14,"Property Value">>, Bin_1),
+
+	Prop_2 = [],
+	Bin_2 = mqtt_property:to_binary(Prop_2),
+	io:format(user, "~n Empty properties = ~256p", [Bin_2]),
+	?assertEqual(<<0>>, Bin_2),
 
 	?passed.

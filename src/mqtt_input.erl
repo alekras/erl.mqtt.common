@@ -85,9 +85,17 @@ input_parser(Version, <<?PUBLISH_PACK_TYPE, DUP:1, QoS:2, RETAIN:1, Bin/binary>>
 	end,
 	{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload, dir = in, properties = Properties}, Packet_Id, New_Tail};
 
-input_parser('5.0', <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{puback, Packet_Id, Properties, New_Tail};
+%input_parser('5.0', <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
+input_parser('5.0', <<?PUBACK_PACK_TYPE, Bin/binary>>) -> 
+	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	if Length == 2 -> 
+				<<Packet_Id:16, Tail/binary>> = RestBin,
+				{puback, Packet_Id, [], Tail};
+		 true -> 
+				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
+				{Properties, New_Tail} = mqtt_property:parse(Tail),
+				{puback, Packet_Id, Properties, New_Tail}
+	end;
 input_parser(_, <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {puback, Packet_Id, [], Tail};
 
 input_parser('5.0', <<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 

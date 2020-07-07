@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,13 +47,52 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
+		{"packet output", fun() -> packet_output_zero('3.1') end},
+		{"packet output", fun() -> packet_output_user('3.1') end},
+		{"packet output", fun() -> packet_output_will('3.1') end},
+		{"packet output", fun() -> packet_output_zero('3.1.1') end},
+		{"packet output", fun() -> packet_output_user('3.1.1') end},
+		{"packet output", fun() -> packet_output_will('3.1.1') end},
+		{"packet output", fun() -> packet_output_zero('5.0') end},
+		{"packet output", fun() -> packet_output_user('5.0') end},
+		{"packet output", fun() -> packet_output_will('5.0') end},
+		{"packet output", fun() -> packet_output_willProps('5.0') end},
+		{"packet output", fun() -> packet_output_props('5.0') end},
+
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value1_1 = mqtt_output:packet(
-								connect,
+packet_output_zero(Ver) ->
+	Value = mqtt_output:packet(
+								connect, Ver,
+								#connect{
+									client_id = "publisher",
+									user_name = "",
+									password = <<>>,
+									will = 0,
+									will_message = <<>>,
+									will_topic = [],
+									clean_session = 0,
+									keep_alive = 0,
+									version = Ver
+								},
+								[]
+	),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	case Ver of
+		'3.1' ->
+			?assertEqual(<<16,23, 6:16,"MQIsdp"/utf8, 3, 0, 0:16, 9:16,"publisher"/utf8>>, Value);
+		'3.1.1' ->
+			?assertEqual(<<16,21,0,4,"MQTT"/utf8,4, 0, 0:16, 9:16,"publisher"/utf8>>, Value);
+		'5.0' ->
+			?assertEqual(<<16,22,0,4,"MQTT"/utf8,5, 0, 0:16, 0, 9:16,"publisher"/utf8>>, Value)
+	end,
+
+	?passed.
+
+packet_output_user(Ver) ->
+	Value = mqtt_output:packet(
+								connect, Ver,
 								#connect{
 									client_id = "publisher",
 									user_name = "guest",
@@ -62,14 +101,26 @@ packet_output() ->
 									will_message = <<>>,
 									will_topic = [],
 									clean_session = 1,
-									keep_alive = 1000
-								} 
+									keep_alive = 100000,
+									version = Ver
+								},
+								[]
 	),
-%	io:format(user, " value=~256p~n", [Value1_1]),
-	?assertEqual(<<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest">>, Value1_1),
-	
-	Value1_2 = mqtt_output:packet(
-								connect,
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	case Ver of
+		'3.1' ->
+			?assertEqual(<<16,37, 6:16,"MQIsdp"/utf8,3,194, 100000:16, 9:16,"publisher"/utf8, 5:16,"guest"/utf8, 5:16,"guest">>, Value);
+		'3.1.1' ->
+			?assertEqual(<<16,35, 4:16,"MQTT"/utf8,4,194, 100000:16, 9:16,"publisher"/utf8, 5:16,"guest"/utf8, 5:16,"guest">>, Value);
+		'5.0' ->
+			?assertEqual(<<16,36, 4:16,"MQTT"/utf8,5,194, 100000:16, 0, 9:16,"publisher"/utf8, 5:16,"guest"/utf8, 5:16,"guest">>, Value)
+	end,
+
+	?passed.
+
+packet_output_will(Ver) ->
+	Value = mqtt_output:packet(
+								connect, Ver,
 								#connect{
 									client_id = "publisher",
 									user_name = "guest",
@@ -80,30 +131,26 @@ packet_output() ->
 									will_message = <<"Good bye!">>,
 									will_topic = "Last_msg",
 									clean_session = 1,
-									keep_alive = 1000
-								} 
-	),
-%	io:format(user, " value=~256p~n", [Value1_2]),
-	?assertEqual(<<16,56,0,4,"MQTT"/utf8,4,246,3,232,0,9,"publisher"/utf8,0,8,"Last_msg"/utf8,0,9,"Good bye!",0,5,"guest"/utf8,0,5,"guest">>, Value1_2),
-	Value1_3 = mqtt_output:packet(
-								connect,
-								#connect{
-									client_id = "publisher",
-									user_name = "guest",
-									password = <<"guest">>,
-									will = 0,
-									will_message = <<>>,
-									will_topic = [],
-									clean_session = 1,
 									keep_alive = 1000,
-									version = '3.1'
-								} 
+									version = Ver
+								},
+								[]
 	),
-%	io:format(user, "~n value 1_3 = ~256p~n", [Value1_3]),
-	?assertEqual(<<16,37,0,6,"MQIsdp"/utf8,3,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest">>, Value1_3),
-	
-	Value1_4 = mqtt_output:packet(
-								connect,
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	case Ver of
+		'3.1' ->
+			?assertEqual(<<16,58, 6:16,"MQIsdp"/utf8, 3, 246, 3,232, 9:16,"publisher"/utf8, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest">>, Value);
+		'3.1.1' ->
+			?assertEqual(<<16,56, 4:16,"MQTT"/utf8, 4, 246, 3,232, 9:16,"publisher"/utf8, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest">>, Value);
+		'5.0' ->
+			?assertEqual(<<16,58, 4:16,"MQTT"/utf8, 5, 246, 3,232, 0, 9:16,"publisher"/utf8, 0, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest">>, Value)
+	end,
+
+	?passed.
+
+packet_output_willProps('5.0' = Ver) ->
+	Value = mqtt_output:packet(
+								connect, Ver,
 								#connect{
 									client_id = "publisher",
 									user_name = "guest",
@@ -113,13 +160,45 @@ packet_output() ->
 									will_retain = 1,
 									will_message = <<"Good bye!">>,
 									will_topic = "Last_msg",
+									will_properties = [{?Will_Delay_Interval, 6000},{?Response_Topic, "AfterClose/Will"}],
 									clean_session = 1,
 									keep_alive = 1000,
-									version = '3.1'
-								} 
+									version = Ver
+								},
+								[]
 	),
-%	io:format(user, "~n value 1_4= ~256p~n", [Value1_4]),
-	?assertEqual(<<16,58,0,6,"MQIsdp"/utf8,3,246,3,232,0,9,"publisher"/utf8,0,8,"Last_msg"/utf8,0,9,"Good bye!",0,5,"guest"/utf8,0,5,"guest">>, Value1_4),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<16,81, 4:16,"MQTT"/utf8, 5, 246, 3,232, 0, 9:16,"publisher"/utf8, 
+								 23, 8, 15:16,"AfterClose/Will"/utf8, 24, 6000:32, 
+								 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest">>, Value),
+
+	?passed.
+
+packet_output_props('5.0' = Ver) ->
+	Value = mqtt_output:packet(
+								connect, Ver,
+								#connect{
+									client_id = "publisher",
+									user_name = "guest",
+									password = <<"guest">>,
+									will = 1,
+									will_qos = 2,
+									will_retain = 1,
+									will_message = <<"Good bye!">>,
+									will_topic = "Last_msg",
+									will_properties = [{?Will_Delay_Interval, 6000}, {?Response_Topic, "AfterClose/Will"}],
+									clean_session = 1,
+									keep_alive = 1000,
+									version = Ver
+								},
+								[{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}]
+	),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<16,91, 4:16,"MQTT"/utf8, 5, 246, 3,232, 
+								 10, 17, 16#FFFFFFFF:32, 39, 65000:32, 
+								 9:16,"publisher"/utf8, 
+								 23, 8, 15:16,"AfterClose/Will"/utf8, 24, 6000:32, 
+								 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest">>, Value),
 
 	?passed.
 
@@ -131,11 +210,17 @@ input_parser() ->
 						will = 0,
 						will_message = <<>>,
 						will_topic = [],
+						will_properties = [],
 						clean_session = 1,
-						keep_alive = 1000
+						keep_alive = 1000,
+						version = '3.1.1',
+						properties = []
 					}, 
-	?assertEqual({connect, Config, <<7:8,7:8>>}, 
-							 mqtt_input:input_parser(<<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
-	?assertEqual({connect, Config#connect{version = '3.1'}, <<7:8,7:8>>}, 
-							 mqtt_input:input_parser(<<16,37,0,6,"MQIsdp"/utf8,3,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>)),
+	R1 = mqtt_input:input_parser(undefined, <<16,35,0,4,"MQTT"/utf8,4,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>),
+%	io:format(user, "~n R1= ~256p~n", [R1]),
+	?assertEqual({connect, Config, <<7:8,7:8>>}, R1),
+	
+	R2 = mqtt_input:input_parser(undefined, <<16,37,0,6,"MQIsdp"/utf8,3,194,3,232,0,9,"publisher"/utf8,0,5,"guest"/utf8,0,5,"guest",7:8,7:8>>),
+%	io:format(user, "~n R2= ~256p~n", [R2]),
+	?assertEqual({connect, Config#connect{version = '3.1'}, <<7:8,7:8>>}, R2),
 	?passed.
