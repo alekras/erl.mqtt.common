@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,19 +47,37 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
+		{"packet output 1", fun() -> packet_output('3.1.1') end},
+		{"packet output 2", fun() -> packet_output('5.0') end},
+		{"packet output 3", fun() -> packet_output_props() end},
+
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value8 = mqtt_output:packet(unsuback, 1205),
-%	io:format(user, "~n value=~256p~n", [Value8]),
-	?assertEqual(<<176,2,4,181>>, Value8),
+packet_output('3.1.1') ->
+	Value = mqtt_output:packet(unsuback, '3.1.1', 1205, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<176,2,4,181>>, Value),
+
+	?passed;
+packet_output('5.0') ->
+	Value = mqtt_output:packet(unsuback, '5.0', {[0,17], 1205}, []),
+%	io:format(user, "~n -=- value=~256p~n", [Value]),
+	?assertEqual(<<176,5,4,181, 0, 0,17>>, Value),
+
+	?passed.
+
+packet_output_props() ->
+	Value = mqtt_output:packet(unsuback, '5.0', {[0,17], 1205},
+														 [{?Reason_String, "Unspecified error"},
+															{?User_Property, [{name,"Key"}, {value,"Value"}]}]),
+%	io:format(user, "~n -=- value=~256p~n", [Value]),
+	?assertEqual(<<176,38,4,181, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31, 17:16,"Unspecified error"/utf8, 0,17>>, Value),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({unsuback, 103, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<16#B0:8, 2:8, 103:16, 1:8, 1:8>>)),
+	?assertEqual({unsuback, 103, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<16#B0:8, 2:8, 103:16, 1:8, 1:8>>)),
 
 	?passed.

@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,30 +47,36 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
+		{"packet output 1", fun() -> packet_output('3.1.1') end},
+		{"packet output 2", fun() -> packet_output('5.0') end},
+		{"packet output 3", fun() -> packet_output_props() end},
+
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value9 = mqtt_output:packet(disconnect, 0),
-%	io:format(user, "~n value=~256p~n", [Value9]),
-	?assertEqual(<<224,0>>, Value9),
+packet_output('3.1.1') ->
+	Value = mqtt_output:packet(disconnect, '3.1.1', 0, []),
+%	io:format(user, "~n value=~256p~n", [Value]),
+	?assertEqual(<<224,0>>, Value),
 
-	Value10 = mqtt_output:packet(pingreq, 0),
-%	io:format(user, "~n value=~256p~n", [Value10]),
-	?assertEqual(<<192,0>>, Value10),
+	?passed;
+packet_output('5.0') ->
+	Value = mqtt_output:packet(disconnect, '5.0', 0, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<224,2,0,0>>, Value),
 
-	Value11 = mqtt_output:packet(pingresp, 0),
-%	io:format(user, "~n value=~256p~n", [Value11]),
-	?assertEqual(<<208,0>>, Value11),
+	?passed.
+
+packet_output_props() ->
+	Value = mqtt_output:packet(disconnect, '5.0', 128,
+														 [{?Reason_String, "Unspecified error"},
+															{?Session_Expiry_Interval, 3600}]),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual(<<224,27,128,25,17,0,0,14,16, 31, 17:16,"Unspecified error"/utf8>>, Value),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({pingreq, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<192,0,1:8,1:8>>)),
-	?assertEqual({pingresp, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<16#D0:8, 0:8, 1:8, 1:8>>)),
-	?assertEqual({disconnect, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<224, 0, 1:8, 1:8>>)),
+	?assertEqual({disconnect, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<224, 0, 1:8, 1:8>>)),
 	?passed.

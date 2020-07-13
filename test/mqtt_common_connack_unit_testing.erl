@@ -68,7 +68,7 @@ packet_output(Version) ->
 
 packet_output_props('5.0' = Version) ->
 	Value = mqtt_output:packet(connack, Version, {1, 24}, [{?Maximum_QoS, 2},{?Retain_Available, 1}]),
-	io:format(user, "~n --- value=~256p~n", [Value]),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<32,7,1,24, 4, 37,1, 36,2>>, Value),
 
 	?passed.
@@ -76,5 +76,11 @@ packet_output_props('5.0' = Version) ->
 input_parser() ->
 	?assertEqual({connack, 1, 0, "0x00 Connection Accepted", [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#20:8, 2:8, 1:8, 0:8, 1:8, 1:8>>)),
+	?assertEqual({connack, 1, 0, "Success", [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<16#20:8, 3:8, 1:8, 0:8, 0, 1:8, 1:8>>)),
+	Value = mqtt_input:input_parser('5.0', <<32,7,1,128, 4, 37,1, 36,2, 1, 1>>),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual({connack, 1, 128, "Unspecified error", [{?Maximum_QoS, 2},{?Retain_Available, 1}], <<1:8, 1:8>>}, 
+							 Value),
 
 	?passed.

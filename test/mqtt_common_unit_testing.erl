@@ -53,17 +53,17 @@ unit_test_() ->
 	].
 
 extract_variable_byte_integer() ->
-	?assertEqual({<<1, 1>>, 2}, mqtt_input:extract_variable_byte_integer(<<2:8, 1:8, 1:8>>)),
-	?assertEqual({<<1, 1>>, 2049}, mqtt_input:extract_variable_byte_integer(<<16#81:8, 16:8, 1:8, 1:8>>)),
-	?assertEqual({<<1, 1>>, 47489}, mqtt_input:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 2:8, 1:8, 1:8>>)),
-	?assertEqual({<<1, 1>>, 32110977}, mqtt_input:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 16#A7, 15:8, 1:8, 1:8>>)),
+	?assertEqual({<<1, 1>>, 2}, mqtt_data:extract_variable_byte_integer(<<2:8, 1:8, 1:8>>)),
+	?assertEqual({<<1, 1>>, 2049}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16:8, 1:8, 1:8>>)),
+	?assertEqual({<<1, 1>>, 47489}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 2:8, 1:8, 1:8>>)),
+	?assertEqual({<<1, 1>>, 32110977}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 16#A7, 15:8, 1:8, 1:8>>)),
 	?passed.
 
 encode_variable_byte_integer() ->
-	?assertEqual(<<45>>, mqtt_output:encode_variable_byte_integer(45)),
-	?assertEqual(<<161,78>>, mqtt_output:encode_variable_byte_integer(10017)),
-	?assertEqual(<<142,145,82>>, mqtt_output:encode_variable_byte_integer(1345678)),
-	?assertEqual(<<206,173,133,85>>, mqtt_output:encode_variable_byte_integer(178345678)),
+	?assertEqual(<<45>>, mqtt_data:encode_variable_byte_integer(45)),
+	?assertEqual(<<161,78>>, mqtt_data:encode_variable_byte_integer(10017)),
+	?assertEqual(<<142,145,82>>, mqtt_data:encode_variable_byte_integer(1345678)),
+	?assertEqual(<<206,173,133,85>>, mqtt_data:encode_variable_byte_integer(178345678)),
   ?passed.
 
 is_match() ->

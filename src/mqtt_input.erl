@@ -36,14 +36,11 @@
 
 -ifdef(TEST).
 -export([
-	extract_variable_byte_integer/1,
-	extract_utf8_binary/1,
-	extract_utf8_list/1
 ]).
 -endif.
 
 input_parser(_, <<?CONNECT_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	case RestBin of
 		<<4:16, "MQTT", 5:8, RestBin0/binary>> ->
 			parse_connect_packet('5.0', Length - 10, RestBin0);
@@ -56,38 +53,42 @@ input_parser(_, <<?CONNECT_PACK_TYPE, Bin/binary>>) ->
 	end;
 
 input_parser('5.0', <<?CONNACK_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
-	<<0:7, SP:1, Connect_Return_Code:8, RestBin_1:Length/binary, Tail/binary>> = RestBin,
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
+	L = (Length - 2),
+	<<0:7, SP:1, Connect_Return_Code:8, RestBin_1:L/binary, Tail/binary>> = RestBin,
 	{Properties, _RestBin_2} = mqtt_property:parse(RestBin_1), % _RestBin_2 has to be empty
 	{connack, SP, Connect_Return_Code, connect_reason_code(Connect_Return_Code), Properties, Tail};
 input_parser(_, <<?CONNACK_PACK_TYPE, 2:8, 0:7, SP:1, Connect_Return_Code:8, Tail/binary>>) ->
 	{connack, SP, Connect_Return_Code, return_code_response(Connect_Return_Code), [], Tail};
 
 input_parser(Version, <<?PUBLISH_PACK_TYPE, DUP:1, QoS:2, RETAIN:1, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	<<L:16, TopicBin:L/binary, RestBin1/binary>> = RestBin,
 	Topic = unicode:characters_to_list(TopicBin, utf8),
 	case QoS of
 		0 ->
-			PL = Length - L - 2,
+			RL = Length - L - 2,
 			Packet_Id = 0,
 			Tail = RestBin1;
 		_ when (QoS =:= 1) orelse (QoS =:= 2) ->
-			PL = Length - L - 4,
+			RL = Length - L - 4,
 			<<Packet_Id:16, Tail/binary>> = RestBin1
 	end,
-	<<Payload:PL/binary, Tail_1/binary>> = Tail,
 	case Version of
 		'5.0' -> 
-			{Properties, New_Tail} = mqtt_property:parse(Tail_1);
+			{Properties, Tail_1} = mqtt_property:parse(Tail),
+			PL = byte_size(Tail) - byte_size(Tail_1);
 		_ ->
-			{Properties, New_Tail} = {[], Tail_1}
+			{Properties, Tail_1} = {[], Tail},
+			PL = 0
 	end,
+	PLL = RL - PL,
+	<<Payload:PLL/binary, New_Tail/binary>> = Tail_1,
 	{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload, dir = in, properties = Properties}, Packet_Id, New_Tail};
 
 %input_parser('5.0', <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
 input_parser('5.0', <<?PUBACK_PACK_TYPE, Bin/binary>>) -> 
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	if Length == 2 -> 
 				<<Packet_Id:16, Tail/binary>> = RestBin,
 				{puback, Packet_Id, [], Tail};
@@ -119,7 +120,7 @@ input_parser('5.0', <<?PUBCOMP_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) ->
 input_parser(_, <<?PUBCOMP_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubcomp, Packet_Id, [], Tail};
 
 input_parser(Version, <<?SUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	L = Length - 2,
 	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
@@ -131,7 +132,7 @@ input_parser(Version, <<?SUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
 	{subscribe, Packet_Id, parse_subscription(RestBin1, []), Properties, New_Tail};
 
 input_parser(Version, <<?SUBACK_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	L = Length - 2,
 	<<Packet_Id:16, Return_codes:L/binary, Tail/binary>> = RestBin,
 	case Version of
@@ -143,7 +144,7 @@ input_parser(Version, <<?SUBACK_PACK_TYPE, Bin/binary>>) ->
 	{suback, Packet_Id, binary_to_list(Return_codes), Properties, New_Tail};
 
 input_parser(Version, <<?UNSUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, Length} = extract_variable_byte_integer(Bin),
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	L = Length - 2,
 	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
@@ -155,7 +156,7 @@ input_parser(Version, <<?UNSUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
 	{unsubscribe, Packet_Id, parse_unsubscription(RestBin1, []), Properties, New_Tail};
 
 input_parser(Version, <<?UNSUBACK_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, _Length} = extract_variable_byte_integer(Bin),
+	{RestBin, _Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	<<Packet_Id:16, Tail/binary>> = RestBin,
 	case Version of
 		'5.0' -> 
@@ -215,38 +216,8 @@ connect_reason_code(154) -> "Retain not supported";
 connect_reason_code(155) -> "QoS not supported";
 connect_reason_code(156) -> "Use another server";
 connect_reason_code(157) -> "Server moved";
-connect_reason_code(159) -> "Connection rate exceeded".
-
-extract_variable_byte_integer(Binary) ->
-	decode_rl(Binary, 1, 0).
-
-decode_rl(_, MP, L) when MP > (128 * 128 * 128) -> {error, L};
-decode_rl(<<0:1, EncodedByte:7, Binary/binary>>, MP, L) ->
-	NewL = L + EncodedByte * MP,
-	{Binary, NewL};
-decode_rl(<<1:1, EncodedByte:7, Binary/binary>>, MP, L) ->
-	NewL = L + EncodedByte * MP,
-	decode_rl(Binary, MP * 128, NewL).
-
-extract_utf8_binary(Binary) ->
-	<<Size:16, UTF8_binary:Size/binary, Tail/binary>> = Binary,
-	UTF8_string = 
-		case unicode:characters_to_binary(UTF8_binary, utf8) of
-			{error, _, _} -> error;
-			{incomplete, _, _} -> error;
-			R -> R
-		end,
-	{Tail, UTF8_string}.
-
-extract_utf8_list(Binary) ->
-	<<Size:16, UTF8_binary:Size/binary, Tail/binary>> = Binary,
-	UTF8_list = 
-		case unicode:characters_to_list(UTF8_binary, utf8) of
-			{error, _, _} -> error;
-			{incomplete, _, _} -> error;
-			R -> R
-		end,
-	{Tail, UTF8_list}.
+connect_reason_code(159) -> "Connection rate exceeded";
+connect_reason_code(_) -> "Return Code is not recognizable".
 
 parse_connect_packet(MQTT_Version, Length, Binary) ->
 %% Retrieve Connect Flags and KeepAlive 
@@ -262,8 +233,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 
 %% Retrieve Payload:
 %% Step 1: retrieve Client_id
-	<<Client_id_bin_size:16, Client_id:Client_id_bin_size/binary, RestBin2/binary>> = RestBin1,
-
+	{RestBin2, Client_id} = mqtt_data:extract_binary_field(RestBin1),
 %% Step 2, 3: retrieve Will_Topic and Will_Message
 	case Will of
 		0 ->
@@ -287,7 +257,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			UserName = <<>>,
 			RestBin4 = RestBin3;
 		1 -> 
-			<<SizeU:16, UserName:SizeU/binary, RestBin4/binary>> = RestBin3
+			{RestBin4, UserName} = mqtt_data:extract_binary_field(RestBin3)
 	end,
 
 %% Step 5: retrieve Password
@@ -295,17 +265,17 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 		0 ->
 			Password_bin = <<>>;
 		1 -> 
-			<<SizeP:16, Password_bin:SizeP/binary>> = RestBin4
+			{_, Password_bin} = mqtt_data:extract_binary_field(RestBin4)
 	end,
 	
 	Config = #connect{
 		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Client_id, utf8),???
-		user_name = binary_to_list(UserName),
+		user_name = binary_to_list(UserName), %% @todo do we need a list?
 		password = Password_bin,
 		will = Will,
 		will_qos = Will_QoS,
 		will_retain = Will_retain,
-		will_topic = binary_to_list(WillTopic),
+		will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
 		will_message = WillMessage,
 		will_properties = WillProperties,
 		clean_session = Clean_Session,
@@ -316,9 +286,11 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 	{connect, Config, Tail}.
 
 parse_subscription(<<>>, Subscriptions) -> lists:reverse(Subscriptions);
-parse_subscription(<<Size:16, Topic:Size/binary, QoS:8, BinartRest/binary>>, Subscriptions) ->
-	parse_subscription(BinartRest, [{Topic, QoS} | Subscriptions]).
+parse_subscription(InputBinary, Subscriptions) ->
+	{<<QoS:8, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
+	parse_subscription(BinaryRest, [{Topic, QoS} | Subscriptions]).
 
 parse_unsubscription(<<>>, Topics) -> lists:reverse(Topics);
-parse_unsubscription(<<Size:16, Topic:Size/binary, BinaryRest/binary>>, Topics) ->
+parse_unsubscription(InputBinary, Topics) ->
+	{BinaryRest, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
 	parse_unsubscription(BinaryRest, [Topic | Topics]).

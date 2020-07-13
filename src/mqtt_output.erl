@@ -18,7 +18,7 @@
 %% @copyright 2015-2020 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
-%% @doc @todo Add description to mqtt_client_output.
+%% @doc @todo Add description to mqtt_output.
 
 
 -module(mqtt_output).
@@ -37,15 +37,15 @@
 
 -ifdef(TEST).
 -export([
-	encode_variable_byte_integer/1,
-	fixed_header/3,
 	variable_header/2,
 	payload/2
 ]).
 -endif.
 
 packet(connect, _, #connect{version = '5.0'} = Conn_config, Properties) ->
-	Remaining_packet = <<(variable_header(connect, Conn_config))/binary, (mqtt_property:to_binary(Properties))/binary, (payload(connect, Conn_config))/binary>>,
+	Remaining_packet = <<(variable_header(connect, Conn_config))/binary,
+											 (mqtt_property:to_binary(Properties))/binary,
+											 (payload(connect, Conn_config))/binary>>,
 	<<(fixed_header(connect, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
 packet(connect, _, Conn_config, _) ->
 	Remaining_packet = <<(variable_header(connect, Conn_config))/binary, (payload(connect, Conn_config))/binary>>,
@@ -57,20 +57,6 @@ packet(connack, '5.0', {SP, Connect_Reason_Code}, Properties) ->
 	<<(fixed_header(connack, 0, Remaining_Length))/binary, 0:7, SP:1, Connect_Reason_Code:8, Props_Bin/binary>>;
 packet(connack, _, {SP, Connect_Reason_Code}, _) ->
 	<<(fixed_header(connack, 0, 2))/binary, 0:7, SP:1, Connect_Reason_Code:8>>;
-
-%% packet(publish, MQTT_Version, #publish{payload = Payload, qos = 0} = Params, Properties) ->
-%% 	Props_Bin = case MQTT_Version of
-%% 								'5.0' -> mqtt_property:to_binary(Properties);
-%% 								_ -> <<>>
-%% 							end,
-%% 	Remaining_packet = <<(variable_header(publish, {Params#publish.topic}))/binary, 
-%% 												Props_Bin/binary,
-%% 											 (payload(publish, Payload))/binary>>,
-%% 	<<(fixed_header(publish, 
-%% 								 {Params#publish.dup, Params#publish.qos, Params#publish.retain}, 
-%% 								 byte_size(Remaining_packet))
-%% 		)/binary, 
-%% 		Remaining_packet/binary>>;
 
 packet(publish, MQTT_Version, {#publish{payload = Payload} = Params, Packet_Id}, Properties) ->
 	Props_Bin = case MQTT_Version of
@@ -128,17 +114,14 @@ packet(pingresp, _MQTT_Version, _, _) ->
 	<<(fixed_header(pingresp, 0, 0))/binary>>;
 
 packet(auth, '5.0', AuthenticateReasonCode, Properties) ->
-	Remaining_packet = <<AuthenticateReasonCode:8, (mqtt_property:to_binary(Properties))/binary>>,
+	Remaining_packet = 
+	if (AuthenticateReasonCode == 0) and (Properties == []) -> <<>>;
+			true -> <<AuthenticateReasonCode:8, (mqtt_property:to_binary(Properties))/binary>>
+	end,
 	<<(fixed_header(auth, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
 
 packet(puback, '5.0', Param, Properties) ->  %% {Reason_Code, Packet_Id} = Param
 	pub_response(puback, Param, Properties);
-%% 	if (Reason_Code == 0) and (length(Properties) == 0) -> <<(fixed_header(puback, 0, 2))/binary, Packet_Id:16>>;
-%% 		 length(Properties) == 0 -> <<(fixed_header(puback, 0, 3))/binary, Packet_Id:16, Reason_Code:8>>;
-%% 		 true ->
-%% 			Props_Bin = mqtt_property:to_binary(Properties),
-%% 			<<(fixed_header(puback, 0, byte_size(Props_Bin) + 3))/binary, Packet_Id:16, Reason_Code:8, Props_Bin/binary>>
-%% 	end;
 packet(puback, _, Packet_Id, _) ->
 	<<(fixed_header(puback, 0, 2))/binary, Packet_Id:16>>;
 
@@ -158,40 +141,40 @@ packet(pubcomp, _, Packet_Id, _) ->
 	<<(fixed_header(pubcomp, 0, 2))/binary, Packet_Id:16>>.
 
 fixed_header(connect, _Flags, Length) ->
-	<<?CONNECT_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?CONNECT_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(connack, _Flags, Length) ->
-	<<?CONNACK_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?CONNACK_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(publish, {Dup, QoS, Retain}, Length) ->
-	<<?PUBLISH_PACK_TYPE, Dup:1, QoS:2, Retain:1, (encode_variable_byte_integer(Length))/binary>>;
+	<<?PUBLISH_PACK_TYPE, Dup:1, QoS:2, Retain:1, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(subscribe, _Flags, Length) ->
-	<<?SUBSCRIBE_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?SUBSCRIBE_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(suback, _Flags, Length) ->
-	<<?SUBACK_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?SUBACK_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(unsubscribe, _Flags, Length) ->
-	<<?UNSUBSCRIBE_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?UNSUBSCRIBE_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(unsuback, _Flags, Length) ->
-	<<?UNSUBACK_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?UNSUBACK_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(puback, _Flags, Length) ->
-	<<?PUBACK_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?PUBACK_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(pubrec, _Flags, Length) ->
-	<<?PUBREC_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?PUBREC_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(pubrel, _Flags, Length) ->
-	<<?PUBREL_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?PUBREL_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(pubcomp, _Flags, Length) ->
-	<<?PUBCOMP_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>;
+	<<?PUBCOMP_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(pingreq, _Flags, _Length) ->
 	<<?PING_PACK_TYPE, 0:8>>;
 fixed_header(pingresp, _Flags, _Length) ->
 	<<?PINGRESP_PACK_TYPE, 0:8>>;
-fixed_header(disconnect, _Flags, _Length) ->
-	<<?DISCONNECT_PACK_TYPE, 0:8>>;
+fixed_header(disconnect, _Flags, Length) ->
+	<<?DISCONNECT_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>;
 fixed_header(auth, _Flags, Length) ->
-	<<?AUTH_PACK_TYPE, (encode_variable_byte_integer(Length))/binary>>.
+	<<?AUTH_PACK_TYPE, (mqtt_data:encode_variable_byte_integer(Length))/binary>>.
 
 variable_header(connect, Config) ->
-	User = case fieldSize(Config#connect.user_name) of 0 -> 0; _ -> 1 end,
-	Password = case fieldSize(Config#connect.password) of 0 -> 0; _ -> 1 end,
-	case fieldSize(Config#connect.will_topic) of
+	User = case mqtt_data:fieldSize(Config#connect.user_name) of 0 -> 0; _ -> 1 end,
+	Password = case mqtt_data:fieldSize(Config#connect.password) of 0 -> 0; _ -> 1 end,
+	case mqtt_data:fieldSize(Config#connect.will_topic) of
 		0 ->
 			Will_retain = 0,
 			Will_QoS = 0,
@@ -212,11 +195,9 @@ variable_header(connect, Config) ->
 			<<6:16, "MQIsdp", 3:8, User:1, Password:1, Will_retain:1, Will_QoS:2, Will:1, Clean_Session:1, 0:1, Keep_alive:16>>
 	end;
 variable_header(publish, {0, Topic, _}) ->
-	TopicBin = unicode:characters_to_binary(Topic, utf8),
-	<<(byte_size(TopicBin)):16, TopicBin/binary>>;
+	mqtt_data:encode_utf8_string(Topic);
 variable_header(publish, {_, Topic, Packet_Id}) ->
-	TopicBin = unicode:characters_to_binary(Topic, utf8),
-	<<(byte_size(TopicBin)):16, TopicBin/binary, Packet_Id:16>>;
+	<<(mqtt_data:encode_utf8_string(Topic))/binary, Packet_Id:16>>;
 variable_header(subscribe, Packet_Id) ->
 	<<Packet_Id:16>>;
 variable_header(suback, Packet_Id) ->
@@ -227,7 +208,6 @@ variable_header(unsuback, Packet_Id) ->
 	<<Packet_Id:16>>.
 
 payload(connect, Config) ->
-	Client_id_bin = unicode:characters_to_binary(Config#connect.client_id, utf8),
 	Will_bin =
 	if Config#connect.will == 0 ->
 				<<>>;
@@ -238,27 +218,25 @@ payload(connect, Config) ->
 				true -> 
 					<<>>
 				end,
-				WT = unicode:characters_to_binary(Config#connect.will_topic, utf8),
-				WM = Config#connect.will_message,
-				<<WP/binary, (byte_size(WT)):16, WT/binary, (byte_size(WM)):16, WM/binary>>
+				<<WP/binary, 
+					(mqtt_data:encode_utf8_string(Config#connect.will_topic))/binary, 
+					(mqtt_data:encode_binary_field(Config#connect.will_message))/binary>>
 	end,
 	Username_bin =
-	case fieldSize(Config#connect.user_name) of
+	case mqtt_data:fieldSize(Config#connect.user_name) of
 		0 ->
 			<<>>;
 		_ ->
-			UN = unicode:characters_to_binary(Config#connect.user_name, utf8),
-			<<(byte_size(UN)):16, UN/binary>>
+			mqtt_data:encode_utf8_string(Config#connect.user_name)
 	end,
 	Password_bin =
-	case fieldSize(Config#connect.password) of
+	case mqtt_data:fieldSize(Config#connect.password) of
 		0 ->
 			<<>>;
 		_ ->
-			PW = Config#connect.password,
-			<<(byte_size(PW)):16, PW/binary>>
+			mqtt_data:encode_utf8_string(Config#connect.password)
 	end,
-	<<(byte_size(Client_id_bin)):16, Client_id_bin/binary, 
+	<<(mqtt_data:encode_utf8_string(Config#connect.client_id))/binary, 
 		Will_bin/binary, 
 		Username_bin/binary,
 		Password_bin/binary>>;
@@ -267,11 +245,9 @@ payload(publish, Payload) ->
 
 payload(subscribe, []) -> <<>>;
 payload(subscribe, [{Topic, #subscription_options{max_qos = MaxQos, nolocal = NoLocal, retain_as_published = RetainAsPub, retain_handling = RetainHandling}, _Callback} | Subscriptions]) ->
-	TopicBin = unicode:characters_to_binary(Topic, utf8), %% @todo throw exception if utf8 format is wrong !
-	<<(byte_size(TopicBin)):16, TopicBin/binary, 0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, (payload(subscribe, Subscriptions))/binary>>;
+	<<(mqtt_data:encode_utf8_string(Topic))/binary, 0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, (payload(subscribe, Subscriptions))/binary>>;
 payload(subscribe, [{Topic, QoS, _Callback} | Subscriptions]) ->
-	TopicBin = unicode:characters_to_binary(Topic, utf8), %% @todo throw exception if utf8 format is wrong !
-	<<(byte_size(TopicBin)):16, TopicBin/binary, QoS:8, (payload(subscribe, Subscriptions))/binary>>;
+	<<(mqtt_data:encode_utf8_string(Topic))/binary, QoS:8, (payload(subscribe, Subscriptions))/binary>>;
 
 payload(suback, []) -> <<>>;
 payload(suback, [Return_Code | Return_Codes]) ->
@@ -279,8 +255,7 @@ payload(suback, [Return_Code | Return_Codes]) ->
 
 payload(unsubscribe, []) -> <<>>;
 payload(unsubscribe, [Topic | Topics]) ->
-	TopicBin = unicode:characters_to_binary(Topic, utf8),
-	<<(byte_size(TopicBin)):16, TopicBin/binary, (payload(unsubscribe, Topics))/binary>>;
+	<<(mqtt_data:encode_utf8_string(Topic))/binary, (payload(unsubscribe, Topics))/binary>>;
 
 payload(unsuback, []) -> <<>>;
 payload(unsuback, [ReasonCode | ReasonCodeList]) ->
@@ -290,16 +265,6 @@ payload(unsuback, [ReasonCode | ReasonCodeList]) ->
 %% Internal functions
 %% ====================================================================
 
-encode_variable_byte_integer(0) -> <<0>>;
-encode_variable_byte_integer(Length) ->
-	encode_rl(Length, <<>>).
-
-encode_rl(0, Result) -> Result;
-encode_rl(L, Result) -> 
-	Rem = L div 128,
-	EncodedByte = (L rem 128) bor (if Rem > 0 -> 16#80; true -> 0 end), 
-	encode_rl(Rem, <<Result/binary, EncodedByte:8>>).
-
 pub_response(PacketCode, {0, Packet_Id}, []) ->
 	<<(fixed_header(PacketCode, 0, 2))/binary, Packet_Id:16>>;
 pub_response(PacketCode, {Reason_Code, Packet_Id}, []) ->
@@ -307,7 +272,3 @@ pub_response(PacketCode, {Reason_Code, Packet_Id}, []) ->
 pub_response(PacketCode, {Reason_Code, Packet_Id}, Properties) ->
 	Props_Bin = mqtt_property:to_binary(Properties),
 	<<(fixed_header(PacketCode, 0, byte_size(Props_Bin) + 3))/binary, Packet_Id:16, Reason_Code:8, Props_Bin/binary>>.
-
-fieldSize(F) when is_list(F) -> length(F);
-fieldSize(F) when is_binary(F) -> byte_size(F);
-fieldSize(_) -> 0.

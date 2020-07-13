@@ -21,7 +21,7 @@
 %% @version {@version}
 %% @doc This module is running unit tests for some modules.
 
--module(mqtt_common_suback_unit_testing).
+-module(mqtt_common_auth_unit_testing).
 
 %%
 %% Include files
@@ -47,37 +47,33 @@
 
 unit_test_() ->
 	[ 
-		{"packet output 1", fun() -> packet_output('3.1.1') end},
-		{"packet output 2", fun() -> packet_output('5.0') end},
-		{"packet output 3", fun() -> packet_output_props() end},
+		{"packet output 1", fun() -> packet_output('5.0') end},
+		{"packet output 2", fun() -> packet_output_props() end}
 
-		{"input_parser 1", fun input_parser/0}
+%		{"input_parser", fun input_parser/0}
 	].
 
-packet_output('3.1.1') ->
-	Value = mqtt_output:packet(suback, '3.1.1', {[0,1,2], 102}, []),
-%	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<144,5,0,102,0,1,2>>, Value),
-
-	?passed;
 packet_output('5.0') ->
-	Value = mqtt_output:packet(suback, '5.0', {[0,1,2], 102}, []),
+	Value = mqtt_output:packet(auth, '5.0', 0, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<144,6, 0,102, 0, 0,1,2>>, Value),
+	?assertEqual(<<240,0>>, Value),
+
+	Value2 = mqtt_output:packet(auth, '5.0', 24, []),
+%	io:format(user, "~n --- value=~256p~n", [Value2]),
+	?assertEqual(<<240,2,24,0>>, Value2),
 
 	?passed.
 
 packet_output_props() ->
-	Value = mqtt_output:packet(suback, '5.0', {[0,1,128], 102}, 
-															[{?Reason_String, "Unspecified error"},
-															 {?User_Property, [{name,"Key"}, {value,"Value"}]}]),
-%	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<144,39, 0,102, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0,1,128>>, Value),
+	Value = mqtt_output:packet(auth, '5.0', 25,
+														 [{?Reason_String, "Re-authenticate"},
+															{?Authentication_Method, "Password"}]),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual(<<240,31,25, 29, 21, 8:16,"Password"/utf8, 31, 15:16,"Re-authenticate"/utf8>>, Value),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({suback, 103, [7], [], <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser('3.1.1', <<16#90:8, 3:8, 103:16, 7:8, 1:8, 1:8>>)),
-
+	?assertEqual({disconnect, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<224, 0, 1:8, 1:8>>)),
 	?passed.

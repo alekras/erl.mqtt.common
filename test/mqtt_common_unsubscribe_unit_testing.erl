@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,18 +47,35 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
-		{"input_parser", fun input_parser/0}
+		{"packet output 1", fun() -> packet_output('3.1.1') end},
+		{"packet output 2", fun() -> packet_output('5.0') end},
+		{"packet output 3", fun() -> packet_output_props() end},
+
+		{"input_parser 1", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value7 = mqtt_output:packet(unsubscribe, {["Test_topic_1", "Test_topic_2"], 103}),
-%	io:format(user, "~n value=~256p~n", [Value7]),
-	?assertEqual(<<162,30,0,103,0,12,"Test_topic_1"/utf8,0,12,"Test_topic_2"/utf8>>, Value7),
+packet_output('3.1.1') ->
+	Value = mqtt_output:packet(unsubscribe, '3.1.1', {["Test_topic_1", "Test_topic_2"], 103}, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<162,30,0,103,0,12,"Test_topic_1"/utf8,0,12,"Test_topic_2"/utf8>>, Value),
+
+	?passed;
+packet_output('5.0') ->
+	Value = mqtt_output:packet(unsubscribe, '5.0', {["Test_topic_1", "Test_topic_2"], 103}, []),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual(<<162,31,0,103,0, 12:16,"Test_topic_1"/utf8, 12:16,"Test_topic_2"/utf8>>, Value),
+
+	?passed.
+
+packet_output_props() ->
+	Value = mqtt_output:packet(unsubscribe, '5.0', {["Test_topic_1", "Test_topic_2"], 103},
+														 [{?User_Property, [{name,"Key"}, {value,"Value"}]}]),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual(<<162,44,0,103, 13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 12:16,"Test_topic_1"/utf8, 12:16,"Test_topic_2"/utf8>>, Value),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({unsubscribe, 103, [<<"Test_topic_1">>,<<"Test_topic_2">>], <<8:8, 8:8>>}, 
-							 mqtt_input:input_parser(<<162,30,0,103,0,12,"Test_topic_1"/utf8,0,12,"Test_topic_2"/utf8, 8:8, 8:8>>)),
+	?assertEqual({unsubscribe, 103, [<<"Test_topic_1">>,<<"Test_topic_2">>], [], <<8:8, 8:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<162,30,0,103,0,12,"Test_topic_1"/utf8,0,12,"Test_topic_2"/utf8, 8:8, 8:8>>)),
 	?passed.

@@ -33,7 +33,6 @@
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -52,14 +51,14 @@ unit_test_() ->
 	].
 
 packet_output() ->
-	Value10 = mqtt_output:packet(pingreq, 0),
-%	io:format(user, "~n value=~256p~n", [Value10]),
-	?assertEqual(<<192,0>>, Value10),
+	Value = mqtt_output:packet(pingreq, '3.1.1', 0, []),
+%	io:format(user, "~n value=~256p~n", [Value]),
+	?assertEqual(<<192,0>>, Value),
 
 	?passed.
 
 input_parser() ->
 	?assertEqual({pingreq, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<192,0,1:8,1:8>>)),
+							 mqtt_input:input_parser('3.1.1', <<192,0,1:8,1:8>>)),
 
 	?passed.

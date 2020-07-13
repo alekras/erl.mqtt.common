@@ -28,12 +28,12 @@
 %%
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("mqtt.hrl").
+-include_lib("mqtt_property.hrl").
 -include("test.hrl").
 
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -47,17 +47,39 @@
 
 unit_test_() ->
 	[ 
-		{"packet output", fun packet_output/0},
+		{"packet output", fun() -> packet_output('3.1.1') end},
+		{"packet output", fun() -> packet_output('5.0') end},
+		{"packet output", fun() -> packet_output_props() end},
+
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value13 = mqtt_output:packet(pubrec, 23045),
-%	io:format(user, "~n value=~256p~n", [Value13]),
-	?assertEqual(<<80,2,90,5>>, Value13),
+packet_output('3.1.1') ->
+	Value = mqtt_output:packet(pubrec, '3.1.1', 23045, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<80,2,90,5>>, Value),
+
+	?passed;
+packet_output('5.0') ->
+	Value = mqtt_output:packet(pubrec, '5.0', {0, 23045}, []),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<80,2,90,5>>, Value),
+
+	Value2 = mqtt_output:packet(pubrec, '5.0', {10, 23045}, []),
+%	io:format(user, "~n -=- value2=~256p~n", [Value2]),
+	?assertEqual(<<80,3,90,5,10>>, Value2),
+
+	?passed.
+
+packet_output_props() ->
+	Value = mqtt_output:packet(pubrec, '5.0', {16, 23045}, [{?Reason_String, "No matching subscribers"},
+																													 {?User_Property, [{name,"Key Name"}, {value,"Property Value"}]}]),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual(<<80,57,90,5,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>, Value),
+	
 	?passed.
 
 input_parser() ->
-	?assertEqual({pubrec, 101, <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser(<<16#50:8, 2:8, 101:16, 1:8, 1:8>>)),
+	?assertEqual({pubrec, 101, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<16#50:8, 2:8, 101:16, 1:8, 1:8>>)),
 	?passed.

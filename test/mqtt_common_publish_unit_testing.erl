@@ -78,23 +78,48 @@ packet_output(Version) ->
 packet_output_props('5.0' = Version) ->
 	Value = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 0}, undefined},
 														 [{?Payload_Format_Indicator, 1},{?Message_Expiry_Interval, 120000}]),
-	io:format(user, "~n --- value=~256p~n", [Value]),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<48,19, 5:16,"Topic"/utf8, 7,2,120000:32,1,1, "Test"/utf8>>, Value),
 
 	Value2 = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 1}, 100},
 															[{?Topic_Alias, 300},{?Correlation_Data, <<1,2,3,4>>}]),
-	io:format(user, "~n === value=~256p~n", [Value2]),
+%	io:format(user, "~n === value=~256p~n", [Value2]),
 	?assertEqual(<<50,24, 5:16,"Topic"/utf8, 100:16, 10, 9,4:16,1,2,3,4, 35,300:16, "Test"/utf8>>, Value2),
 
 	?passed.
 
 input_parser() ->
-	?assertEqual({publish, #publish{topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 0, <<1:8, 1:8>>}, 
+	?assertEqual({publish, #publish{qos = 0, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 0, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#30:8, 13:8, 5:16, "Topic", 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
 %					{publish, QoS, Packet_Id, Topic, Payload, Tail};
 	?assertEqual({publish, #publish{qos = 1, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 100, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#32:8, 15:8, 5:16, "Topic", 100:16, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
 	?assertEqual({publish, #publish{qos = 2, dup = 1, retain = 1, topic = "Топик", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 101, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#3D:8, 20:8, 10:16, "Топик"/utf8, 101:16, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
+
+	?assertEqual({publish, #publish{qos = 0, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 0, <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<16#30:8, 14:8, 5:16, "Topic", 0, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
+%					{publish, QoS, Packet_Id, Topic, Payload, Tail};
+	?assertEqual({publish, #publish{qos = 1, topic = "Topic", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 100, <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<16#32:8, 16:8, 5:16, "Topic", 100:16, 0, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
+
+	?assertEqual({publish, #publish{qos = 2, dup = 1, retain = 1, topic = "Топик", payload = <<1:8, 2:8, 3:8, 4:8, 5:8, 6:8>>, dir = in}, 101, <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<16#3D:8, 21:8, 10:16, "Топик"/utf8, 101:16, 0, 1:8, 2:8, 3:8, 4:8, 5:8, 6:8, 1:8, 1:8>>)),
+
+	Value = mqtt_input:input_parser('5.0', <<48,19, 5:16,"Topic"/utf8, 7,2,120000:32,1,1, "Test"/utf8, 1:8, 1:8>>),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual({publish, #publish{qos = 0, topic = "Topic", 
+																	payload = <<"Test">>, dir = in, 
+																	properties = [{?Payload_Format_Indicator, 1},{?Message_Expiry_Interval, 120000}]},
+																	0, <<1:8, 1:8>>}, 
+							 Value),
+	
+	Value1 = mqtt_input:input_parser('5.0', <<50,24, 5:16,"Topic"/utf8, 100:16, 10, 9,4:16,1,2,3,4, 35,300:16, "Test"/utf8, 1,1>>),
+%	io:format(user, "~n === value=~256p~n", [Value1]),
+	?assertEqual({publish, #publish{qos = 1, topic = "Topic", 
+																	payload = <<"Test">>, dir = in, 
+																	properties = [{?Topic_Alias, 300},{?Correlation_Data, <<1,2,3,4>>}]},
+																	100, <<1:8, 1:8>>}, 
+							 Value1),
 
 	?passed.
