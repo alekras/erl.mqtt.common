@@ -48,9 +48,9 @@
 unit_test_() ->
 	[ 
 		{"packet output 1", fun() -> packet_output('5.0') end},
-		{"packet output 2", fun() -> packet_output_props() end}
+		{"packet output 2", fun() -> packet_output_props() end},
 
-%		{"input_parser", fun input_parser/0}
+		{"input_parser", fun input_parser/0}
 	].
 
 packet_output('5.0') ->
@@ -74,6 +74,14 @@ packet_output_props() ->
 	?passed.
 
 input_parser() ->
-	?assertEqual({disconnect, [], <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser('5.0', <<224, 0, 1:8, 1:8>>)),
+	?assertEqual({auth, 0, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<240, 0, 1:8, 1:8>>)),
+
+	?assertEqual({auth, 24, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<240, 2, 24, 0, 1:8, 1:8>>)),
+	
+	Value = mqtt_input:input_parser('5.0', <<240,31,25, 29, 21, 8:16,"Password"/utf8, 31, 15:16,"Re-authenticate"/utf8, 1,1>>),
+%	io:format(user, "~n === value=~256p~n", [Value]),
+	?assertEqual({auth, 25, [{?Reason_String, <<"Re-authenticate">>},
+														{?Authentication_Method, <<"Password">>}], <<1:8, 1:8>>}, Value),
 	?passed.

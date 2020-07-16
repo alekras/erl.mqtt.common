@@ -86,37 +86,22 @@ input_parser(Version, <<?PUBLISH_PACK_TYPE, DUP:1, QoS:2, RETAIN:1, Bin/binary>>
 	<<Payload:PLL/binary, New_Tail/binary>> = Tail_1,
 	{publish, #publish{topic = Topic, dup = DUP, qos = QoS, retain = RETAIN, payload = Payload, dir = in, properties = Properties}, Packet_Id, New_Tail};
 
-%input_parser('5.0', <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
 input_parser('5.0', <<?PUBACK_PACK_TYPE, Bin/binary>>) -> 
-	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
-	if Length == 2 -> 
-				<<Packet_Id:16, Tail/binary>> = RestBin,
-				{puback, Packet_Id, [], Tail};
-		 true -> 
-				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
-				{Properties, New_Tail} = mqtt_property:parse(Tail),
-				{puback, Packet_Id, Properties, New_Tail}
-	end;
+	parse_pub_response(puback, Bin);
 input_parser(_, <<?PUBACK_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {puback, Packet_Id, [], Tail};
 
-input_parser('5.0', <<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{pubrec, Packet_Id, Properties, New_Tail};
+input_parser('5.0', <<?PUBREC_PACK_TYPE, Bin/binary>>) -> 
+	parse_pub_response(pubrec, Bin);
 input_parser(_, <<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrec, Packet_Id, [], Tail};
 
-input_parser('5.0', <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> 
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{pubrel, Packet_Id, Properties, New_Tail}; %% @todo issue with websocket client from HiveMQ
 input_parser(_, <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, Packet_Id, [], Tail}; %% @todo issue with websocket client from HiveMQ
 
-input_parser('5.0', <<?PUBREL_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> 
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{pubrel, Packet_Id, Properties, New_Tail};
+input_parser('5.0', <<?PUBREL_PACK_TYPE, Bin/binary>>) -> 
+	parse_pub_response(pubrel, Bin);
 input_parser(_, <<?PUBREL_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, Packet_Id, [], Tail};
 
-input_parser('5.0', <<?PUBCOMP_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) ->
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{pubcomp, Packet_Id, Properties, New_Tail};
+input_parser('5.0', <<?PUBCOMP_PACK_TYPE, Bin/binary>>) ->
+	parse_pub_response(pubcomp, Bin);
 input_parser(_, <<?PUBCOMP_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubcomp, Packet_Id, [], Tail};
 
 input_parser(Version, <<?SUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
@@ -125,23 +110,23 @@ input_parser(Version, <<?SUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
 	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
 		'5.0' -> 
-			{Properties, New_Tail} = mqtt_property:parse(Tail);
+			{Properties, RestBin2} = mqtt_property:parse(RestBin1);
 		_ ->
-			{Properties, New_Tail} = {[], Tail}
+			{Properties, RestBin2} = {[], RestBin1}
 	end,
-	{subscribe, Packet_Id, parse_subscription(RestBin1, []), Properties, New_Tail};
+	{subscribe, Packet_Id, parse_subscription(Version, RestBin2, []), Properties, Tail};
 
 input_parser(Version, <<?SUBACK_PACK_TYPE, Bin/binary>>) ->
 	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	L = Length - 2,
-	<<Packet_Id:16, Return_codes:L/binary, Tail/binary>> = RestBin,
+	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
 		'5.0' -> 
-			{Properties, New_Tail} = mqtt_property:parse(Tail);
+			{Properties, Return_codes} = mqtt_property:parse(RestBin1);
 		_ ->
-			{Properties, New_Tail} = {[], Tail}
+			{Properties, Return_codes} = {[], RestBin1}
 	end,
-	{suback, Packet_Id, binary_to_list(Return_codes), Properties, New_Tail};
+	{suback, Packet_Id, binary_to_list(Return_codes), Properties, Tail};
 
 input_parser(Version, <<?UNSUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
 	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
@@ -149,35 +134,48 @@ input_parser(Version, <<?UNSUBSCRIBE_PACK_TYPE, Bin/binary>>) ->
 	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
 		'5.0' -> 
-			{Properties, New_Tail} = mqtt_property:parse(Tail);
+			{Properties, RestBin2} = mqtt_property:parse(RestBin1);
 		_ ->
-			{Properties, New_Tail} = {[], Tail}
+			{Properties, RestBin2} = {[], RestBin1}
 	end,
-	{unsubscribe, Packet_Id, parse_unsubscription(RestBin1, []), Properties, New_Tail};
+	{unsubscribe, Packet_Id, parse_unsubscription(RestBin2, []), Properties, Tail};
 
 input_parser(Version, <<?UNSUBACK_PACK_TYPE, Bin/binary>>) ->
-	{RestBin, _Length} = mqtt_data:extract_variable_byte_integer(Bin),
-	<<Packet_Id:16, Tail/binary>> = RestBin,
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
+	L = Length - 2,
+	<<Packet_Id:16, RestBin1:L/binary, Tail/binary>> = RestBin,
 	case Version of
 		'5.0' -> 
-			{Properties, New_Tail} = mqtt_property:parse(Tail);
+			{Properties, ReasonCodeList} = mqtt_property:parse(RestBin1),
+			{unsuback, {Packet_Id, binary_to_list(ReasonCodeList)}, Properties, Tail};
 		_ ->
-			{Properties, New_Tail} = {[], Tail}
-	end,
-	{unsuback, Packet_Id, Properties, New_Tail};
+			{unsuback, Packet_Id, [], Tail}
+	end;
 
 input_parser(_, <<?PING_PACK_TYPE, 0:8, Tail/binary>>) -> {pingreq, Tail};
 
 input_parser(_, <<?PINGRESP_PACK_TYPE, 0:8, Tail/binary>>) -> {pingresp, Tail};
 
-input_parser('5.0', <<?DISCONNECT_PACK_TYPE, 0:8, Tail/binary>>) ->
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{disconnect, Properties, New_Tail};
+input_parser('5.0', <<?DISCONNECT_PACK_TYPE, Bin/binary>>) ->
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
+	if Length == 0 -> {disconnect, 0, [], RestBin};
+		 true ->
+			L = Length - 1,
+			<<DisconnectReasonCode:8, RestBin1:L/binary, Tail/binary>> = RestBin,
+			{Properties, _} = mqtt_property:parse(RestBin1),
+			{disconnect, DisconnectReasonCode, Properties, Tail}
+	end;
 input_parser(_, <<?DISCONNECT_PACK_TYPE, 0:8, Tail/binary>>) -> {disconnect, [], Tail};
 
-input_parser('5.0', <<?AUTH_PACK_TYPE, 0:8, Tail/binary>>) ->
-	{Properties, New_Tail} = mqtt_property:parse(Tail),
-	{auth, Properties, New_Tail};
+input_parser('5.0', <<?AUTH_PACK_TYPE, Bin/binary>>) ->
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
+	if Length == 0 -> {auth, 0, [], RestBin};
+		 true ->
+			L = Length - 1,
+			<<DisconnectReasonCode:8, RestBin1:L/binary, Tail/binary>> = RestBin,
+			{Properties, _} = mqtt_property:parse(RestBin1),
+			{auth, DisconnectReasonCode, Properties, Tail}
+	end;
 
 input_parser(_, Binary) ->
 	lager:error("Unknown Binary received ~p~n", [Binary]),
@@ -285,12 +283,35 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 	},
 	{connect, Config, Tail}.
 
-parse_subscription(<<>>, Subscriptions) -> lists:reverse(Subscriptions);
-parse_subscription(InputBinary, Subscriptions) ->
+parse_subscription(_, <<>>, Subscriptions) -> lists:reverse(Subscriptions);
+parse_subscription('3.1.1', InputBinary, Subscriptions) ->
 	{<<QoS:8, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
-	parse_subscription(BinaryRest, [{Topic, QoS} | Subscriptions]).
+	parse_subscription('3.1.1', BinaryRest, [{Topic, QoS} | Subscriptions]);
+parse_subscription('5.0', InputBinary, Subscriptions) ->
+	{<<0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
+	parse_subscription('5.0', BinaryRest,
+										 [{Topic, 
+											 #subscription_options{max_qos = MaxQos,
+																						 nolocal = NoLocal,
+																						 retain_as_published = RetainAsPub,
+																						 retain_handling = RetainHandling}
+											} | Subscriptions]).
 
 parse_unsubscription(<<>>, Topics) -> lists:reverse(Topics);
 parse_unsubscription(InputBinary, Topics) ->
 	{BinaryRest, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
 	parse_unsubscription(BinaryRest, [Topic | Topics]).
+
+parse_pub_response(PacketCode, Bin) ->
+	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
+	if Length == 2 -> 
+				<<Packet_Id:16, Tail/binary>> = RestBin,
+				{PacketCode, {0, Packet_Id}, [], Tail};
+		 Length == 3 ->
+				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
+				{PacketCode, {Reason_Code, Packet_Id}, [], Tail};
+		 true -> 
+				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
+				{Properties, New_Tail} = mqtt_property:parse(Tail),
+				{PacketCode, {Reason_Code, Packet_Id}, Properties, New_Tail}
+	end.

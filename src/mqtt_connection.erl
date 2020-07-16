@@ -40,7 +40,7 @@
 	restore_session/1
 ]).
 
--import(mqtt_output, [packet/2]).
+-import(mqtt_output, [packet/4]).
 
 %% ====================================================================
 %% Behavioural functions
@@ -92,7 +92,7 @@ handle_call({connect, Conn_config}, From, #connection_state{end_type = client} =
 handle_call({connect, Conn_config, Callback},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = client} = State) ->
-	case Transport:send(Socket, packet(connect, Conn_config)) of
+	case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{connect => From},
 			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes},
@@ -118,7 +118,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 handle_call({publish, #publish{qos = 0, topic = Topic} = Params}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	Transport:send(Socket, packet(publish, Params)),
+	Transport:send(Socket, packet(publish, Config#connect.version, Params, [])),
 	lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
 	{reply, {ok, Ref}, State};
 
@@ -127,7 +127,7 @@ handle_call({publish, #publish{qos = 0, topic = Topic} = Params},
 handle_call({publish, #publish{qos = QoS, topic = Topic} = Params}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, {Params, Packet_Id}) end,
+	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params, Packet_Id}, []) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
 	Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = Packet_Id},
@@ -144,7 +144,7 @@ handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrel, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrel, Packet_Id),
+	Packet = packet(pubrel, State#connection_state.config#connect.version, Packet_Id, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrel}}},
@@ -155,7 +155,7 @@ handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrec, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrec, Packet_Id),
+	Packet = packet(pubrec, State#connection_state.config#connect.version, Packet_Id, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrec}}},
@@ -166,7 +166,7 @@ handle_call({republish, #publish{last_sent = publish} = Params, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
-	Packet = packet(publish, {Params#publish{dup = 1}, Packet_Id}),
+	Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
 	case Transport:send(Socket, Packet) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params}},
@@ -178,7 +178,7 @@ handle_call({subscribe, Subscriptions},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	Packet_Id = State#connection_state.packet_id,
-	case Transport:send(Socket, packet(subscribe, {Subscriptions, Packet_Id})) of
+	case Transport:send(Socket, packet(subscribe, State#connection_state.config#connect.version, {Subscriptions, Packet_Id}, [])) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
@@ -189,7 +189,7 @@ handle_call({unsubscribe, Topics},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	Packet_Id = State#connection_state.packet_id,
-	case Transport:send(Socket, packet(unsubscribe, {Topics, Packet_Id})) of
+	case Transport:send(Socket, packet(unsubscribe, State#connection_state.config#connect.version, {Topics, Packet_Id}, [])) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Topics}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
@@ -199,7 +199,7 @@ handle_call({unsubscribe, Topics},
 handle_call(disconnect,
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, false)) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, undefined, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
@@ -211,7 +211,7 @@ handle_call(disconnect,
 handle_call({pingreq, Callback},
 						_From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
-	case Transport:send(Socket, packet(pingreq, false)) of
+	case Transport:send(Socket, packet(pingreq, State#connection_state.config#connect.version, undefined, [])) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{pingreq => Callback},
 			{reply, ok, State#connection_state{
@@ -234,7 +234,7 @@ handle_call({pingreq, Callback},
 %% ====================================================================
 handle_cast(disconnect,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, false)) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, undefined, [])) of
 		ok -> 
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{stop, shutdown, State#connection_state{connected = 0}};

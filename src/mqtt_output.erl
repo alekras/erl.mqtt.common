@@ -101,6 +101,8 @@ packet(unsuback, '5.0', {ReasonCodeList, Packet_Id}, Properties) ->
 packet(unsuback, _, Packet_Id, _) ->
 	<<(fixed_header(unsuback, 0, 2))/binary, Packet_Id:16>>;
 
+packet(disconnect, '5.0', 0, []) ->
+	<<(fixed_header(disconnect, 0, 0))/binary>>;
 packet(disconnect, '5.0', DisconnectReasonCode, Properties) ->
 	Remaining_packet = <<DisconnectReasonCode:8, (mqtt_property:to_binary(Properties))/binary>>,
 	<<(fixed_header(disconnect, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;

@@ -73,13 +73,29 @@ packet_output('5.0') ->
 
 packet_output_props() ->
 	Value = mqtt_output:packet(pubrec, '5.0', {16, 23045}, [{?Reason_String, "No matching subscribers"},
-																													 {?User_Property, [{name,"Key Name"}, {value,"Property Value"}]}]),
+																													{?User_Property, [{name,"Key Name"}, {value,"Property Value"}]}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<80,57,90,5,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>, Value),
-	
+
 	?passed.
 
 input_parser() ->
 	?assertEqual({pubrec, 101, [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#50:8, 2:8, 101:16, 1:8, 1:8>>)),
+	
+	Value = mqtt_input:input_parser('5.0', <<80,2,90,5, 1,1>>),
+%	io:format(user, "~n -=- value=~256p~n", [Value]),
+	?assertEqual({pubrec, {0, 23045}, [], <<1:8, 1:8>>}, Value),
+
+	Value1 = mqtt_input:input_parser('5.0', <<80,3,90,5,10, 1,1>>),
+%	io:format(user, "~n -=- value=~256p~n", [Value1]),
+	?assertEqual({pubrec, {10, 23045}, [], <<1:8, 1:8>>}, Value1),
+
+	Value2 = mqtt_input:input_parser('5.0', <<80,57,90,5,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8, 1,1>>),
+%	io:format(user, "~n -=- value=~256p~n", [Value2]),
+	?assertEqual({pubrec, {16, 23045}, [{?Reason_String, <<"No matching subscribers">>},
+																			{?User_Property, [{name,<<"Key Name">>}, {value,<<"Property Value">>}]}],
+								<<1:8, 1:8>>},
+							 Value2),
+
 	?passed.

@@ -39,19 +39,20 @@
 	server_publish/2
 ]).
 
--import(mqtt_output, [packet/2]).
--import(mqtt_input, [input_parser/1]).
+-import(mqtt_output, [packet/4]).
+-import(mqtt_input, [input_parser/2]).
 
 process(State, <<>>) -> 
 	State;
 process(State, Binary) ->
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,
+	Version = State#connection_state.config#connect.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
-	case input_parser(Binary) of
+	case input_parser(Version, Binary) of
 
 		{connect, undefined, Tail} ->
 			lager:alert([{endtype, State#connection_state.end_type}], "Connection packet connot be parsed: ~p~n", [Tail]),
@@ -85,12 +86,12 @@ process(State, Binary) ->
 					end,
 					New_Client_Id = Config#connect.client_id,
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
-					Packet = packet(connack, {SP, Resp_code}),
+					Packet = packet(connack, Version, {SP, Resp_code}, []),
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
 					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail);
 				true ->
-					Packet = packet(connack, {SP, Resp_code}),
+					Packet = packet(connack, Version, {SP, Resp_code}, []),
 					Transport:send(Socket, Packet),
 					lager:warning([{endtype, State#connection_state.end_type}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
 					self() ! disconnect,
@@ -114,7 +115,7 @@ process(State, Binary) ->
 
 		{pingreq, Tail} ->
 			lager:info([{endtype, State#connection_state.end_type}], "Ping received to client ~p~n", [Client_Id]),
-			Packet = packet(pingresp, true),
+			Packet = packet(pingresp, Version, undefined, []),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
 
@@ -148,7 +149,7 @@ process(State, Binary) ->
 							erlang:spawn(?MODULE, server_publish, [self(), Params#publish{qos = QoS_4_Retain}])
 						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
 				end || {Topic, QoS} <- Subscriptions],
-			Packet = packet(suback, {Return_Codes, Packet_Id}),
+			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, []),
 			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
@@ -176,7 +177,7 @@ process(State, Binary) ->
 			[ begin 
 					Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
 				end || Topic <- Topics],
-			Packet = packet(unsuback, Packet_Id),
+			Packet = packet(unsuback, Version, Packet_Id, []),
 			Transport:send(Socket, Packet),
 			lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 			process(State, Tail);
@@ -208,7 +209,7 @@ process(State, Binary) ->
 					process(State, Tail);
 				1 ->
 					delivery_to_application(State, Record),
-					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Packet_Id) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, Packet_Id, []) end,
 					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
@@ -229,7 +230,7 @@ process(State, Binary) ->
 %% store PI after receiving message
 								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{last_sent = pubrec}}),
-								Packet = if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>; true -> packet(pubrec, Packet_Id) end,
+								Packet = if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>; true -> packet(pubrec, Version, Packet_Id, []) end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
 										New_processes = Processes#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
@@ -264,7 +265,7 @@ process(State, Binary) ->
 %% store message before pubrel
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Packet_Id) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Version, Packet_Id, []) end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok -> 
@@ -293,7 +294,7 @@ process(State, Binary) ->
 					end,
 %% discard PI before pubcomp send
 					Storage:remove(State#connection_state.end_type, Prim_key),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Packet_Id) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Version, Packet_Id, []) end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok ->

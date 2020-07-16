@@ -55,9 +55,15 @@ packet_output() ->
 %	io:format(user, "~n value=~256p~n", [Value]),
 	?assertEqual(<<208,0>>, Value),
 
+	Value = mqtt_output:packet(pingresp, '5.0', 0, []),
+%	io:format(user, "~n value=~256p~n", [Value]),
+	?assertEqual(<<208,0>>, Value),
+
 	?passed.
 
 input_parser() ->
 	?assertEqual({pingresp, <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#D0:8, 0:8, 1:8, 1:8>>)),
+	?assertEqual({pingresp, <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('5.0', <<16#D0:8, 0:8, 1:8, 1:8>>)),
 	?passed.

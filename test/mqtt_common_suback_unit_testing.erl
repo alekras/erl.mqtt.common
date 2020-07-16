@@ -79,5 +79,16 @@ packet_output_props() ->
 input_parser() ->
 	?assertEqual({suback, 103, [7], [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#90:8, 3:8, 103:16, 7:8, 1:8, 1:8>>)),
-
+	
+	Value = mqtt_input:input_parser('5.0', <<144,6, 0,102, 0, 0,1,2, 5,5>>),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual({suback, 102, [0,1,2], [], <<5:8, 5:8>>}, Value),
+	
+	Value1 = mqtt_input:input_parser('5.0', <<144,39, 0,102, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0,1,128, 5,5>>),
+%	io:format(user, "~n --- value=~256p~n", [Value1]),
+	?assertEqual({suback, 102, [0,1,128], [{?Reason_String, <<"Unspecified error">>},
+																					{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]}],
+								<<5:8, 5:8>>},
+								Value1),
+	
 	?passed.

@@ -54,12 +54,6 @@ unit_test_() ->
 		{"input_parser", fun input_parser/0}
 	].
 
-packet_output() ->
-	Value15 = mqtt_output:packet(pubcomp, 25046),
-%	io:format(user, "~n value=~256p~n", [Value15]),
-	?assertEqual(<<112,2,97,214>>, Value15),
-
-	?passed.
 packet_output('3.1.1') ->
 	Value = mqtt_output:packet(pubcomp, '3.1.1', 25046, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
@@ -88,5 +82,20 @@ packet_output_props() ->
 input_parser() ->
 	?assertEqual({pubcomp, 103, [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#70:8, 2:8, 103:16, 1:8, 1:8>>)),
+
+	Value = mqtt_input:input_parser('5.0', <<112,2,97,214, 1,1>>),
+	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual({pubcomp, {0, 25046}, [], <<1:8, 1:8>>}, Value),
+							 
+	Value1 = mqtt_input:input_parser('5.0', <<112,3,97,215,10, 1,1>>),
+	io:format(user, "~n --- value=~256p~n", [Value1]),
+	?assertEqual({pubcomp, {10, 25047}, [], <<1:8, 1:8>>}, Value1),
+
+	Value2 = mqtt_input:input_parser('5.0', <<112,61,97,213,146,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 27:16,"Packet Identifier not found"/utf8, 1,1>>),
+	io:format(user, "~n --- value=~256p~n", [Value2]),
+	?assertEqual({pubcomp, {146, 25045}, [{?Reason_String, <<"Packet Identifier not found">>},
+																				{?User_Property, [{name,<<"Key Name">>}, {value,<<"Property Value">>}]}],
+								<<1:8, 1:8>>},
+							 Value2),
 
 	?passed.

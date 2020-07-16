@@ -89,4 +89,22 @@ input_parser() ->
 	?assertEqual({subscribe, 101, [{<<"Topic_1">>,0},{<<"Topic_2">>,1},{<<"Topic_3">>,2}], [], <<7:8,7:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<130,32,0,101,0,7,"Topic_1"/utf8,0,0,7,"Topic_2"/utf8,1,0,7,"Topic_3"/utf8,2,7,7>>)),
 
+	Value = mqtt_input:input_parser('5.0', <<130,33, 101:16, 0, 7:16,"Topic_1"/utf8,28, 7:16,"Topic_2"/utf8,29, 7:16,"Topic_3"/utf8,30, 1,7>>),
+	Options = #subscription_options{nolocal = 1, retain_as_published = 1, retain_handling = 1},
+	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual({subscribe, 101, [{<<"Topic_1">>,Options},
+																 {<<"Topic_2">>,Options#subscription_options{max_qos = 1}},
+																 {<<"Topic_3">>, Options#subscription_options{max_qos = 2}}],
+								[], <<1:8,7:8>>}, Value),
+
+	Value1 = mqtt_input:input_parser('5.0', <<130,50, 101:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,
+																						7:16,"Topic_1"/utf8,28, 7:16,"Topic_2"/utf8,29, 7:16,"Topic_3"/utf8,30, 1,7>>),
+	io:format(user, "~n --- value=~256p~n", [Value1]),
+	?assertEqual({subscribe, 101, [{<<"Topic_1">>,Options},
+																 {<<"Topic_2">>,Options#subscription_options{max_qos = 1}},
+																 {<<"Topic_3">>, Options#subscription_options{max_qos = 2}}],
+								[{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]},
+								 {?Subscription_Identifier, 177001}],
+								<<1:8,7:8>>}, Value1),
+
 	?passed.

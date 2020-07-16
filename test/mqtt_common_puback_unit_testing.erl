@@ -82,4 +82,20 @@ packet_output_props() ->
 input_parser() ->
 	?assertEqual({puback, 101, [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#40:8, 2:8, 101:16, 1:8, 1:8>>)),
-	?passed.
+
+	Value = mqtt_input:input_parser('5.0', <<64,2,90,4, 1,1>>),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
+	?assertEqual({puback, {0, 23044}, [], <<1,1>>}, Value),
+
+	Value1 = mqtt_input:input_parser('5.0', <<64,3,90,4,10, 1,1>>),
+%	io:format(user, "~n --- value=~256p~n", [Value1]),
+	?assertEqual({puback, {10, 23044}, [], <<1,1>>}, Value1),
+
+	Value2 = mqtt_input:input_parser('5.0', <<64,57,90,4,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8, 1,1>>),
+%	io:format(user, "~n --- value=~256p~n", [Value2]),
+	?assertEqual({puback, {16, 23044}, [{?Reason_String, <<"No matching subscribers">>},
+																			{?User_Property, [{name,<<"Key Name">>}, {value,<<"Property Value">>}]}],
+								<<1,1>>},
+								Value2),
+
+?passed.
