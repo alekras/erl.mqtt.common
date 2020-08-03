@@ -42,7 +42,7 @@
 ]).
 -endif.
 
-packet(connect, _, #connect{version = '5.0'} = Conn_config, Properties) ->
+packet(connect, _, #connect{version = '5.0', properties = Properties} = Conn_config, []) -> %% @todo remove arg [] !
 	Remaining_packet = <<(variable_header(connect, Conn_config))/binary,
 											 (mqtt_property:to_binary(Properties))/binary,
 											 (payload(connect, Conn_config))/binary>>,
@@ -58,7 +58,7 @@ packet(connack, '5.0', {SP, Connect_Reason_Code}, Properties) ->
 packet(connack, _, {SP, Connect_Reason_Code}, _) ->
 	<<(fixed_header(connack, 0, 2))/binary, 0:7, SP:1, Connect_Reason_Code:8>>;
 
-packet(publish, MQTT_Version, {#publish{payload = Payload} = Params, Packet_Id}, Properties) ->
+packet(publish, MQTT_Version, {#publish{payload = Payload, properties = Properties} = Params, Packet_Id}, []) ->
 	Props_Bin = case MQTT_Version of
 								'5.0' -> mqtt_property:to_binary(Properties);
 								_ -> <<>>
@@ -98,7 +98,7 @@ packet(unsubscribe, _, {Topics, Packet_Id}, _) ->
 packet(unsuback, '5.0', {ReasonCodeList, Packet_Id}, Properties) ->
 	Remaining_packet = <<(variable_header(unsuback, Packet_Id))/binary, (mqtt_property:to_binary(Properties))/binary, (payload(unsuback, ReasonCodeList))/binary>>,
 	<<(fixed_header(unsuback, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
-packet(unsuback, _, Packet_Id, _) ->
+packet(unsuback, _, {_, Packet_Id}, _) ->
 	<<(fixed_header(unsuback, 0, 2))/binary, Packet_Id:16>>;
 
 packet(disconnect, '5.0', 0, []) ->
@@ -122,24 +122,24 @@ packet(auth, '5.0', AuthenticateReasonCode, Properties) ->
 	end,
 	<<(fixed_header(auth, 0, byte_size(Remaining_packet)))/binary, Remaining_packet/binary>>;
 
-packet(puback, '5.0', Param, Properties) ->  %% {Reason_Code, Packet_Id} = Param
+packet(puback, '5.0', Param, Properties) ->  %% {Packet_Id, Reason_Code} = Param
 	pub_response(puback, Param, Properties);
-packet(puback, _, Packet_Id, _) ->
+packet(puback, _, {Packet_Id,0}, _) ->
 	<<(fixed_header(puback, 0, 2))/binary, Packet_Id:16>>;
 
 packet(pubrec, '5.0', Param, Properties) ->
 	pub_response(pubrec, Param, Properties);
-packet(pubrec, _, Packet_Id, _) ->
+packet(pubrec, _, {Packet_Id,0}, _) ->
 	<<(fixed_header(pubrec, 0, 2))/binary, Packet_Id:16>>;
 
 packet(pubrel, '5.0', Param, Properties) ->
 	pub_response(pubrel, Param, Properties);
-packet(pubrel, _, Packet_Id, _) ->
+packet(pubrel, _, {Packet_Id,0}, _) ->
 	<<(fixed_header(pubrel, 0, 2))/binary, Packet_Id:16>>;
 
 packet(pubcomp, '5.0', Param, Properties) ->
 	pub_response(pubcomp, Param, Properties);
-packet(pubcomp, _, Packet_Id, _) ->
+packet(pubcomp, _, {Packet_Id,0}, _) ->
 	<<(fixed_header(pubcomp, 0, 2))/binary, Packet_Id:16>>.
 
 fixed_header(connect, _Flags, Length) ->
@@ -252,6 +252,8 @@ payload(subscribe, [{Topic, QoS, _Callback} | Subscriptions]) ->
 	<<(mqtt_data:encode_utf8_string(Topic))/binary, QoS:8, (payload(subscribe, Subscriptions))/binary>>;
 
 payload(suback, []) -> <<>>;
+payload(suback, [#subscription_options{max_qos = MaxQos, nolocal = NoLocal, retain_as_published = RetainAsPub, retain_handling = RetainHandling} | Return_Codes]) ->
+	<<0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, (payload(suback, Return_Codes))/binary>>;
 payload(suback, [Return_Code | Return_Codes]) ->
 	<<Return_Code:8, (payload(suback, Return_Codes))/binary>>;
 
@@ -267,10 +269,10 @@ payload(unsuback, [ReasonCode | ReasonCodeList]) ->
 %% Internal functions
 %% ====================================================================
 
-pub_response(PacketCode, {0, Packet_Id}, []) ->
+pub_response(PacketCode, {Packet_Id, 0}, []) ->
 	<<(fixed_header(PacketCode, 0, 2))/binary, Packet_Id:16>>;
-pub_response(PacketCode, {Reason_Code, Packet_Id}, []) ->
+pub_response(PacketCode, {Packet_Id, Reason_Code}, []) ->
 	<<(fixed_header(PacketCode, 0, 3))/binary, Packet_Id:16, Reason_Code:8>>;
-pub_response(PacketCode, {Reason_Code, Packet_Id}, Properties) ->
+pub_response(PacketCode, {Packet_Id, Reason_Code}, Properties) ->
 	Props_Bin = mqtt_property:to_binary(Properties),
 	<<(fixed_header(PacketCode, 0, byte_size(Props_Bin) + 3))/binary, Packet_Id:16, Reason_Code:8, Props_Bin/binary>>.

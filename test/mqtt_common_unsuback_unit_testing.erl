@@ -77,7 +77,7 @@ packet_output_props() ->
 	?passed.
 
 input_parser() ->
-	?assertEqual({unsuback, 103, [], <<1:8, 1:8>>}, 
+	?assertEqual({unsuback, {103, []}, [], <<1:8, 1:8>>}, 
 							 mqtt_input:input_parser('3.1.1', <<16#B0:8, 2:8, 103:16, 1:8, 1:8>>)),
 	Value = mqtt_input:input_parser('5.0', <<176,5,4,181, 0, 0,17, 1,1>>),
 %	io:format(user, "~n -=- value=~256p~n", [Value]),

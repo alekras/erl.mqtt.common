@@ -76,7 +76,7 @@ start(End_Type) ->
 			Connect = datasource:get_connection(mqtt_storage),
 			R0 = connection:execute_query(Connect, "CREATE DATABASE IF NOT EXISTS " ++ DB_name),
 			lager:debug([{endtype, End_Type}], "create DB: ~p", [R0]),
-  			datasource:return_connection(mqtt_storage, Connect);
+			datasource:return_connection(mqtt_storage, Connect);
 		#mysql_error{} -> ok
 	end,
   datasource:close(mqtt_storage),

@@ -118,7 +118,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 handle_call({publish, #publish{qos = 0, topic = Topic} = Params}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	Transport:send(Socket, packet(publish, Config#connect.version, Params, [])),
+	Transport:send(Socket, packet(publish, Config#connect.version, {Params, 0}, [])),
 	lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
 	{reply, {ok, Ref}, State};
 
@@ -135,7 +135,7 @@ handle_call({publish, #publish{qos = QoS, topic = Topic} = Params},
 	case Transport:send(Socket, Packet) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:~p~n", [Config#connect.client_id, Topic, QoS]),
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Topic, QoS, Packet_Id]),
 		{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
@@ -144,7 +144,7 @@ handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrel, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrel, State#connection_state.config#connect.version, Packet_Id, []),
+	Packet = packet(pubrel, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrel}}},
@@ -155,7 +155,7 @@ handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrec, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrec, State#connection_state.config#connect.version, Packet_Id, []),
+	Packet = packet(pubrec, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrec}}},
@@ -174,36 +174,41 @@ handle_call({republish, #publish{last_sent = publish} = Params, Packet_Id},
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
-handle_call({subscribe, Subscriptions},
+handle_call({subscribe, Subscriptions}, From, State) ->
+	handle_call({subscribe, Subscriptions, []}, From, State);
+handle_call({subscribe, Subscriptions, Properties},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	Packet_Id = State#connection_state.packet_id,
-	case Transport:send(Socket, packet(subscribe, State#connection_state.config#connect.version, {Subscriptions, Packet_Id}, [])) of
+	case Transport:send(Socket, packet(subscribe, State#connection_state.config#connect.version, {Subscriptions, Packet_Id}, Properties)) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
-handle_call({unsubscribe, Topics},
+handle_call({unsubscribe, Topics}, From, State) ->
+	handle_call({unsubscribe, Topics, []}, From, State);
+handle_call({unsubscribe, Topics, Properties},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	Packet_Id = State#connection_state.packet_id,
-	case Transport:send(Socket, packet(unsubscribe, State#connection_state.config#connect.version, {Topics, Packet_Id}, [])) of
+	Packet = packet(unsubscribe, State#connection_state.config#connect.version, {Topics, Packet_Id}, Properties),
+	case Transport:send(Socket, Packet) of
 		ok ->
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Topics}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
-handle_call(disconnect,
+handle_call(disconnect, %% @todo add Disconnect ReasonCode
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, undefined, [])) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, 0, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
-			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes}};
+			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes, packet_id = 100}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
 	end;
@@ -232,9 +237,9 @@ handle_call({pingreq, Callback},
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-handle_cast(disconnect,
+handle_cast(disconnect, %% @todo add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, undefined, [])) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, 0, [])) of
 		ok -> 
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{stop, shutdown, State#connection_state{connected = 0}};

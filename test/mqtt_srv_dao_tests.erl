@@ -115,8 +115,9 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:save(server, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}),
  	Storage:save(server, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}),
 
- 	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>}),
- 	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>}),
+	Storage:save(server, #user{user_id = "guest", password = <<"guest">>}),
+	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>}),
+	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>}),
 
 	Storage:save(server, #publish{topic = "AK", payload = <<"Payload A">>}),
 	Storage:save(server, #publish{topic = "AK/Test", payload = <<"Payload B">>}),

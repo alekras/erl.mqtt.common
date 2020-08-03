@@ -55,7 +55,7 @@ process(State, Binary) ->
 	case input_parser(Version, Binary) of
 
 		{connect, undefined, Tail} ->
-			lager:alert([{endtype, State#connection_state.end_type}], "Connection packet connot be parsed: ~p~n", [Tail]),
+			lager:alert([{endtype, State#connection_state.end_type}], "Connection packet cannot be parsed: ~p~n", [Tail]),
 			self() ! disconnect,
 			process(State, <<>>);
 
@@ -64,6 +64,8 @@ process(State, Binary) ->
 			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
 			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
+			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
+			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
 				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end;
 				 true -> ok
@@ -86,22 +88,22 @@ process(State, Binary) ->
 					end,
 					New_Client_Id = Config#connect.client_id,
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
-					Packet = packet(connack, Version, {SP, Resp_code}, []),
+					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties @todo
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
 					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail);
 				true ->
-					Packet = packet(connack, Version, {SP, Resp_code}, []),
+					Packet = packet(connack, ConnVersion, {SP, Resp_code}, []),
 					Transport:send(Socket, Packet),
 					lager:warning([{endtype, State#connection_state.end_type}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
 					self() ! disconnect,
 					process(State, Tail)
 			end;
 
-		{connack, SP, CRC, Msg, Tail} ->
+		{connack, SP, CRC, Msg, Properties, Tail} ->
 			case maps:get(connect, Processes, undefined) of
 				{Pid, Ref} ->
-					Pid ! {connack, Ref, SP, CRC, Msg},
+					Pid ! {connack, Ref, SP, CRC, Msg, Properties},
 					{Host, Port} = get_peername(Transport, Socket),
 					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p", [Client_Id, Host, Port]),
 					process(
@@ -133,7 +135,7 @@ process(State, Binary) ->
 																ping_count = State#connection_state.ping_count - 1},
 				Tail);
 
-		{subscribe, Packet_Id, Subscriptions, Tail} ->
+		{subscribe, Packet_Id, Subscriptions, Properties, Tail} ->
 			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
 %% store session subscriptions
 
@@ -142,26 +144,26 @@ process(State, Binary) ->
 													#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id},
 																																				qos = QoS, 
 																																				callback = not_defined_yet}
-												),
+											),
 					lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n", [Storage:get(State#connection_state.end_type, {topic, Topic})]),
 					[ begin
 							QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
 							erlang:spawn(?MODULE, server_publish, [self(), Params#publish{qos = QoS_4_Retain}])
 						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
 				end || {Topic, QoS} <- Subscriptions],
-			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, []),
+			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return connect properties
 			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
 
-		{suback, Packet_Id, Return_codes, Tail} ->
+		{suback, Packet_Id, Return_codes, Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, Subscriptions} when is_list(Subscriptions) ->
 %% store session subscriptions
 					[ begin 
 							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = Callback})
 						end || {Topic, QoS, Callback} <- Subscriptions], %% @todo check clean_session flag
-					Pid ! {suback, Ref, Return_codes},
+					Pid ! {suback, Ref, Return_codes, Properties},
 					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 					process(
 						State#connection_state{
@@ -172,20 +174,20 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		
-		{unsubscribe, Packet_Id, Topics, Tail} ->
+		{unsubscribe, Packet_Id, Topics, Properties, Tail} ->
 %% discard session subscriptions
 			[ begin 
 					Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
 				end || Topic <- Topics],
-			Packet = packet(unsuback, Version, Packet_Id, []),
+			Packet = packet(unsuback, Version, {[0], Packet_Id}, Properties), %% @todo add reason code list
 			Transport:send(Socket, Packet),
 			lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 			process(State, Tail);
 		
-		{unsuback, Packet_Id, Tail} ->
+		{unsuback, {Packet_Id, ReturnCodes}, Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, Topics} ->
-					Pid ! {unsuback, Ref},
+					Pid ! {unsuback, Ref, ReturnCodes, Properties},
 %% discard session subscriptions
 					[ begin 
 							Storage:remove(State#connection_state.end_type, #subs_primary_key{topic = Topic, client_id = Client_Id})
@@ -201,15 +203,15 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
-%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(State, Record),
 					process(State, Tail);
 				1 ->
-					delivery_to_application(State, Record),
-					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, Packet_Id, []) end,
+					delivery_to_application(State, Record),  %% check for successful delivery
+					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end,
 					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
@@ -230,7 +232,10 @@ process(State, Binary) ->
 %% store PI after receiving message
 								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{last_sent = pubrec}}),
-								Packet = if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>; true -> packet(pubrec, Version, Packet_Id, []) end,
+								Packet = 
+									if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
+									true -> packet(pubrec, Version, {Packet_Id, 0}, Record#publish.properties)
+								end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
 										New_processes = Processes#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
@@ -243,13 +248,13 @@ process(State, Binary) ->
 			end;
 
 		?test_fragment_skip_rcv_puback
-		{puback, Packet_Id, Tail} ->
+		{puback, {Packet_Id, ReasonCode}, Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
 %% discard message after pub ack
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:remove(State#connection_state.end_type, Prim_key),
-					Pid ! {puback, Ref},
+					Pid ! {puback, Ref, ReasonCode, Properties},
 					process(
 						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
 						Tail);
@@ -259,13 +264,13 @@ process(State, Binary) ->
 
 		?test_fragment_skip_rcv_pubrec
 %%		?test_fragment_skip_send_pubrel
-		{pubrec, Packet_Id, Tail} ->
+		{pubrec, {Packet_Id, ResponseCode}, Properties, Tail} ->  %% now just copy Props from pubrec to pubrel
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
 %% store message before pubrel
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Version, Packet_Id, []) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Version, {Packet_Id, ResponseCode}, Properties) end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok -> 
@@ -278,8 +283,8 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_pubrel
-		{pubrel, Packet_Id, Tail} ->
-%			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
+		{pubrel, {Packet_Id, _ReasonCode}, Properties, Tail} ->
+%%			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{_From, _Params} ->
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -294,7 +299,7 @@ process(State, Binary) ->
 					end,
 %% discard PI before pubcomp send
 					Storage:remove(State#connection_state.end_type, Prim_key),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Version, Packet_Id, []) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Version, {Packet_Id, 0}, Properties) end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok ->
@@ -307,13 +312,13 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_pubcomp
-		{pubcomp, Packet_Id, Tail} ->
+		{pubcomp, {Packet_Id, ReasonCode}, Properties, Tail} ->
 %			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
 					case Pid of
 						undefined -> none;
-						_ -> 	Pid ! {pubcomp, Ref}
+						_ -> 	Pid ! {pubcomp, Ref, ReasonCode, Properties}
 					end,
 %% discard message after pub comp
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -323,7 +328,7 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 
-		{disconnect, Tail} ->
+		{disconnect, _DisconnectReasonCode, _Properties, Tail} ->
 %%			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
 			self() ! disconnect, %% @todo stop the process, close the socket !!!
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected~n", [Client_Id]),
@@ -411,14 +416,16 @@ server_publish(Pid, Params) ->
 				0 -> ok;
 				1 ->
 					receive
-						{puback, Ref} -> 
+						{puback, Ref, _ReasonCode, _Properties} ->  %% @todo just get properties for now
+lager:debug([{endtype, server}], "Recieved puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_connection:server_publish/2", message = "puback timeout"}
 					end;
 				2 ->
 					receive
-						{pubcomp, Ref} -> 
+						{pubcomp, Ref, _ReasonCode,_Properties} -> 
+lager:debug([{endtype, server}], "Recieved pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_connection:server_publish/2", message = "pubcomp timeout"}
@@ -428,7 +435,7 @@ server_publish(Pid, Params) ->
 				#mqtt_client_error{type = publish, source = "mqtt_connection:server_publish/2", message = Reason}
 	end,
 	case R of
-		ok -> ok;
+		ok -> lager:debug([{endtype, server}], "Server successfuly publish message to subscriber.~n", []);
 		_	-> lager:error([{endtype, server}], "~128p~n", [R])
 	end.
 
@@ -458,4 +465,6 @@ get_peername(mqtt_ws_handler, Socket) ->
 	case mqtt_ws_handler:peername(Socket) of
 		{ok, {Host, Port}} -> {Host, Port};
 		_ -> {undefined, ""}
-	end.
+	end;
+get_peername(_, _Socket) ->
+	{"test mock host", "0"}.

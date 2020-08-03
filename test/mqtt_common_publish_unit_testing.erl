@@ -76,13 +76,15 @@ packet_output(Version) ->
 	?passed.
 
 packet_output_props('5.0' = Version) ->
-	Value = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 0}, undefined},
-														 [{?Payload_Format_Indicator, 1},{?Message_Expiry_Interval, 120000}]),
+	Value = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 0,
+																												 properties = [{?Payload_Format_Indicator, 1},{?Message_Expiry_Interval, 120000}]},
+																								undefined}, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<48,19, 5:16,"Topic"/utf8, 7,2,120000:32,1,1, "Test"/utf8>>, Value),
 
-	Value2 = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 1}, 100},
-															[{?Topic_Alias, 300},{?Correlation_Data, <<1,2,3,4>>}]),
+	Value2 = mqtt_output:packet(publish, Version, {#publish{topic = "Topic", payload = <<"Test">>, qos = 1,
+																													properties = [{?Topic_Alias, 300},{?Correlation_Data, <<1,2,3,4>>}]},
+																								 100}, []),
 %	io:format(user, "~n === value=~256p~n", [Value2]),
 	?assertEqual(<<50,24, 5:16,"Topic"/utf8, 100:16, 10, 9,4:16,1,2,3,4, 35,300:16, "Test"/utf8>>, Value2),
 

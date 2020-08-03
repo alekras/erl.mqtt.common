@@ -222,7 +222,6 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R4 = Storage:get_all(client, topic),	
 %	?debug_Fmt("::test:: read returns ~120p", [R4]),	
 	?assertEqual(5, length(R4)),
-	
 
 	?passed
 end}.

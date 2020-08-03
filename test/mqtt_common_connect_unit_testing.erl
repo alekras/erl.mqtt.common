@@ -193,11 +193,12 @@ packet_output_props('5.0' = Ver) ->
 									will_properties = [{?Will_Delay_Interval, 6000}, {?Response_Topic, "AfterClose/Will"}],
 									clean_session = 1,
 									keep_alive = 1000,
-									version = Ver
+									version = Ver,
+									properties = [{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}]
 								},
-								[{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}]
+								[]
 	),
-%	io:format(user, "~n --- value=~256p~n", [Value]),
+	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<16,91, 4:16,"MQTT"/utf8, 5, 246, 3,232, 
 								 10, 17, 16#FFFFFFFF:32, 39, 65000:32, 
 								 9:16,"publisher"/utf8, 
