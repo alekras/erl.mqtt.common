@@ -105,7 +105,8 @@ process(State, Binary) ->
 				{Pid, Ref} ->
 					Pid ! {connack, Ref, SP, CRC, Msg, Properties},
 					{Host, Port} = get_peername(Transport, Socket),
-					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p", [Client_Id, Host, Port]),
+					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p ", [Client_Id, Host, Port, Version]),
+					lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
 					process(
 						State#connection_state{processes = maps:remove(connect, Processes), 
 																		session_present = SP,
@@ -116,7 +117,7 @@ process(State, Binary) ->
 			end;
 
 		{pingreq, Tail} ->
-			lager:info([{endtype, State#connection_state.end_type}], "Ping received to client ~p~n", [Client_Id]),
+			lager:info([{endtype, State#connection_state.end_type}], "Ping received from client ~p~n", [Client_Id]),
 			Packet = packet(pingresp, Version, undefined, []),
 			Transport:send(Socket, Packet),
 			process(State, Tail);

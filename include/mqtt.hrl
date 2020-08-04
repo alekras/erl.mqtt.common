@@ -14,6 +14,30 @@
 %% limitations under the License. 
 %%
 
+%% @type connect() = #connect{} The record represents connection parameters.<br/> 
+%% -record(<strong>mqtt_client_error</strong>, {
+%% <dl>
+%%   <dt>client_id :: string()</dt><dd>- The Client Identifier (ClientID) identifies the Client to the Server.
+%%       Each Client connecting to the Server has a unique ClientID.</dd>
+%%   <dt>user_name :: string()</dt><dd>- User name can be used by the Server for authentication and authorization.</dd>
+%%   <dt>password :: binary()</dt><dd>- Password can be used to carry credential information.</dd>
+%%   <dt>will = 0 :: 0 | 1</dt><dd>- If the Will Flag is set to 1 this indicates that a Will Message MUST be stored on the Server and associated with the Session.</dd>
+%%   <dt>will_qos = 0 :: 0 | 1 | 2</dt><dd>- specifies the QoS level to be used when publishing the Will Message.</dd>
+%%   <dt>will_retain = 0 :: 0 | 1</dt><dd>- specifies if the Will Message is to be retained when it is published.</dd>
+%%   <dt>will_topic = "" :: string()</dt><dd>- Will message Topic.</dd>
+%%   <dt>will_properties = [] :: list()</dt><dd>- The Will Properties field defines the Application Message properties
+%%        to be sent with the Will Message when it is published, 
+%%        and properties which define when to publish the Will Message.</dd>
+%%   <dt>will_message = <<>> :: binary()</dt><dd>- Will message payload.</dd>
+%%   <dt>clean_session = 1 :: 0 | 1</dt><dd>- This flag specifies whether the Connection starts a new Session or is a continuation of an existing Session.</dd>
+%%   <dt>keep_alive :: integer()</dt>
+%%     <dd>- It is the maximum time interval in seconds that is permitted to elapse between the point 
+%%           at which the Client finishes transmitting one MQTT Control Packet 
+%%           and the point it starts sending the next.</dd>
+%%   <dt>properties = [] :: list()</dt><dd>- Connect packet properties.</dd>
+%%   <dt>version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'</dt><dd>- Version of MQTT protocol for the connection.</dd>
+%% </dl>
+%% }).
 -record(connect, 
   {
     client_id :: string(),
@@ -123,7 +147,7 @@
   }
 ).
 
-%% @type mqtt_client_error() = #mqtt_client_error{}. Record represents an exception that is thrown by a client's module.<br/> 
+%% @type mqtt_client_error() = #mqtt_client_error{} The record represents an exception that is thrown by a client's module.<br/> 
 %% -record(<strong>mqtt_client_error</strong>, {
 %% <dl>
 %%   <dt>type:: tcp | connection</dt><dd>- .</dd>
