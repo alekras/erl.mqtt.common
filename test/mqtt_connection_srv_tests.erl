@@ -514,6 +514,6 @@ subscribe_v3() ->
 	wait_mock_tcp("suback").
 
 subscribe_v5() ->
-		mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
+	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
 	conn_server ! {tcp, undefined, <<130,11,0,100,0,0,5,84,111,112,105,99,2>>}, %% Subscription request
 	wait_mock_tcp("suback").
