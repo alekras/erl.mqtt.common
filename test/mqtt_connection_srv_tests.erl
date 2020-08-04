@@ -121,7 +121,7 @@ cleanup(X, Y) ->
 	mock_tcp:stop().
 
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
 	conn_server ! {tcp, undefined, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
@@ -143,7 +143,7 @@ connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to
 	?passed
 end};
 connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p ~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
 	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
@@ -166,7 +166,7 @@ connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to
 end}.
 
 connection_props_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p ~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,13,0,0, 10, 17, 16#FFFFFFFF:32, 39, 65000:32>>), %% Connack packet
 	conn_server ! {tcp, undefined, 
 			<<16,93, 4:16,"MQTT"/utf8,5,246,234,96, 
@@ -191,7 +191,7 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ a
 end}.
 
 subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
@@ -205,7 +205,7 @@ subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	?passed
 end};
 subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
@@ -220,7 +220,7 @@ subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 end}.
 
 subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,21, 100:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 2>>), %% Suback packet
@@ -235,7 +235,7 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 end}.
 
 unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
@@ -253,7 +253,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	?passed
 end};
 unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
@@ -272,7 +272,7 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	end}.
 
 unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
@@ -293,7 +293,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	end}.
 
 publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(),
 	subscribe_v3(),
 
@@ -308,7 +308,7 @@ publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	?passed
 end};
 publish_0_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 
@@ -324,7 +324,7 @@ publish_0_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	end}.
 
 publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 
@@ -340,7 +340,7 @@ publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ ato
 	end}.
 
 publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(),
 	subscribe_v3(),
 	
@@ -358,7 +358,7 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	?passed
 end};
 publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 
@@ -377,7 +377,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	end}.
 
 publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 
@@ -397,7 +397,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 	end}.
 
 publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(),
 	subscribe_v3(),
 
@@ -423,7 +423,7 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	?passed
 end};
 publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 
@@ -450,7 +450,7 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	end}.
 
 publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
+	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 	subscribe_v5(),
 

@@ -102,14 +102,14 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 10101}, document = #publish{topic = "AK", payload = <<"Payload 2">>}}),
  	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = #publish{topic = "AK", payload = <<"Payload 3">>}}),
  
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "AKtest", client_id = "lemon"}, qos = 0, callback = {erlang, timestamp}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+", client_id = "orange"}, qos = 1, callback = {mqtt_client_test, callback}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December", client_id = "apple"}, qos = 2, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/#", client_id = "pear"}, qos = 1, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+/2", client_id = "plum"}, qos = 2, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "/+/December/+", client_id = "orange"}, qos = 2, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December", client_id = "orange"}, qos = 0, callback = {size}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December/+", client_id = "apple"}, qos = 0, callback = {length}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}, callback = {mqtt_client_test, callback}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}, callback = {length}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/#", client_id = "pear"}, options = #subscription_options{max_qos=1}, callback = {length}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+/2", client_id = "plum"}, options = #subscription_options{max_qos=2}, callback = {length}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "/+/December/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {length}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {size}}),
+ 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "+/December/+", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}),
  
  	Storage:save(server, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}),
  	Storage:save(server, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}),
@@ -153,7 +153,7 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	?assertEqual(undefined, Ra),
  	R1 = Storage:get(server, #subs_primary_key{topic = "AKtest", client_id = "lemon"}),
 %	?debug_Fmt("::test:: read returns R1 ~120p", [R1]),	
- 	?assertEqual(#storage_subscription{key = #subs_primary_key{topic = "AKtest", client_id = "lemon"}, qos = 0, callback = {erlang, timestamp}}, R1),
+ 	?assertEqual(#storage_subscription{key = #subs_primary_key{topic = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}, R1),
  	R1a = Storage:get(server, #subs_primary_key{topic = "AK_Test", client_id = "lemon"}),
 %	?debug_Fmt("::test:: read returns R1a ~120p", [R1a]),	
  	?assertEqual(undefined, R1a),
@@ -190,24 +190,24 @@ end}.
 extract_topic(X, Storage) -> {"extract topic [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 	R = Storage:get_client_topics(server, "orange"),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),	
-	?assert(lists:member({"+/December",0,{size}}, R)),
-	?assert(lists:member({"/+/December/+",2,{length}}, R)),
-	?assert(lists:member({"Winter/+",1,{mqtt_client_test, callback}}, R)),
+	?assert(lists:member({"+/December",#subscription_options{max_qos=0},{size}}, R)),
+	?assert(lists:member({"/+/December/+",#subscription_options{max_qos=2},{length}}, R)),
+	?assert(lists:member({"Winter/+",#subscription_options{max_qos=1},{mqtt_client_test, callback}}, R)),
 	?passed
 end}.
 	
 extract_matched_topic(X, Storage) -> {"extract matched topic [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 	R = Storage:get_matched_topics(server, #subs_primary_key{topic = "Winter/December", client_id = "orange"}),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),	
-	?assertEqual([{"+/December",0,{size}},
-								{"Winter/+",1,{mqtt_client_test, callback}}], R),
+	?assertEqual([{"+/December",#subscription_options{max_qos=0},{size}},
+								{"Winter/+",#subscription_options{max_qos=1},{mqtt_client_test, callback}}], R),
 
 	R1 = Storage:get_matched_topics(server, "Winter/December"),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),	
-	?assertEqual([{storage_subscription,{subs_primary_key,"+/December","apple"},2,{length}},
-								{storage_subscription,{subs_primary_key,"+/December","orange"},0,{size}},
-								{storage_subscription,{subs_primary_key,"Winter/#","pear"},1,{length}},
-								{storage_subscription,{subs_primary_key,"Winter/+","orange"},1,{mqtt_client_test, callback}}], R1),
+	?assertEqual([{storage_subscription,{subs_primary_key,"+/December","apple"},#subscription_options{max_qos=2},{length}},
+								{storage_subscription,{subs_primary_key,"+/December","orange"},#subscription_options{max_qos=0},{size}},
+								{storage_subscription,{subs_primary_key,"Winter/#","pear"},#subscription_options{max_qos=1},{length}},
+								{storage_subscription,{subs_primary_key,"Winter/+","orange"},#subscription_options{max_qos=1},{mqtt_client_test, callback}}], R1),
 	?passed
 end}.
 
@@ -227,10 +227,10 @@ update(X, Storage) -> {"update [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R1 = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 201}),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(undefined, R1#storage_publish.document),
-	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+", client_id = "orange"}, qos=2, callback = {erlang, binary_to_list}}),
+	Storage:save(server, #storage_subscription{key = #subs_primary_key{topic = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {erlang, binary_to_list}}),
 	R2 = Storage:get(server, #subs_primary_key{topic = "Winter/+", client_id = "orange"}),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
-	?assertEqual(2, R2#storage_subscription.qos),
+	?assertEqual(2, R2#storage_subscription.options#subscription_options.max_qos),
 	?assertEqual({erlang, binary_to_list}, R2#storage_subscription.callback),
 	?passed
 end}.

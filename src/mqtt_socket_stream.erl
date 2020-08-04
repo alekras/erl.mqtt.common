@@ -140,18 +140,25 @@ process(State, Binary) ->
 %% store session subscriptions
 
 			[ begin %% Topic, QoS - new subscriptions
+					Sub_Options = 
+						if Version == '5.0' -> Options;
+							 true ->
+								#subscription_options{max_qos = Options}
+						end,
 					Storage:save(State#connection_state.end_type,
 													#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id},
-																																				qos = QoS, 
+																																				options = Sub_Options, 
 																																				callback = not_defined_yet}
 											),
-					lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n", [Storage:get(State#connection_state.end_type, {topic, Topic})]),
+					Retain_Messages = Storage:get(State#connection_state.end_type, {topic, Topic}),
+					lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n", [Retain_Messages]),
+					QoS = Sub_Options#subscription_options.max_qos,
 					[ begin
 							QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
 							erlang:spawn(?MODULE, server_publish, [self(), Params#publish{qos = QoS_4_Retain}])
-						end || #publish{qos = Params_QoS} = Params <- Storage:get(State#connection_state.end_type, {topic, Topic})]
-				end || {Topic, QoS} <- Subscriptions],
-			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return connect properties
+						end || #publish{qos = Params_QoS} = Params <- Retain_Messages]
+				end || {Topic, Options} <- Subscriptions],
+			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return connect properties @todo generate return codes
 			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
@@ -161,8 +168,8 @@ process(State, Binary) ->
 				{{Pid, Ref}, Subscriptions} when is_list(Subscriptions) ->
 %% store session subscriptions
 					[ begin 
-							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = Callback})
-						end || {Topic, QoS, Callback} <- Subscriptions], %% @todo check clean_session flag
+							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, options = Options, callback = Callback})
+						end || {Topic, Options, Callback} <- Subscriptions], %% @todo check clean_session flag
 					Pid ! {suback, Ref, Return_codes, Properties},
 					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 					process(
@@ -390,10 +397,11 @@ delivery_to_application(#connection_state{end_type = server, storage = Storage} 
 					undefined -> 
 						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 					Pid ->
+						TopicQoS = Options#subscription_options.max_qos,
 						QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
 						erlang:spawn(?MODULE, server_publish, [Pid, Params#publish{qos = QoS, retain = 0}])
 				end
-				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, qos = TopicQoS} <- List
+				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
 			]
 	end,
 	lager:info([{endtype, State#connection_state.end_type}], 

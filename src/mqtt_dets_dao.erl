@@ -224,15 +224,18 @@ get(server, {topic, TopicFilter}) ->
 
 get_client_topics(End_Type, Client_Id) ->
 	Subscription_db = db_id(2, End_Type),
-	MatchSpec = ets:fun2ms(fun(#storage_subscription{key = #subs_primary_key{topic = Top, client_id = CI}, qos = QoS, callback = CB}) when CI == Client_Id -> {Top, QoS, CB} end),
+	MatchSpec = ets:fun2ms(
+							 fun(#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = CI}, options = Options, callback = CB}) when CI == Client_Id -> 
+											{Topic, Options, CB} 
+							 end),
 	dets:select(Subscription_db, MatchSpec).
 
 get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
 	Subscription_db = db_id(2, End_Type),
 	Fun =
-		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, qos = QoS, callback = CB}) when Client_Id =:= CI -> 
+		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, options = Options, callback = CB}) when Client_Id =:= CI -> 
 					case mqtt_socket_stream:is_match(Topic, TopicFilter) of
-						true -> {continue, {TopicFilter, QoS, CB}};
+						true -> {continue, {TopicFilter, Options, CB}};
 						false -> continue
 					end;
 				(_) -> continue

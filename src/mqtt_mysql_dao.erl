@@ -104,7 +104,8 @@ start(End_Type) ->
 				"client_id char(25) DEFAULT '',"
 				" topic varchar(512) DEFAULT ''," %% @todo make separate table 'topic'. Do I need it at all?
 				" topic_re varchar(512),"           %% @todo make separate table 'topic'
-				" qos tinyint(1),"
+%%				" qos tinyint(1),"
+				" options blob,"
 				" callback blob,"
 				" PRIMARY KEY (topic, client_id)"
 				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
@@ -152,15 +153,17 @@ save(End_Type, #storage_publish{key = #primary_key{client_id = Client_Id, packet
 		integer_to_list(Packet_Id), ",x'",
 		binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(End_Type, Query);
-save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = Topic}, qos = QoS, callback = CB}) ->
+save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = Topic}, options = Options, callback = CB}) ->
 	CBin = term_to_binary(CB),
+	OptionsBin = term_to_binary(Options),
 	Query = ["REPLACE INTO subscription VALUES ('",
 		Client_Id, "','",
 		Topic, "','",
-		mqtt_socket_stream:topic_regexp(Topic), "',",
-		integer_to_list(QoS), ",x'",
-		binary_to_hex(CBin), "')"],
-		execute_query(End_Type, Query);
+		mqtt_socket_stream:topic_regexp(Topic), "'",
+%		integer_to_list(QoS), ",x'",
+		",x'", binary_to_hex(OptionsBin), "'",
+		",x'", binary_to_hex(CBin), "')"],
+	execute_query(End_Type, Query);
 save(End_Type, #storage_connectpid{client_id = Client_Id, pid = Pid}) ->
 	Query = ["REPLACE INTO connectpid VALUES ('",
 		Client_Id, "',x'",
@@ -210,12 +213,14 @@ get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 		[[R2]] -> #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = binary_to_term(R2)}
 	end;
 get(End_Type, #subs_primary_key{client_id = Client_Id, topic = Topic}) -> %% @todo delete it
-	Query = ["SELECT qos, callback FROM subscription WHERE client_id='",
+	Query = ["SELECT options, callback FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",
 		Topic, "'"],
 	case execute_query(End_Type, Query) of
 		[] -> undefined;
-		[[QoS, CB]] -> #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = QoS, callback = binary_to_term(CB)}
+		[[Options, CB]] -> #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, 
+																						 options = binary_to_term(Options), 
+																						 callback = binary_to_term(CB)}
 	end;
 get(End_Type, {client_id, Client_Id}) ->
 	Query = [
@@ -238,19 +243,19 @@ get(server, {topic, TopicFilter}) ->
 	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_socket_stream:is_match(Topic, TopicFilter)].
 
 get_client_topics(End_Type, Client_Id) ->
-	Query = ["SELECT topic, qos, callback FROM subscription WHERE client_id='", Client_Id, "'"],
-	[{Topic, QoS, binary_to_term(Callback)} || [Topic, QoS, Callback] <- execute_query(End_Type, Query)].
+	Query = ["SELECT topic, options, callback FROM subscription WHERE client_id='", Client_Id, "'"],
+	[{Topic, binary_to_term(Options), binary_to_term(Callback)} || [Topic, Options, Callback] <- execute_query(End_Type, Query)].
 
 get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
-	Query = ["SELECT topic,qos,callback FROM subscription WHERE client_id='",Client_Id,
+	Query = ["SELECT topic,options,callback FROM subscription WHERE client_id='",Client_Id,
 					 "' and '",Topic,"' REGEXP topic_re"],
 	L = execute_query(End_Type, Query),
-	[{TopicFilter, QoS, binary_to_term(CB)} || [TopicFilter, QoS, CB] <- L];
+	[{TopicFilter, binary_to_term(Options), binary_to_term(CB)} || [TopicFilter, Options, CB] <- L];
 get_matched_topics(End_Type, Topic) ->
-	Query = ["SELECT client_id,topic,qos,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re"],
+	Query = ["SELECT client_id,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re"],
 	L = execute_query(End_Type, Query),
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = TopicFilter}, qos = QoS, callback = binary_to_term(CB)}
-		|| [Client_Id, TopicFilter, QoS, CB] <- L].
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = TopicFilter}, options = binary_to_term(Options), callback = binary_to_term(CB)}
+		|| [Client_Id, TopicFilter, Options, CB] <- L].
 	
 get_all(End_Type, {session, Client_Id}) ->
 	Query = [

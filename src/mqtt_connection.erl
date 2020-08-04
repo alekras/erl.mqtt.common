@@ -326,6 +326,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 						undefined -> 
 							lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
 						Pid ->
+							TopicQoS = TopicOptions#subscription_options.max_qos,
 							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
 							Params = #publish{topic = Topic, 
 																qos = QoS, 
@@ -333,7 +334,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 																payload = Config#connect.will_message},
 							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])
 					end
-					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, qos = TopicQoS} <- List
+					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, options = TopicOptions} <- List
 				],
 				if (Config#connect.will_retain =:= 1) ->
 						Params1 = #publish{topic = Config#connect.will_topic, 

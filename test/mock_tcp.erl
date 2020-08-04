@@ -49,12 +49,11 @@ loop({Pid, [ExpectValue | EVList]} = State) ->
 				_ ->
 					if ExpectValue == Msg -> 
 								io:format(user, "~n Sent to mock = ~256p~n", [Msg]),
-								Pid ! {mock_tcp, true},
-								ok;
+								Pid ! {mock_tcp, true};
 						 true ->
 								io:format(user, "~n Expected = ~256p~n    Value = ~256p~n", [ExpectValue, Msg]),
-								Pid ! {mock_tcp, false},
-								?assert(false)
+								Pid ! {mock_tcp, false}
+%								?assert(false)
 					end,
 					loop({Pid, EVList})
 			end
