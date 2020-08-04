@@ -29,27 +29,27 @@ handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = S
 ).
 
 -define(test_fragment_skip_rcv_publish, 
-		{publish, _QoS, _Packet_Id, _Topic, _Payload, Tail} when State#connection_state.test_flag =:= skip_rcv_publish ->
+		{publish, _Record, _Packet_Id, Tail} when State#connection_state.test_flag =:= skip_rcv_publish ->
 			process(State, Tail);
 ).
 
 -define(test_fragment_skip_rcv_puback, 
-		{puback, _Packet_Id, Tail} when State#connection_state.test_flag =:= skip_rcv_puback ->
+		{puback, {_Packet_Id, _ReasonCode}, _Properties, Tail} when State#connection_state.test_flag =:= skip_rcv_puback ->
 			process(State, Tail);
 ).
 
 -define(test_fragment_skip_rcv_pubrec, 
-		{pubrec, _Packet_Id, Tail} when State#connection_state.test_flag =:= skip_rcv_pubrec ->
+		{pubrec, {_Packet_Id, _ResponseCode}, _Properties, Tail} when State#connection_state.test_flag =:= skip_rcv_pubrec ->
 			process(State, Tail);
 ).
 
 -define(test_fragment_skip_rcv_pubrel, 
-		{pubrel, _Packet_Id, Tail} when State#connection_state.test_flag =:= skip_rcv_pubrel ->
+		{pubrel, {_Packet_Id, _ReasonCode}, _Properties, Tail} when State#connection_state.test_flag =:= skip_rcv_pubrel ->
 			process(State, Tail);
 ).
 
 -define(test_fragment_skip_rcv_pubcomp, 
-		{pubcomp, _Packet_Id, Tail} when State#connection_state.test_flag =:= skip_rcv_pubcomp ->
+		{pubcomp, {_Packet_Id, _ReasonCode}, _Properties, Tail} when State#connection_state.test_flag =:= skip_rcv_pubcomp ->
 			process(State, Tail);
 ).
 
