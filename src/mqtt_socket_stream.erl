@@ -105,12 +105,19 @@ process(State, Binary) ->
 				{Pid, Ref} ->
 					Pid ! {connack, Ref, SP, CRC, Msg, Properties},
 					{Host, Port} = get_peername(Transport, Socket),
-					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p ", [Client_Id, Host, Port, Version]),
 					lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
+					IsConnected =
+					if CRC == 0 ->
+							lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
+							1;
+						true ->
+							lager:info([{endtype, client}], "Client ~p is disconnected to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
+							0
+					end,
 					process(
 						State#connection_state{processes = maps:remove(connect, Processes), 
 																		session_present = SP,
-																		connected = 1},
+																		connected = IsConnected},
 						Tail);
 				undefined ->
 					process(State, Tail)
@@ -211,7 +218,7 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case QoS of
 				0 -> 	
@@ -219,7 +226,7 @@ process(State, Binary) ->
 					process(State, Tail);
 				1 ->
 					delivery_to_application(State, Record),  %% check for successful delivery
-					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end,
+					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% @todo properties?
 					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
@@ -358,13 +365,13 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
 delivery_to_application(#connection_state{end_type = client, default_callback = Default_Callback} = State,
-												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain, payload = Payload}) ->
+												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain, payload = Payload} = Arg) ->
 	case get_topic_attributes(State, Topic) of
 		[] -> do_callback(Default_Callback, [{{Topic, undefined}, QoS, Dup, Retain, Payload}]);
 		List ->
 			[
 				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]) of
-					false -> do_callback(Default_Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]);
+					false -> do_callback(Default_Callback, [{TopicQoS, Arg}]);
 					_ -> ok
 				end
 				|| {TopicQoS, Callback} <- List
