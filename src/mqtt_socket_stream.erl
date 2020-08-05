@@ -365,12 +365,12 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	[{QoS, Callback} || {_TopicFilter, QoS, Callback} <- Topic_List].
 
 delivery_to_application(#connection_state{end_type = client, default_callback = Default_Callback} = State,
-												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain, payload = Payload} = Arg) ->
+												#publish{topic = Topic, qos = QoS, dup = Dup, retain = Retain} = Arg) ->
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(Default_Callback, [{{Topic, undefined}, QoS, Dup, Retain, Payload}]);
+		[] -> do_callback(Default_Callback, [{undefined, Arg}]);
 		List ->
 			[
-				case do_callback(Callback, [{{Topic, TopicQoS}, QoS, Dup, Retain, Payload}]) of
+				case do_callback(Callback, [{TopicQoS, Arg}]) of
 					false -> do_callback(Default_Callback, [{TopicQoS, Arg}]);
 					_ -> ok
 				end
