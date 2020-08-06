@@ -70,7 +70,7 @@ packet_output('5.0') ->
 packet_output_props() ->
 	Value = mqtt_output:packet(suback, '5.0', {[0,1,128], 102}, 
 															[{?Reason_String, "Unspecified error"},
-															 {?User_Property, [{name,"Key"}, {value,"Value"}]}]),
+															 {?User_Property, {"Key", "Value"}}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<144,39, 0,102, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0,1,128>>, Value),
 
@@ -87,7 +87,7 @@ input_parser() ->
 	Value1 = mqtt_input:input_parser('5.0', <<144,39, 0,102, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0,1,128, 5,5>>),
 %	io:format(user, "~n --- value=~256p~n", [Value1]),
 	?assertEqual({suback, 102, [0,1,128], [{?Reason_String, <<"Unspecified error">>},
-																					{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]}],
+																					{?User_Property, {<<"Key">>, <<"Value">>}}],
 								<<5:8, 5:8>>},
 								Value1),
 	

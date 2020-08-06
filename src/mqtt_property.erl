@@ -112,7 +112,7 @@ property_retrieve(?Subscription_Identifier = PropertyName, Binary) ->
 property_retrieve(?User_Property = PropertyName, Binary) ->
 	{RestBinary0, Name} = mqtt_data:extract_utf8_binary(Binary),
 	{RestBinary, Value} = mqtt_data:extract_utf8_binary(RestBinary0),
-	{{PropertyName, [{name, Name}, {value, Value}]}, RestBinary};
+	{{PropertyName, {Name, Value}}, RestBinary};
 
 property_retrieve(_, _Binary) ->
 	error.
@@ -173,12 +173,10 @@ form_prop({?Subscription_Identifier = PropertyName, PropertyValue}) ->
 	<<(mqtt_data:encode_variable_byte_integer(PropertyName))/binary, (mqtt_data:encode_variable_byte_integer(PropertyValue))/binary>>;
 
 % UTF-8 Pair type
-form_prop({?User_Property = PropertyName, PropertyValue}) ->
-	[{name, Name}, {value, Value}] = PropertyValue,
+form_prop({?User_Property = PropertyName, {Name, Value}}) ->
 	<<(mqtt_data:encode_variable_byte_integer(PropertyName))/binary,
 		(mqtt_data:encode_utf8_string(Name))/binary,
 		(mqtt_data:encode_utf8_string(Value))/binary>>;
 
 form_prop({_, _PropertyValue}) ->
 	error.
-

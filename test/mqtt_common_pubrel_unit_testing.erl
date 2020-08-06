@@ -73,7 +73,7 @@ packet_output('5.0') ->
 
 packet_output_props() ->
 	Value = mqtt_output:packet(pubrel, '5.0', {23044,146}, [{?Reason_String, "Packet Identifier not found"},
-																													 {?User_Property, [{name,"Key Name"}, {value,"Property Value"}]}]),
+																													 {?User_Property, {"Key Name", "Property Value"}}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<98,61,90,4,146,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 27:16,"Packet Identifier not found"/utf8>>, Value),
 	
@@ -94,7 +94,7 @@ input_parser() ->
 	Value2 = mqtt_input:input_parser('5.0', <<98,61,90,4,146,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 27:16,"Packet Identifier not found"/utf8, 1,7>>),
 %	io:format(user, "~n --- value=~256p~n", [Value2]),
 	?assertEqual({pubrel, {23044,146}, [{?Reason_String, <<"Packet Identifier not found">>},
-																				{?User_Property, [{name,<<"Key Name">>}, {value,<<"Property Value">>}]}],
+																				{?User_Property, {<<"Key Name">>, <<"Property Value">>}}],
 								<<1:8, 7:8>>},
 							 Value2),
 

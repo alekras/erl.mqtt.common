@@ -69,7 +69,7 @@ packet_output('5.0') ->
 
 packet_output_props() ->
 	Value = mqtt_output:packet(unsubscribe, '5.0', {["Test_topic_1", "Test_topic_2"], 103},
-														 [{?User_Property, [{name,"Key"}, {value,"Value"}]}]),
+														 [{?User_Property, {"Key", "Value"}}]),
 %	io:format(user, "~n === value=~256p~n", [Value]),
 	?assertEqual(<<162,44,0,103, 13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 12:16,"Test_topic_1"/utf8, 12:16,"Test_topic_2"/utf8>>, Value),
 
@@ -85,7 +85,7 @@ input_parser() ->
 	Value1 = mqtt_input:input_parser('5.0', <<162,44,0,103, 13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 12:16,"Test_topic_1"/utf8, 12:16,"Test_topic_2"/utf8,5,5>>),
 %	io:format(user, "~n === value=~256p~n", [Value1]),
 	?assertEqual({unsubscribe, 103, [<<"Test_topic_1">>,<<"Test_topic_2">>], 
-								[{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]}],
+								[{?User_Property, {<<"Key">>, <<"Value">>}}],
 								<<5:8, 5:8>>}, Value1),
 
 	?passed.

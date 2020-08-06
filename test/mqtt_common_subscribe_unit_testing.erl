@@ -78,7 +78,7 @@ packet_output_props() ->
 																									{"Topic_2", Options#subscription_options{max_qos = 1}, callback}, 
 																									{"Topic_3", Options#subscription_options{max_qos = 2}, callback}],
 																								101}, 
-															[{?User_Property, [{name,"Key"}, {value,"Value"}]},{?Subscription_Identifier, 177001}]),
+															[{?User_Property, {"Key", "Value"}},{?Subscription_Identifier, 177001}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<130,50, 101:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,
 								 7:16,"Topic_1"/utf8,28, 7:16,"Topic_2"/utf8,29, 7:16,"Topic_3"/utf8,30>>, Value),
@@ -103,7 +103,7 @@ input_parser() ->
 	?assertEqual({subscribe, 101, [{<<"Topic_1">>,Options},
 																 {<<"Topic_2">>,Options#subscription_options{max_qos = 1}},
 																 {<<"Topic_3">>, Options#subscription_options{max_qos = 2}}],
-								[{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]},
+								[{?User_Property, {<<"Key">>, <<"Value">>}},
 								 {?Subscription_Identifier, 177001}],
 								<<1:8,7:8>>}, Value1),
 

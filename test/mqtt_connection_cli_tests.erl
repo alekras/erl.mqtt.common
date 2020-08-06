@@ -285,7 +285,7 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 	{ok, Ref} = gen_server:call(conn_server,
 																{subscribe, 
 																	[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}],
-																	[{?User_Property, [{name,<<"Key">>}, {value,<<"Value">>}]}, {?Subscription_Identifier, 177001}]
+																	[{?User_Property, {<<"Key">>, <<"Value">>}}, {?Subscription_Identifier, 177001}]
 																}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
@@ -396,7 +396,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	end,
 
 	mock_tcp:set_expectation(<<162,23,101:16,13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,5:16,84,111,112,105,99>>),
-	{ok, Ref2} = gen_server:call(conn_server, {unsubscribe, [<<"Topic">>], [{?User_Property, [{name,"Key"}, {value,"Value"}]}]}),
+	{ok, Ref2} = gen_server:call(conn_server, {unsubscribe, [<<"Topic">>], [{?User_Property, {"Key", "Value"}}]}),
 	wait_mock_tcp("unsubscribe packet"),
 %% from server:
 	conn_server ! {tcp, undefined, <<176,38,101:16, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31, 17:16,"Unspecified error"/utf8, 0,17>>}, %% Unsuback packet
@@ -528,7 +528,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 		{puback, Ref, RespCode, Properties} ->
 			?debug_Fmt("::test:: Puback message to caller process, response code = ~p~n      props=~128p~n", [RespCode, Properties]),
 			?assertEqual(10, RespCode),
-			?assertEqual([{31,<<"No matching subscribers">>},{38,[{name,<<"Key Name">>},{value,<<"Property Value">>}]}], Properties);
+			?assertEqual([{31,<<"No matching subscribers">>},{38,{<<"Key Name">>,<<"Property Value">>}}], Properties);
 		Msg -> 
 			?debug_Fmt("::test:: <~p> Unexpected Message to caller process= ~p ~n", [?LINE, Msg]),
 			?assert(false)
