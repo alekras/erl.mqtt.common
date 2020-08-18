@@ -34,7 +34,10 @@
 	extract_utf8_list/1,
 	encode_binary_field/1,
 	extract_binary_field/1,
-	fieldSize/1
+	fieldSize/1,
+	is_topicFilter_valid/1,
+	is_match/2,
+	topic_regexp/1
 ]).
 
 %% Variable byte Integer:
@@ -102,8 +105,37 @@ fieldSize(F) when is_list(F) -> length(F);
 fieldSize(F) when is_binary(F) -> byte_size(F);
 fieldSize(_) -> 0.
 
+is_topicFilter_valid(TopicFilter) ->
+%% $share/{ShareName}	
+	{ok, Pattern} = re:compile("^(\\$share\\/(?<shareName>[^/\\+#]+){1}\\/)?"
+														"(?<topicFilter>"
+															"([^\\/\\+#]*|\\+)?"
+															"(\\/[^\\/\\+#]*|\\/\\+)*"
+															"(\\/#|#|\\/)?"
+														"){1}$"),
+	case re:run(TopicFilter, Pattern, [global, {capture, [shareName, topicFilter], list}]) of
+		{match, [R]} -> 
+%			?debug_Fmt("::test:: >>> is_valid ~p match: ~p", [TopicFilter, R]),
+			{true, R};
+		_E ->
+%			?debug_Fmt("::test:: >>> is_valid ~p NOT match: ~p", [TopicFilter, _E]),
+			false
+	end.
+
+is_match(Topic, TopicFilter) ->
+	{ok, Pattern} = re:compile(topic_regexp(TopicFilter)),
+	case re:run(Topic, Pattern, [global, {capture, [1], list}]) of
+		{match, _R} -> true;
+		_E ->		false
+	end.
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+topic_regexp(TopicFilter) ->
+	R1 = re:replace(TopicFilter, "\\+", "([^\\/]*)", [global, {return, list}]),
+	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),
+	"^" ++ R2 ++ "$".
 
 

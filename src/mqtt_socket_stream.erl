@@ -34,8 +34,6 @@
 %% ====================================================================
 -export([
 	process/2,
-	is_match/2,
-	topic_regexp/1,
 	server_publish/2
 ]).
 
@@ -454,18 +452,6 @@ lager:debug([{endtype, server}], "Recieved pubcomp. Reason code=~p, props=~128p~
 		ok -> lager:debug([{endtype, server}], "Server successfuly publish message to subscriber.~n", []);
 		_	-> lager:error([{endtype, server}], "~128p~n", [R])
 	end.
-
-is_match(Topic, TopicFilter) ->
-	{ok, Pattern} = re:compile(topic_regexp(TopicFilter)),
-	case re:run(Topic, Pattern, [global, {capture, [1], list}]) of
-		{match, _R} -> true;
-		_E ->		false
-	end.
-
-topic_regexp(TopicFilter) ->
-	R1 = re:replace(TopicFilter, "\\+", "([^/]*)", [global, {return, list}]),
-	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),
-	"^" ++ R2 ++ "$".
 
 get_peername(ssl, Socket) ->
 	case ssl:peername(Socket) of

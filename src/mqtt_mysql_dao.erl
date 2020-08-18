@@ -159,7 +159,7 @@ save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_
 	Query = ["REPLACE INTO subscription VALUES ('",
 		Client_Id, "','",
 		Topic, "','",
-		mqtt_socket_stream:topic_regexp(Topic), "'",
+		mqtt_data:topic_regexp(Topic), "'",
 %		integer_to_list(QoS), ",x'",
 		",x'", binary_to_hex(OptionsBin), "'",
 		",x'", binary_to_hex(CBin), "')"],
@@ -240,7 +240,7 @@ get(server, {user_id, User_Id}) ->
 	end;
 get(server, {topic, TopicFilter}) ->
 	Query = ["SELECT * FROM retain"],
-	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_socket_stream:is_match(Topic, TopicFilter)].
+	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_data:is_match(Topic, TopicFilter)].
 
 get_client_topics(End_Type, Client_Id) ->
 	Query = ["SELECT topic, options, callback FROM subscription WHERE client_id='", Client_Id, "'"],

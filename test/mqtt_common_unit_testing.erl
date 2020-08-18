@@ -33,7 +33,6 @@
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
 
 %%
 %% Exported Functions
@@ -67,11 +66,51 @@ encode_variable_byte_integer() ->
   ?passed.
 
 is_match() ->
+	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "Winter/#")),
+	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "#")),
+	?assert(mqtt_socket_stream:is_match("/Winter/Feb/23", "/#")),
+	?assert(mqtt_socket_stream:is_match("Winter/", "Winter/#")),
+%	?assert(mqtt_socket_stream:is_match("Winter", "Winter/#")),
+
 	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "Winter/+/23")),
 	?assert(mqtt_socket_stream:is_match("Season/Spring/Month/March/25", "Season/+/Month/+/25")),
-	?assert(mqtt_socket_stream:is_match("Winter/Feb/23", "Winter/#")),
 	?assert(mqtt_socket_stream:is_match("/Feb/23", "/+/23")),
-	?assert(mqtt_socket_stream:is_match("/Feb/23", "/Feb/23")),
+	?assertNot(mqtt_socket_stream:is_match("/Feb/23", "+/23")),
+	?assert(mqtt_socket_stream:is_match("Feb/23", "+/23")),
+	?assert(mqtt_socket_stream:is_match("Feb/23/", "+/23/")),
+	?assert(mqtt_socket_stream:is_match("Feb//23/", "+//23/")),
+	?assertNot(mqtt_socket_stream:is_match("Feb Mar/23", "+/23/")),
+	?assertNot(mqtt_socket_stream:is_match("Feb/23/", "+/23")),
+	?assert(mqtt_socket_stream:is_match("/", "/")),
 	?assertNot(mqtt_socket_stream:is_match("/Feb/23", "/February/23")),
+	?assert(mqtt_socket_stream:is_match("Winter/Feb/Day/23/10pm", "Winter/+/Day/#")),
+	?assert(mqtt_socket_stream:is_match("Winter/Feb", "+/+")),
+	?assert(mqtt_socket_stream:is_match("/Winter", "+/+")),
+	?assert(mqtt_socket_stream:is_match("Winter", "+")),
+	?assertNot(mqtt_socket_stream:is_match("/Winter", "+")),
+	?assertNot(mqtt_socket_stream:is_match("Winter/", "+")),
+	?assert(mqtt_socket_stream:is_match("Winter/", "+/")),
+	?assert(mqtt_socket_stream:is_match("/Winter", "/+")),
+	?assert(mqtt_socket_stream:is_match("//Winter", "//+")),
+%“/finance” matches “+/+” and “/+”, but not “+”
 
+	?assertEqual({true, ["","+"]}, mqtt_data:is_topicFilter_valid("+")),
+	?assertEqual({true, ["","/+"]}, mqtt_data:is_topicFilter_valid("/+")),
+	?assertEqual({true, ["","+/+"]}, mqtt_data:is_topicFilter_valid("+/+")),
+	?assertEqual({true, ["","+/"]}, mqtt_data:is_topicFilter_valid("+/")),
+	?assertEqual(false, mqtt_data:is_topicFilter_valid("/Winter/++/")),
+	?assertEqual(false, mqtt_data:is_topicFilter_valid("/Winter/#/a")),
+
+	?assertEqual({true, ["","/Winter"]}, mqtt_data:is_topicFilter_valid("/Winter")),
+	?assertEqual({true, ["","Winter"]}, mqtt_data:is_topicFilter_valid("Winter")),
+	?assertEqual({true, ["","Winter/+"]}, mqtt_data:is_topicFilter_valid("Winter/+")),
+	?assertEqual({true, ["","/Winter/+"]}, mqtt_data:is_topicFilter_valid("/Winter/+")),
+	?assertEqual({true, ["","Winter/+/season/"]}, mqtt_data:is_topicFilter_valid("Winter/+/season/")),
+	?assertEqual({true, ["","/Winter/+/season/+"]}, mqtt_data:is_topicFilter_valid("/Winter/+/season/+")),
+	?assertEqual({true, ["","/Winter/+/season/+/#"]}, mqtt_data:is_topicFilter_valid("/Winter/+/season/+/#")),
+	?assertEqual({true, ["","Winter/+/season/+/#"]}, mqtt_data:is_topicFilter_valid("Winter/+/season/+/#")),
+	?assertEqual({true, ["SHARED 1","//Winter/+/season/+/#"]}, mqtt_data:is_topicFilter_valid("$share/SHARED 1///Winter/+/season/+/#")),
+	?assertEqual(false, mqtt_data:is_topicFilter_valid("$share/SHARED+1/Winter/+/season/+/#")),
+	
 	?passed.
+

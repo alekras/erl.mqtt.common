@@ -215,7 +215,7 @@ get(server, {topic, TopicFilter}) ->
 	Retain_db = db_id(5, server),
 	Fun =
 		fun (#storage_retain{topic = Topic, document = Doc}) -> 
-					case mqtt_socket_stream:is_match(Topic, TopicFilter) of
+					case mqtt_data:is_match(Topic, TopicFilter) of
 						true -> {continue, Doc};
 						false -> continue
 					end
@@ -226,7 +226,7 @@ get_client_topics(End_Type, Client_Id) ->
 	Subscription_db = db_id(2, End_Type),
 	MatchSpec = ets:fun2ms(
 							 fun(#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = CI}, options = Options, callback = CB}) when CI == Client_Id -> 
-											{Topic, Options, CB} 
+											{Topic, Options, CB}
 							 end),
 	dets:select(Subscription_db, MatchSpec).
 
@@ -234,7 +234,7 @@ get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client
 	Subscription_db = db_id(2, End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, options = Options, callback = CB}) when Client_Id =:= CI -> 
-					case mqtt_socket_stream:is_match(Topic, TopicFilter) of
+					case mqtt_data:is_match(Topic, TopicFilter) of
 						true -> {continue, {TopicFilter, Options, CB}};
 						false -> continue
 					end;
@@ -245,7 +245,7 @@ get_matched_topics(End_Type, Topic) ->
 	Subscription_db = db_id(2, End_Type),
 	Fun =
 		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter}} = Object) -> 
-					case mqtt_socket_stream:is_match(Topic, TopicFilter) of
+					case mqtt_data:is_match(Topic, TopicFilter) of
 						true -> {continue, Object};
 						false -> continue
 					end

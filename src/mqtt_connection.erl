@@ -118,7 +118,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 handle_call({publish, #publish{qos = 0, topic = Topic} = Params}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	Transport:send(Socket, packet(publish, Config#connect.version, {Params, 0}, [])),
+	Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
 	lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
 	{reply, {ok, Ref}, State};
 
@@ -127,7 +127,7 @@ handle_call({publish, #publish{qos = 0, topic = Topic} = Params},
 handle_call({publish, #publish{qos = QoS, topic = Topic} = Params}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params, Packet_Id}, []) end,
+	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
 	Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = Packet_Id},
@@ -182,7 +182,12 @@ handle_call({subscribe, Subscriptions, Properties},
 	Packet_Id = State#connection_state.packet_id,
 	case Transport:send(Socket, packet(subscribe, State#connection_state.config#connect.version, {Subscriptions, Packet_Id}, Properties)) of
 		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions}},
+			Subscriptions2 =
+			[case mqtt_data:is_topicFilter_valid(Topic) of
+				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
+				false -> {"", Options, Callback}		%% @todo process the error!
+			 end || {Topic, Options, Callback} <- Subscriptions],
+			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions2}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
@@ -207,7 +212,7 @@ handle_call(disconnect, %% @todo add Disconnect ReasonCode
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, 0, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "<handle_call> Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes, packet_id = 100}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
