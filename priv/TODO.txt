@@ -1,1 +1,8 @@
 1. Config.client_id - list & binary !?
+
+
+
+
+2020-08-21 12:37:48.478 [debug] <0.478.0> mqtt_mysql_dao:execute_query:349 -server- Query: ["SELECT share_name, options, callback FROM subscription WHERE client_id='","orange","' a
+nd topic='","Winter/+","'"] response: [{ok_packet,34,131,undefined,100,[20,115,117,98,115,99,114,105,112,116,105,111,110,95,111,112,116,105,111,110,115,97,2,97,0,97,0,97,0,29,131,1
+04,2,100,0,6,101,114,108,97,110,103,100,0,14,98,105,110,97,114,121,95,116,111,95,108,105,115,116]}]

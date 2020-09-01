@@ -40,6 +40,7 @@
 	get/2,
 	get_client_topics/2,
 	get_matched_topics/2,
+	get_matched_shared_topics/2,
 	get_all/2,
   cleanup/2,
   cleanup/1,
@@ -104,11 +105,12 @@ start(End_Type) ->
 				"client_id char(25) DEFAULT '',"
 				" topic varchar(512) DEFAULT ''," %% @todo make separate table 'topic'. Do I need it at all?
 				" topic_re varchar(512),"           %% @todo make separate table 'topic'
+				" share_name varchar(128) DEFAULT '',"
 %%				" qos tinyint(1),"
 				" options blob,"
 				" callback blob,"
-				" PRIMARY KEY (topic, client_id)"
-				" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
+				" PRIMARY KEY (client_id, share_name, topic)"
+				") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
 			R2 = connection:execute_query(Conn, Query2),
 			lager:debug([{endtype, End_Type}], "create subscription table: ~p", [R2]),
 
@@ -153,13 +155,14 @@ save(End_Type, #storage_publish{key = #primary_key{client_id = Client_Id, packet
 		integer_to_list(Packet_Id), ",x'",
 		binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(End_Type, Query);
-save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = Topic}, options = Options, callback = CB}) ->
+save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = Topic}, options = Options, callback = CB}) ->
 	CBin = term_to_binary(CB),
 	OptionsBin = term_to_binary(Options),
 	Query = ["REPLACE INTO subscription VALUES ('",
 		Client_Id, "','",
 		Topic, "','",
 		mqtt_data:topic_regexp(Topic), "'",
+		if ShareName == undefined -> ",''"; true -> ",'" ++ ShareName ++ "'" end,
 %		integer_to_list(QoS), ",x'",
 		",x'", binary_to_hex(OptionsBin), "'",
 		",x'", binary_to_hex(CBin), "')"],
@@ -189,7 +192,7 @@ remove(End_Type, #subs_primary_key{client_id = Client_Id, _ = '_'}) ->
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "'"],
 	execute_query(End_Type, Query);
-remove(End_Type, #subs_primary_key{client_id = Client_Id, topic = Topic}) ->
+remove(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) ->
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",
 		Topic, "'"],
@@ -212,15 +215,21 @@ get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 		[] -> undefined;
 		[[R2]] -> #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = binary_to_term(R2)}
 	end;
-get(End_Type, #subs_primary_key{client_id = Client_Id, topic = Topic}) -> %% @todo delete it
-	Query = ["SELECT options, callback FROM subscription WHERE client_id='",
+get(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) -> %% @todo delete it
+	Query = ["SELECT share_name, options, callback FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",
 		Topic, "'"],
 	case execute_query(End_Type, Query) of
 		[] -> undefined;
-		[[Options, CB]] -> #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, 
-																						 options = binary_to_term(Options), 
-																						 callback = binary_to_term(CB)}
+		List when is_list(List) ->
+			[#storage_subscription{key = #subs_primary_key{
+																			shareName = if ShareName  == "" -> undefined; true -> ShareName end,
+																			topicFilter = Topic, 
+																			client_id = Client_Id
+																		},
+															options = binary_to_term(Options), 
+															callback = binary_to_term(CB)} || [ShareName, Options, CB] <- List];
+		_ -> undefined
 	end;
 get(End_Type, {client_id, Client_Id}) ->
 	Query = [
@@ -243,20 +252,34 @@ get(server, {topic, TopicFilter}) ->
 	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_data:is_match(Topic, TopicFilter)].
 
 get_client_topics(End_Type, Client_Id) ->
-	Query = ["SELECT topic, options, callback FROM subscription WHERE client_id='", Client_Id, "'"],
-	[{Topic, binary_to_term(Options), binary_to_term(Callback)} || [Topic, Options, Callback] <- execute_query(End_Type, Query)].
+	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='", Client_Id, "'"],
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(Callback)} || [ShareName, TopicFilter, Options, Callback] <- execute_query(End_Type, Query)].
 
-get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
-	Query = ["SELECT topic,options,callback FROM subscription WHERE client_id='",Client_Id,
+get_matched_topics(End_Type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}) ->
+	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='",Client_Id,
 					 "' and '",Topic,"' REGEXP topic_re"],
 	L = execute_query(End_Type, Query),
-	[{TopicFilter, binary_to_term(Options), binary_to_term(CB)} || [TopicFilter, Options, CB] <- L];
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)} || [ShareName, TopicFilter, Options, CB] <- L];
 get_matched_topics(End_Type, Topic) ->
-	Query = ["SELECT client_id,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re"],
+	Query = ["SELECT client_id,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name = ''"],
 	L = execute_query(End_Type, Query),
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topic = TopicFilter}, options = binary_to_term(Options), callback = binary_to_term(CB)}
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)}
 		|| [Client_Id, TopicFilter, Options, CB] <- L].
 	
+get_matched_shared_topics(End_Type, Topic) ->
+	Query = ["SELECT client_id,share_name,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name != ''"],
+	L = execute_query(End_Type, Query),
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)}
+		|| [Client_Id, ShareName, TopicFilter, Options, CB] <- L].
+
 get_all(End_Type, {session, Client_Id}) ->
 	Query = [
 		"SELECT client_id, packet_id, publish_rec FROM session WHERE client_id='",

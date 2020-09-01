@@ -74,7 +74,8 @@
 		max_qos = 0 :: 0 | 1 | 2,
 		nolocal = 0 :: 0 | 1,
 		retain_as_published = 0 :: 0 | 1,
-		retain_handling = 0 :: 0 | 1 | 2
+		retain_handling = 0 :: 0 | 1 | 2,
+		identifier :: integer()
 	}
 ).
 
@@ -101,7 +102,8 @@
 
 -record(subs_primary_key,
 	{
-    topic :: string(),
+		topicFilter :: string(),
+		shareName = undefined :: undefined | string(),
 		client_id :: string()
 	}
 ).
@@ -139,6 +141,7 @@
 		connected = 0 :: 0 | 1, %% is used ?
 		packet_id = 100 :: integer(),
 %%		subscriptions = #{} :: map(), %% @todo keep in persistance storage
+		topic_alias_map = #{}, %% TopicAlias => TopicName
 		processes = #{} :: map(), %% @todo keep in persistance storage for QoS =1,2
 		tail = <<>> :: binary(),
 		ping_count = 0 :: integer(), %% is used ?

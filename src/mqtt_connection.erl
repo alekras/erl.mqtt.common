@@ -27,6 +27,7 @@
 %% Include files
 %%
 -include("mqtt.hrl").
+-include("mqtt_property.hrl").
 -include("mqtt_macros.hrl").
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -115,29 +116,31 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 
 ?test_fragment_break_connection
 
-handle_call({publish, #publish{qos = 0, topic = Topic} = Params}, 
+handle_call({publish, #publish{qos = 0, topic = Topic} = PubRec}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
 	Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-	lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
-	{reply, {ok, Ref}, State};
+	lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
+	{reply, {ok, Ref}, NewState};
 
 %%?test_fragment_skip_send_publish
 
-handle_call({publish, #publish{qos = QoS, topic = Topic} = Params}, 
+handle_call({publish, #publish{qos = QoS, topic = Topic} = PubRec}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	Packet = if State#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
+	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
+	Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
-	Prim_key = #primary_key{client_id = (State#connection_state.config)#connect.client_id, packet_id = Packet_Id},
-	Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
+	Prim_key = #primary_key{client_id = (NewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
+	Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
 	case Transport:send(Socket, Packet) of
 		ok -> 
-			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Topic, QoS, Packet_Id]),
-		{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
-		{error, Reason} -> {reply, {error, Reason}, State}
+			New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
+			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Topic, QoS, Packet_Id]),
+		{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
+		{error, Reason} -> {reply, {error, Reason}, State} %% do not update State!
 	end;
 
 handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
@@ -339,7 +342,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 																payload = Config#connect.will_message},
 							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])
 					end
-					|| #storage_subscription{key = #subs_primary_key{topic = Topic, client_id = Client_Id}, options = TopicOptions} <- List
+					|| #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, options = TopicOptions} <- List
 				],
 				if (Config#connect.will_retain =:= 1) ->
 						Params1 = #publish{topic = Config#connect.will_topic, 
@@ -390,3 +393,25 @@ keep_alive_timer(Keep_Alive_Time, Timer_Ref) ->
 	erlang:cancel_timer(Timer_Ref),
 	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout).
 
+topic_alias_handle('5.0', #publish{qos = QoS, topic = Topic, properties = Props} = PubRec, #connection_state{topic_alias_map = TopicAliasMap} = State) ->
+	Alias = proplists:get_value(?Topic_Alias, Props, 0),
+	case {Topic, Alias} of
+		{"", 0} -> {error, State};
+		{"", N} ->
+			case maps:get(N, TopicAliasMap, error) of
+				error -> {error, State};
+				_ -> {PubRec, State}
+			end;
+		{T, 0} -> 
+			Map1 = maps:filter(fun(_K,V) when V == T -> true; (_K,_) -> false end, TopicAliasMap),
+			MapSize = maps:size(Map1),
+			if MapSize > 0 ->
+						Als = hd(maps:keys(Map1)),
+						{PubRec#publish{topic = "", properties = [{?Topic_Alias, Als} | Props]}, State};
+				 true -> {PubRec, State}
+			end;
+		{T, N} ->
+			{PubRec, State#connection_state{topic_alias_map = maps:put(N, T, TopicAliasMap)}}
+	end;
+topic_alias_handle(_, PubRec, State) ->
+	{PubRec, State}.

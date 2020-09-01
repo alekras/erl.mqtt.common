@@ -39,6 +39,7 @@
 	get/2,
 	get_client_topics/2,
 	get_matched_topics/2,
+	get_matched_shared_topics/2,
 	get_all/2,
   cleanup/2,
 	cleanup/1,
@@ -187,9 +188,10 @@ get(End_Type, #subs_primary_key{} = Key) -> %% @todo delete it
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
-		[D] -> D;
-		_ ->
-			undefined
+%		[D] -> D;
+		[] -> undefined;
+		D when is_list(D) -> D;
+		_ -> undefined
 	end;
 get(End_Type, {client_id, Key}) ->
 	ConnectionPid_db = db_id(3, End_Type),
@@ -222,33 +224,46 @@ get(server, {topic, TopicFilter}) ->
 		end,
 	dets:traverse(Retain_db, Fun).
 
-get_client_topics(End_Type, Client_Id) ->
+get_client_topics(End_Type, Client_Id) -> %% I do not use it @todo delete ???
 	Subscription_db = db_id(2, End_Type),
 	MatchSpec = ets:fun2ms(
-							 fun(#storage_subscription{key = #subs_primary_key{topic = Topic, client_id = CI}, options = Options, callback = CB}) when CI == Client_Id -> 
-											{Topic, Options, CB}
+							 fun(#storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = CI}} = Object) when CI == Client_Id -> 
+									Object
 							 end),
 	dets:select(Subscription_db, MatchSpec).
 
-get_matched_topics(End_Type, #subs_primary_key{topic = Topic, client_id = Client_Id}) ->
+get_matched_topics(End_Type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}) -> %% only client side
 	Subscription_db = db_id(2, End_Type),
 	Fun =
-		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter, client_id = CI}, options = Options, callback = CB}) when Client_Id =:= CI -> 
+		fun (#storage_subscription{key = #subs_primary_key{topicFilter = TopicFilter, client_id = CI}} = Object) when Client_Id =:= CI -> 
 					case mqtt_data:is_match(Topic, TopicFilter) of
-						true -> {continue, {TopicFilter, Options, CB}};
+						true -> {continue, Object};
 						false -> continue
 					end;
 				(_) -> continue
 		end,
 	dets:traverse(Subscription_db, Fun);
-get_matched_topics(End_Type, Topic) ->
+get_matched_topics(End_Type, Topic) -> %% only server side
 	Subscription_db = db_id(2, End_Type),
 	Fun =
-		fun (#storage_subscription{key = #subs_primary_key{topic = TopicFilter}} = Object) -> 
+		fun (#storage_subscription{key = #subs_primary_key{topicFilter = TopicFilter, shareName = ShareName}} = Object) when  ShareName == undefined -> 
 					case mqtt_data:is_match(Topic, TopicFilter) of
 						true -> {continue, Object};
 						false -> continue
-					end
+					end;
+				(_) -> continue
+		end,
+	dets:traverse(Subscription_db, Fun).
+
+get_matched_shared_topics(server = End_Type, Topic) -> %% only server side
+	Subscription_db = db_id(2, End_Type),
+	Fun =
+		fun (#storage_subscription{key = #subs_primary_key{topicFilter = TopicFilter, shareName = ShareName}} = Object) when ShareName =/= undefined -> 
+					case mqtt_data:is_match(Topic, TopicFilter) of
+						true -> {continue, Object};
+						false -> continue
+					end;
+				(_) -> continue
 		end,
 	dets:traverse(Subscription_db, Fun).
 	
@@ -266,7 +281,7 @@ get_all(End_Type, topic) ->
 		{error, Reason} -> 
 			lager:error([{endtype, End_Type}], "match_object failed: ~p~n", [Reason]),
 			[];
-		R -> [Topic || #storage_subscription{key = #subs_primary_key{topic = Topic}} <- R]
+		R -> [Topic || #storage_subscription{key = #subs_primary_key{topicFilter = Topic}} <- R]
 	end.
 
 cleanup(End_Type, ClientId) ->
@@ -313,5 +328,18 @@ close(End_Type) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+-spec sort(List) -> SortedList when
+  List :: [integer()],
+  SortedList :: [integer()].
+sort([Pivot | Tail]) ->
+{Smaller, Larger} = partition(Pivot, Tail, [], []),
+sort(Smaller) ++ [Pivot] ++ sort(Larger);
+sort([]) -> [].
 
+partition(Check, [Head | Tail], Smaller, Larger) ->
+    case Head =< Check of
+        true -> partition(Check, Tail, [Head | Smaller], Larger);
+        false -> partition(Check, Tail, Smaller, [Head | Larger])
+    end;
+partition(_, [], Smaller, Larger) -> {Smaller, Larger}.
 
