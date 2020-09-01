@@ -217,14 +217,14 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
-%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(State, Record),
 					process(State, Tail);
 				1 ->
-					delivery_to_application(State, Record),  %% check for successful delivery
+					delivery_to_application(State, Record),  %% @todo check for successful delivery
 					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% @todo properties?
 					case Transport:send(Socket, Packet) of
 						ok -> ok;

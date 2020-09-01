@@ -116,17 +116,17 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 
 ?test_fragment_break_connection
 
-handle_call({publish, #publish{qos = 0, topic = Topic} = PubRec}, 
+handle_call({publish, #publish{qos = 0} = PubRec}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
 	Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-	lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Topic]),
+	lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
 	{reply, {ok, Ref}, NewState};
 
 %%?test_fragment_skip_send_publish
 
-handle_call({publish, #publish{qos = QoS, topic = Topic} = PubRec}, 
+handle_call({publish, #publish{qos = QoS} = PubRec}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
 	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
@@ -138,7 +138,7 @@ handle_call({publish, #publish{qos = QoS, topic = Topic} = PubRec},
 	case Transport:send(Socket, Packet) of
 		ok -> 
 			New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Topic, QoS, Packet_Id]),
+			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
 		{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State} %% do not update State!
 	end;
@@ -189,7 +189,7 @@ handle_call({subscribe, Subscriptions, Properties},
 			[case mqtt_data:is_topicFilter_valid(Topic) of
 				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
 				false -> {"", Options, Callback}		%% @todo process the error!
-			 end || {Topic, Options, Callback} <- Subscriptions],
+			 end || {Topic, Options, Callback} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions2}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
