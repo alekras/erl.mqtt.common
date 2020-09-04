@@ -298,7 +298,7 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_pubrel
 		{pubrel, {Packet_Id, _ReasonCode}, Properties, Tail} ->
-%%			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p.~n", [Packet_Id, Processes]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p~n   reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{_From, _Params} ->
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
