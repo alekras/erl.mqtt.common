@@ -247,8 +247,8 @@ process(State, Binary) ->
 								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{last_sent = pubrec}}),
 								Packet = 
-									if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
-									true -> packet(pubrec, Version, {Packet_Id, 0}, Record#publish.properties)
+								if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
+									true -> packet(pubrec, Version, {Packet_Id, 0}, []) %% @todo fill out properties with ReasonString Or/And UserProperty 
 								end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
@@ -284,7 +284,10 @@ process(State, Binary) ->
 %% store message before pubrel
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>; true -> packet(pubrel, Version, {Packet_Id, ResponseCode}, Properties) end,
+					Packet =
+					if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>;
+							true -> packet(pubrel, Version, {Packet_Id, ResponseCode}, [])  %% @todo fill out properties with ReasonString Or/And UserProperty 
+					end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok -> 
@@ -313,7 +316,10 @@ process(State, Binary) ->
 					end,
 %% discard PI before pubcomp send
 					Storage:remove(State#connection_state.end_type, Prim_key),
-					Packet = if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; true -> packet(pubcomp, Version, {Packet_Id, 0}, Properties) end,
+					Packet =
+					if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; 
+							true -> packet(pubcomp, Version, {Packet_Id, 0}, []) %% @todo fill out properties with ReasonString or/and UserProperty
+					end,
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok ->
