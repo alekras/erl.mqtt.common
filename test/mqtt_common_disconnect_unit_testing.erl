@@ -91,6 +91,10 @@ input_parser() ->
 %	io:format(user, "~n === value=~256p~n", [Value1]),
 	?assertEqual({disconnect, 1, [], <<1:8, 1:8>>}, Value1),
 
+	Value3 = mqtt_input:input_parser('5.0', <<224,1,148, 1,1>>),
+%	io:format(user, "~n === value=~256p~n", [Value1]),
+	?assertEqual({disconnect, 148, [], <<1:8, 1:8>>}, Value3),
+
 	Value2 = mqtt_input:input_parser('5.0', <<224,27,128,25,17,0,0,14,16, 31, 17:16,"Unspecified error"/utf8, 1,1>>),
 %	io:format(user, "~n === value=~256p~n", [Value2]),
 	?assertEqual({disconnect, 128, [{?Reason_String, <<"Unspecified error">>},

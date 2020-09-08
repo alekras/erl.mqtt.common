@@ -49,7 +49,8 @@
 unit_test_() ->
 	[ 
 		{"property parser", fun prop_parse/0},
-		{"property to binary", fun prop_2_bin/0}
+		{"property to binary", fun prop_2_bin/0},
+		{"properties validate ", fun validate_props/0}
 	].
 
 prop_parse() ->
@@ -244,4 +245,23 @@ prop_2_bin() ->
 	io:format(user, "~n Empty properties = ~256p", [Bin_2]),
 	?assertEqual(<<0>>, Bin_2),
 
+	?passed.
+
+validate_props() ->
+	?assert(mqtt_property:validate(connect, [{?Session_Expiry_Interval, 1000},
+																					 {?Authentication_Method, "AM"},
+																					 {?Authentication_Data, <<0,1>>}]
+																)),
+	?assertNot(mqtt_property:validate(connect, [{?Session_Expiry_Interval, 1000},
+																							{?Authentication_Method, "AM"},
+																							{?User_Property, {"A", "aaa"}},
+																							{?Authentication_Method, "AM1"},
+																							{?Authentication_Data, <<0,1>>}]
+																)),
+	?assert(mqtt_property:validate(connect, [{?Session_Expiry_Interval, 1000},
+																					 {?Authentication_Method, "AM"},
+																					 {?User_Property, {"A", "aaa"}},
+																					 {?User_Property, {"B", "bbb"}},
+																					 {?Authentication_Data, <<0,1>>}]
+																)),
 	?passed.

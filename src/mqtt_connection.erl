@@ -393,7 +393,7 @@ keep_alive_timer(Keep_Alive_Time, Timer_Ref) ->
 	erlang:cancel_timer(Timer_Ref),
 	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout).
 
-topic_alias_handle('5.0', #publish{qos = QoS, topic = Topic, properties = Props} = PubRec, #connection_state{topic_alias_map = TopicAliasMap} = State) ->
+topic_alias_handle('5.0', #publish{topic = Topic, properties = Props} = PubRec, #connection_state{topic_alias_map = TopicAliasMap} = State) ->
 	Alias = proplists:get_value(?Topic_Alias, Props, 0),
 	case {Topic, Alias} of
 		{"", 0} -> {error, State};

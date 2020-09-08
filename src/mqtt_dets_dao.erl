@@ -328,18 +328,18 @@ close(End_Type) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
--spec sort(List) -> SortedList when
-  List :: [integer()],
-  SortedList :: [integer()].
-sort([Pivot | Tail]) ->
-{Smaller, Larger} = partition(Pivot, Tail, [], []),
-sort(Smaller) ++ [Pivot] ++ sort(Larger);
-sort([]) -> [].
-
-partition(Check, [Head | Tail], Smaller, Larger) ->
-    case Head =< Check of
-        true -> partition(Check, Tail, [Head | Smaller], Larger);
-        false -> partition(Check, Tail, Smaller, [Head | Larger])
-    end;
-partition(_, [], Smaller, Larger) -> {Smaller, Larger}.
+%% -spec sort(List) -> SortedList when
+%%   List :: [integer()],
+%%   SortedList :: [integer()].
+%% sort([Pivot | Tail]) ->
+%% {Smaller, Larger} = partition(Pivot, Tail, [], []),
+%% sort(Smaller) ++ [Pivot] ++ sort(Larger);
+%% sort([]) -> [].
+%% 
+%% partition(Check, [Head | Tail], Smaller, Larger) ->
+%%     case Head =< Check of
+%%         true -> partition(Check, Tail, [Head | Smaller], Larger);
+%%         false -> partition(Check, Tail, Smaller, [Head | Larger])
+%%     end;
+%% partition(_, [], Smaller, Larger) -> {Smaller, Larger}.
 

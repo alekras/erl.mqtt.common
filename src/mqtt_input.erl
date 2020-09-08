@@ -156,6 +156,9 @@ input_parser(_, <<?PINGRESP_PACK_TYPE, 0:8, Tail/binary>>) -> {pingresp, Tail};
 input_parser('5.0', <<?DISCONNECT_PACK_TYPE, Bin/binary>>) ->
 	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	if Length == 0 -> {disconnect, 0, [], RestBin};
+		 Length == 1 ->
+			<<DisconnectReasonCode:8, Tail/binary>> = RestBin,
+			{disconnect, DisconnectReasonCode, [], Tail};
 		 true ->
 			L = Length - 1,
 			<<DisconnectReasonCode:8, RestBin1:L/binary, Tail/binary>> = RestBin,

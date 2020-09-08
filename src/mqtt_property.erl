@@ -30,7 +30,7 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([parse/1, to_binary/1]).
+-export([parse/1, to_binary/1, validate/2]).
 
 parse(Binary) ->
 	{RestBinary, Length} = mqtt_data:extract_variable_byte_integer(Binary),
@@ -180,3 +180,85 @@ form_prop({?User_Property = PropertyName, {Name, Value}}) ->
 
 form_prop({_, _PropertyValue}) ->
 	error.
+
+validate(connect, Properties) ->
+	UniqueKeys = [?Session_Expiry_Interval,?Authentication_Method,?Authentication_Data,
+								 ?Request_Problem_Information,?Request_Response_Information,?Receive_Maximum,
+								 ?Topic_Alias_Maximum,?Maximum_Packet_Size],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(connack, Properties) ->
+	UniqueKeys = [?Session_Expiry_Interval,?Assigned_Client_Identifier,?Server_Keep_Alive,
+								?Authentication_Method,?Authentication_Data,?Response_Information,
+								?Server_Reference,?Reason_String,?Receive_Maximum,?Topic_Alias_Maximum,?Maximum_QoS,
+								?Retain_Available,?Maximum_Packet_Size,?Wildcard_Subscription_Available,
+								?Subscription_Identifier_Available,?Shared_Subscription_Available],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(publish, Properties) ->
+	UniqueKeys = [?Payload_Format_Indicator,?Message_Expiry_Interval,?Content_Type,
+								?Response_Topic,?Correlation_Data,?Topic_Alias],
+	AllowedKeys = [?User_Property,?Subscription_Identifier | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(subscribe, Properties) ->
+	UniqueKeys = [?Subscription_Identifier],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	lists:all(fun(PropKey) -> lists:member(PropKey, AllowedKeys) end, proplists:get_keys(Properties))
+	and
+	(length(proplists:lookup_all(?Subscription_Identifier, Properties)) < 2);
+validate(suback, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(unsubscribe, Properties) ->
+	AllowedKeys = [?User_Property],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(unsuback, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(disconnect, Properties) ->
+	UniqueKeys = [?Reason_String,?Server_Reference,?Session_Expiry_Interval],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(auth, Properties) ->
+	UniqueKeys = [?Reason_String,?Authentication_Method,?Authentication_Data],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(puback, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(pubrec, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(pubrel, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(pubcomp, Properties) ->
+	UniqueKeys = [?Reason_String],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties);
+validate(will, Properties) ->
+	UniqueKeys = [?Payload_Format_Indicator,?Message_Expiry_Interval,?Content_Type,
+								?Response_Topic,?Correlation_Data,?Will_Delay_Interval],
+	AllowedKeys = [?User_Property | UniqueKeys],
+	is_allowed_and_unique(AllowedKeys, Properties).
+
+is_allowed_and_unique(AllowedKeys, Properties) ->
+	lists:all(fun(PropKey) -> lists:member(PropKey, AllowedKeys) end, proplists:get_keys(Properties))
+	and
+	is_unique_keys(Properties).
+
+%%	lists:all(fun(PropKey) -> length(proplists:lookup_all(PropKey, Properties)) < 2 end, UniqueKeys);
+
+is_unique_keys([]) -> true;
+is_unique_keys([{K,_} | Props]) when (K == ?User_Property) or (K == ?Subscription_Identifier) ->
+	is_unique_keys(Props);
+is_unique_keys([{K,_} | Props]) ->
+	case proplists:is_defined(K, Props) of
+		true -> false;
+		false -> is_unique_keys(Props)
+	end.

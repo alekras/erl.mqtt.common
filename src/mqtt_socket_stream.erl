@@ -278,7 +278,7 @@ process(State, Binary) ->
 
 		?test_fragment_skip_rcv_pubrec
 %%		?test_fragment_skip_send_pubrel
-		{pubrec, {Packet_Id, ResponseCode}, Properties, Tail} ->  %% now just copy Props from pubrec to pubrel
+		{pubrec, {Packet_Id, ResponseCode}, _Properties, Tail} ->  %% now just copy Props from pubrec to pubrel
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
 %% store message before pubrel
