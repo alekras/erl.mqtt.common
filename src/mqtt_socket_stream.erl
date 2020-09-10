@@ -76,7 +76,7 @@ process(State, Binary) ->
 			Packet_Id = State#connection_state.packet_id,
 			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			if Resp_code =:= 0 ->
-					New_State = State#connection_state{config = Config, session_present = SP},
+					New_State = State#connection_state{config = Config, session_present = SP, topic_alias_map = #{}},
 					New_State_2 =
 					case Config#connect.clean_session of
 						1 -> 

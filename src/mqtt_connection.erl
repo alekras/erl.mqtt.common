@@ -96,7 +96,7 @@ handle_call({connect, Conn_config, Callback},
 	case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{connect => From},
-			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes},
+			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_map = #{}},
 			New_State_2 =
 			case Conn_config#connect.clean_session of
 				1 -> 

@@ -144,7 +144,7 @@ connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to
 	?assertEqual(0, Conn_State2#connection_state.ping_count),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect, 0, []}),
 	wait_mock_tcp("disconnect"),
 % Close connection - stop the conn_server process.
 %	conn_server ! {tcp, undefined, <<224,0>>}, 
@@ -175,7 +175,7 @@ connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to
 	conn_server ! {tcp, undefined, <<16#D0:8, 0:8>>}, %% PingResp
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 % Close connection - stop the conn_server process.
 %	conn_server ! {tcp, undefined, <<224,2,0,0>>}, 
@@ -221,7 +221,7 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test with pr
 	conn_server ! {tcp, undefined, <<16#D0:8, 0:8>>}, %% PingResp
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -245,7 +245,7 @@ subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 % Close connection - stop the conn_server process.
 %	conn_server ! {tcp, undefined, <<224,0>>}, 
@@ -271,7 +271,7 @@ subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -299,7 +299,7 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -336,7 +336,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -372,7 +372,7 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -409,7 +409,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -424,7 +424,7 @@ publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	wait_mock_tcp("publish<0> packet"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -438,7 +438,7 @@ publish_0_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	wait_mock_tcp("publish<0> packet"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -455,7 +455,7 @@ publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ ato
 	wait_mock_tcp("publish<0> packet"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -481,7 +481,7 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -492,6 +492,8 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 
 	mock_tcp:set_expectation(<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	{ok, Ref} = gen_server:call(conn_server, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
+	Conn_State = sys:get_state(conn_server),
+	?debug_Fmt("::test:: State = ~p ~n", [Conn_State]),
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:
@@ -506,7 +508,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -535,7 +537,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -565,7 +567,7 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -594,7 +596,7 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -611,8 +613,7 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 	wait_mock_tcp("publish<2> packet"),
 
 %% from server:
-	mock_tcp:set_expectation(<<98,57,0,100,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8,
-														 31,23:16,"No matching subscribers"/utf8>>), %% expect pubrel packet from client -> server
+	mock_tcp:set_expectation(<<98,3,0,100,16>>), %% expect pubrel packet from client -> server
 	conn_server ! {tcp, undefined, <<80,57,0,100,16,
 																	 53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
 																			 31,23:16,"No matching subscribers"/utf8>>}, %% Pubrec packet from server -> client
@@ -630,7 +631,7 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 	end,
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, disconnect),
+	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
