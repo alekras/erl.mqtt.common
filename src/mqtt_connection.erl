@@ -209,10 +209,10 @@ handle_call({unsubscribe, Topics, Properties},
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 
-handle_call(disconnect, %% @todo add Disconnect ReasonCode
+handle_call({disconnect, ReasonCode, Properties},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, 0, [])) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
 			lager:info([{endtype, State#connection_state.end_type}], "<handle_call> Client ~p sent disconnect request.", [Config#connect.client_id]),
@@ -245,11 +245,11 @@ handle_call({pingreq, Callback},
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-handle_cast(disconnect, %% @todo add Reason code !!!
+handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, 0, [])) of
+	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p sent disconnect request.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "<handle_cast> Client ~p sent disconnect request.", [Config#connect.client_id]),
 			{stop, shutdown, State#connection_state{connected = 0}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}

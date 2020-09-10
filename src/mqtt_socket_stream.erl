@@ -66,7 +66,7 @@ process(State, Binary) ->
 			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end;
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
 				 true -> ok
 			end,
 			Resp_code =
@@ -278,7 +278,7 @@ process(State, Binary) ->
 
 		?test_fragment_skip_rcv_pubrec
 %%		?test_fragment_skip_send_pubrel
-		{pubrec, {Packet_Id, ResponseCode}, _Properties, Tail} ->  %% now just copy Props from pubrec to pubrel
+		{pubrec, {Packet_Id, ResponseCode}, _Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
 %% store message before pubrel
@@ -301,7 +301,7 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_pubrel
 		{pubrel, {Packet_Id, _ReasonCode}, Properties, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p~n   reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{_From, _Params} ->
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -348,10 +348,15 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 
-		{disconnect, _DisconnectReasonCode, _Properties, Tail} ->
+		{disconnect, DisconnectReasonCode, Properties, Tail} ->
 %%			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
 			self() ! disconnect, %% @todo stop the process, close the socket !!!
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected~n", [Client_Id]),
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
+			%% @todo on client side: callback with reason and properties
+			if State#connection_state.end_type =:= client ->
+					do_callback(State#connection_state.default_callback, [{DisconnectReasonCode, Properties}]);
+				true -> ok
+			end,
 			process(State#connection_state{connected = 0}, Tail);
 
 		_ ->
