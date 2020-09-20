@@ -340,7 +340,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 																qos = QoS, 
 																retain = Config#connect.will_retain, 
 																payload = Config#connect.will_message},
-							erlang:spawn(mqtt_socket_stream, server_publish, [Pid, Params])
+							erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
 					end
 					|| #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, options = TopicOptions} <- List
 				],
