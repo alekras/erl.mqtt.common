@@ -66,7 +66,7 @@ process(State, Binary) ->
 			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, disconnect) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 0, []}) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
 				 true -> ok
 			end,
 			Resp_code =
