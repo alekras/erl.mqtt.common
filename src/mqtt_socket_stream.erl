@@ -190,10 +190,12 @@ process(State, Binary) ->
 		
 		{unsubscribe, Packet_Id, Topics, Properties, Tail} ->
 %% discard session subscriptions
+			ReasonCodeList =
 			[ begin 
-					Storage:remove(State#connection_state.end_type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id})
+					Storage:remove(State#connection_state.end_type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}),
+					0 %% @todo add reason code list
 				end || Topic <- Topics],
-			Packet = packet(unsuback, Version, {[0], Packet_Id}, Properties), %% @todo add reason code list
+			Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, Properties),
 			Transport:send(Socket, Packet),
 			lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 			process(State, Tail);
