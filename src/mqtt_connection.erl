@@ -38,7 +38,8 @@
 
 -export([	
 	next/2,
-	restore_session/1
+	restore_session/1,
+	topic_alias_handle/3
 ]).
 
 -import(mqtt_output, [packet/4]).

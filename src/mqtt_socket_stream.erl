@@ -218,48 +218,49 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, #publish{qos = QoS, topic = Topic, dup = Dup} = Record, Packet_Id, Tail} ->
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = Props} = Record, Packet_Id, Tail} ->
+%%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
+			{NewRecord, NewState} = mqtt_connection:topic_alias_handle(Version, Record, State),
 			case QoS of
 				0 -> 	
-					delivery_to_application(State, Record),
-					process(State, Tail);
+					delivery_to_application(NewState, NewRecord),
+					process(NewState, Tail);
 				1 ->
-					delivery_to_application(State, Record),  %% @todo check for successful delivery
-					Packet = if State#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% @todo properties?
+					delivery_to_application(NewState, NewRecord),  %% @todo check for successful delivery
+					Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% @todo properties?
 					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
 					end,
-					process(State, Tail);
+					process(NewState, Tail);
 				2 ->
-					New_State = 
+					NewState1 = 
 						case maps:is_key(Packet_Id, Processes) of
 							true when Dup =:= 0 -> 
-								lager:warning([{endtype, State#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
-								State;
+								lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, State#connection_state.processes]),
+								NewState;
 							_ ->
-								case State#connection_state.end_type of 
-										client -> 
-											delivery_to_application(State, Record);
-										server -> none
+								case NewState#connection_state.end_type of 
+									client -> 
+										delivery_to_application(NewState, NewRecord);
+									server -> none
 								end,
 %% store PI after receiving message
 								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-								Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = Record#publish{last_sent = pubrec}}),
+								Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
 								Packet = 
-								if State#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
+								if NewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
 									true -> packet(pubrec, Version, {Packet_Id, 0}, []) %% @todo fill out properties with ReasonString Or/And UserProperty 
 								end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
 										New_processes = Processes#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
-										State#connection_state{processes = New_processes};
-									{error, _Reason} -> State
+										NewState#connection_state{processes = New_processes};
+									{error, _Reason} -> NewState
 								end
 						end,
-					process(New_State, Tail);
+					process(NewState1, Tail);
 				_ -> process(State, Tail)
 			end;
 
