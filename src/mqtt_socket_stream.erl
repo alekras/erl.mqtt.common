@@ -219,9 +219,10 @@ process(State, Binary) ->
 			end;
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = Props} = Record, Packet_Id, Tail} ->
-%%			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			{NewRecord, NewState} = mqtt_connection:topic_alias_handle(Version, Record, State),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(NewState, NewRecord),
@@ -238,7 +239,7 @@ process(State, Binary) ->
 					NewState1 = 
 						case maps:is_key(Packet_Id, Processes) of
 							true when Dup =:= 0 -> 
-								lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, State#connection_state.processes]),
+								lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, NewState#connection_state.processes]),
 								NewState;
 							_ ->
 								case NewState#connection_state.end_type of 
@@ -380,12 +381,13 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 delivery_to_application(#connection_state{end_type = client, default_callback = Default_Callback} = State,
 												#publish{qos = QoS, dup = Dup, retain = Retain} = PubRecord) ->
 	Topic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubRecord, State),
+	NewPubRecord = PubRecord#publish{topic = Topic},
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(Default_Callback, [{undefined, PubRecord}]);
+		[] -> do_callback(Default_Callback, [{undefined, NewPubRecord}]);
 		List ->
 			[
-				case do_callback(Callback, [{SubsOption, PubRecord}]) of
-					false -> do_callback(Default_Callback, [{SubsOption, PubRecord}]);
+				case do_callback(Callback, [{SubsOption, NewPubRecord}]) of
+					false -> do_callback(Default_Callback, [{SubsOption, NewPubRecord}]);
 					_ -> ok
 				end
 				|| {SubsOption, Callback} <- List
