@@ -66,7 +66,7 @@ process(State, Binary) ->
 			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 0, []}) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
 				 true -> ok
 			end,
 			Resp_code =
@@ -221,15 +221,19 @@ process(State, Binary) ->
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = Props} = Record, Packet_Id, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
-			{NewRecord, NewState} = mqtt_connection:topic_alias_handle(Version, Record, State),
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
+			case mqtt_connection:topic_alias_handle(Version, Record, State) of
+				{#mqtt_client_error{errno = ErrNo, message = Msg}, NewState} ->
+					gen_server:cast(self(), {disconnect, ErrNo, [{?Reason_String, Msg}]}),
+					process(NewState, Tail);
+				{NewRecord, NewState} -> 
+lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
 			case QoS of
 				0 -> 	
 					delivery_to_application(NewState, NewRecord),
 					process(NewState, Tail);
 				1 ->
-					delivery_to_application(NewState, NewRecord),  %% @todo check for successful delivery
-					Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% @todo properties?
+					delivery_to_application(NewState, NewRecord),  %% TODO check for successful delivery
+					Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% TODO properties?
 					case Transport:send(Socket, Packet) of
 						ok -> ok;
 						{error, _Reason} -> ok
@@ -252,7 +256,7 @@ process(State, Binary) ->
 								Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
 								Packet = 
 								if NewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
-									true -> packet(pubrec, Version, {Packet_Id, 0}, []) %% @todo fill out properties with ReasonString Or/And UserProperty 
+									true -> packet(pubrec, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString Or/And UserProperty 
 								end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
@@ -263,6 +267,7 @@ process(State, Binary) ->
 						end,
 					process(NewState1, Tail);
 				_ -> process(State, Tail)
+			end
 			end;
 
 		?test_fragment_skip_rcv_puback
@@ -290,7 +295,7 @@ process(State, Binary) ->
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
 					Packet =
 					if State#connection_state.test_flag =:= skip_send_pubrel -> <<>>;
-							true -> packet(pubrel, Version, {Packet_Id, ResponseCode}, [])  %% @todo fill out properties with ReasonString Or/And UserProperty 
+							true -> packet(pubrel, Version, {Packet_Id, ResponseCode}, [])  %% TODO fill out properties with ReasonString Or/And UserProperty 
 					end,
 					New_State =
 					case Transport:send(Socket, Packet) of
@@ -322,7 +327,7 @@ process(State, Binary) ->
 					Storage:remove(State#connection_state.end_type, Prim_key),
 					Packet =
 					if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; 
-							true -> packet(pubcomp, Version, {Packet_Id, 0}, []) %% @todo fill out properties with ReasonString or/and UserProperty
+							true -> packet(pubcomp, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString or/and UserProperty
 					end,
 					New_State =
 					case Transport:send(Socket, Packet) of
@@ -354,9 +359,9 @@ process(State, Binary) ->
 
 		{disconnect, DisconnectReasonCode, Properties, Tail} ->
 %%			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
-			self() ! disconnect, %% @todo stop the process, close the socket !!!
+			self() ! disconnect, %% TODO stop the process, close the socket !!!
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
-			%% @todo on client side: callback with reason and properties
+			%% TODO on client side: callback with reason and properties
 			if State#connection_state.end_type =:= client ->
 					do_callback(State#connection_state.default_callback, [{DisconnectReasonCode, Properties}]);
 				true -> ok
@@ -381,13 +386,13 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 delivery_to_application(#connection_state{end_type = client, default_callback = Default_Callback} = State,
 												#publish{qos = QoS, dup = Dup, retain = Retain} = PubRecord) ->
 	Topic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubRecord, State),
-	NewPubRecord = PubRecord#publish{topic = Topic},
+%%	NewPubRecord = PubRecord#publish{topic = Topic},
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(Default_Callback, [{undefined, NewPubRecord}]);
+		[] -> do_callback(Default_Callback, [{undefined, PubRecord}]);
 		List ->
 			[
-				case do_callback(Callback, [{SubsOption, NewPubRecord}]) of
-					false -> do_callback(Default_Callback, [{SubsOption, NewPubRecord}]);
+				case do_callback(Callback, [{SubsOption, PubRecord}]) of
+					false -> do_callback(Default_Callback, [{SubsOption, PubRecord}]);
 					_ -> ok
 				end
 				|| {SubsOption, Callback} <- List
@@ -416,7 +421,7 @@ do_callback(Callback, Args) ->
 
 server_send_publish(Pid, Params) -> 
 	lager:debug([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
-%% @todo process look up topic alias for the Pid client/session and update #publish record
+%% TODO process look up topic alias for the Pid client/session and update #publish record
 	R =
 	case gen_server:call(Pid, {publish, Params#publish{dir=out}}, ?MQTT_GEN_SERVER_TIMEOUT) of
 		{ok, Ref} -> 
@@ -424,8 +429,8 @@ server_send_publish(Pid, Params) ->
 				0 -> ok;
 				1 ->
 					receive
-						{puback, Ref, _ReasonCode, _Properties} ->  %% @todo just get properties for now
-lager:debug([{endtype, server}], "Recieved puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
+						{puback, Ref, _ReasonCode, _Properties} ->  %% TODO just get properties for now
+lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_connection:server_send_publish/2", message = "puback timeout"}
@@ -433,7 +438,7 @@ lager:debug([{endtype, server}], "Recieved puback. Reason code=~p, props=~128p~n
 				2 ->
 					receive
 						{pubcomp, Ref, _ReasonCode,_Properties} -> 
-lager:debug([{endtype, server}], "Recieved pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
+lager:debug([{endtype, server}], "Received pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_connection:server_send_publish/2", message = "pubcomp timeout"}
@@ -524,7 +529,7 @@ handle_server_publish('5.0',
 			lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [PubTopic, Params_QoS, Payload]);
 		List ->
 			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
-			%% @todo if Client_Id topic matches multi subscriptions then create one message with multiple subscription identifier.
+			%% TODO if Client_Id topic matches multi subscriptions then create one message with multiple subscription identifier.
 			[
 				case Storage:get(server, {client_id, Client_Id}) of
 					undefined -> 

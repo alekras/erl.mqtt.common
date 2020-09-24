@@ -120,28 +120,36 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 handle_call({publish, #publish{qos = 0} = PubRec}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State),
-	Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-	lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
-	{reply, {ok, Ref}, NewState};
+	case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
+		{#mqtt_client_error{} = Response, NewState} ->
+			{reply, {Response, Ref}, NewState};
+		{Params, NewState} ->
+			Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
+			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
+			{reply, {ok, Ref}, NewState}
+	end;
 
 %%?test_fragment_skip_send_publish
 
 handle_call({publish, #publish{qos = QoS} = PubRec}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State),
-	Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
+	case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
+		{#mqtt_client_error{} = Response, NewState} ->
+			{reply, {Response, Ref}, NewState};
+		{Params, NewState} ->
+			Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
 %% store message before sending
-	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
-	Prim_key = #primary_key{client_id = (NewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
-	Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
-	case Transport:send(Socket, Packet) of
-		ok -> 
-			New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
-		{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
-		{error, Reason} -> {reply, {error, Reason}, State} %% do not update State!
+			Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
+			Prim_key = #primary_key{client_id = (NewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
+			Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
+			case Transport:send(Socket, Packet) of
+				ok -> 
+					New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
+					lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
+					{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
+				{error, Reason} -> {reply, {error, Reason}, State} %% do not update State!
+			end
 	end;
 
 handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
@@ -189,8 +197,8 @@ handle_call({subscribe, Subscriptions, Properties},
 			Subscriptions2 =
 			[case mqtt_data:is_topicFilter_valid(Topic) of
 				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
-				false -> {"", Options, Callback}		%% @todo process the error!
-			 end || {Topic, Options, Callback} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
+				false -> {"", Options, Callback}		%% TODO process the error!
+			 end || {Topic, Options, Callback} <- Subscriptions], %% TODO check for proper record #subs_options for v5 (and v3.1.1 ?)
 			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Subscriptions2}},
 			{reply, {ok, Ref}, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
@@ -246,7 +254,7 @@ handle_call({pingreq, Callback},
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
+handle_cast({disconnect, ReasonCode, Properties}, %% TODO add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
@@ -350,7 +358,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 															qos = Config#connect.will_qos, 
 															retain = Config#connect.will_retain, 
 															payload = Config#connect.will_message},
-						Storage:save(server, Params1); %% @todo avoid duplocates ???
+						Storage:save(server, Params1); %% TODO avoid duplocates ???
 					true -> ok
 				end;
 			true -> ok
@@ -394,21 +402,19 @@ keep_alive_timer(Keep_Alive_Time, Timer_Ref) ->
 	erlang:cancel_timer(Timer_Ref),
 	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout).
 
-%% @todo split this function to client and server in/out side separate functions.
+%% TODO split this function to client and server in/out side separate functions.
 %% This is out of publish:
 topic_alias_handle('5.0', 
 									 #publish{topic = Topic, properties = Props, dir = out} = PubRec, 
 									 #connection_state{topic_alias_out_map = TopicAliasOUTMap, config = #connect{properties = ConnectProps}} = State) ->
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
-	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
 		 true ->
 			case {Topic, Alias} of
-				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State, State}; 
-				{T, N} ->
-					{PubRec, State#connection_state{topic_alias_out_map = maps:put(N, T, TopicAliasOUTMap)}};
 				{"", N} ->
 					if State#connection_state.end_type == client ->
 							case maps:get(N, TopicAliasOUTMap, undefined) of
@@ -428,7 +434,9 @@ topic_alias_handle('5.0',
 								 true -> {PubRec, State}
 							end;
 						 true -> {PubRec, State}
-					end
+					end;
+				{T, N} ->
+					{PubRec, State#connection_state{topic_alias_out_map = maps:put(N, T, TopicAliasOUTMap)}}
 			end
 	end;
 %% This is in of publish:
@@ -437,22 +445,22 @@ topic_alias_handle('5.0',
 									 #connection_state{topic_alias_in_map = TopicAliasINMap, config = #connect{properties = ConnectProps}} = State) ->
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
-	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
 		 true ->
-%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 			case {Topic, Alias} of
-				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State};
-				{T, N} ->
-					{PubRec, State#connection_state{topic_alias_in_map = maps:put(N, T, TopicAliasINMap)}};
 				{"", N} ->
 					case maps:get(N, TopicAliasINMap, undefined) of
-%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 						undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
 						Topic -> {PubRec#publish{topic = Topic, properties = proplists:delete(?Topic_Alias, Props)}, State}
 					end;
-				{_T, -1} -> {PubRec, State}
+				{_T, -1} -> {PubRec, State};
+				{T, N} ->
+					{PubRec, State#connection_state{topic_alias_in_map = maps:put(N, T, TopicAliasINMap)}}
 			end
 	end;
 topic_alias_handle(_, PubRec, State) ->
