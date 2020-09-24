@@ -97,7 +97,7 @@ handle_call({connect, Conn_config, Callback},
 	case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{connect => From},
-			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_map = #{}},
+			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
 			New_State_2 =
 			case Conn_config#connect.clean_session of
 				1 -> 
@@ -120,7 +120,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 handle_call({publish, #publish{qos = 0} = PubRec}, 
 						{_, Ref}, 
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
+	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State),
 	Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
 	lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
 	{reply, {ok, Ref}, NewState};
@@ -130,7 +130,7 @@ handle_call({publish, #publish{qos = 0} = PubRec},
 handle_call({publish, #publish{qos = QoS} = PubRec}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec, State),
+	{Params, NewState} = topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State),
 	Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
 %% store message before sending
 	Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
@@ -394,25 +394,66 @@ keep_alive_timer(Keep_Alive_Time, Timer_Ref) ->
 	erlang:cancel_timer(Timer_Ref),
 	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout).
 
-topic_alias_handle('5.0', #publish{topic = Topic, properties = Props} = PubRec, #connection_state{topic_alias_map = TopicAliasMap} = State) ->
-	Alias = proplists:get_value(?Topic_Alias, Props, 0),
-	case {Topic, Alias} of
-		{"", 0} -> {error, State};
-		{"", N} ->
-			case maps:get(N, TopicAliasMap, error) of
-				error -> {error, State};
-				_ -> {PubRec, State}
-			end;
-		{T, 0} -> 
-			Map1 = maps:filter(fun(_K,V) when V == T -> true; (_K,_) -> false end, TopicAliasMap),
-			MapSize = maps:size(Map1),
-			if MapSize > 0 ->
-						Als = hd(maps:keys(Map1)),
-						{PubRec#publish{topic = "", properties = [{?Topic_Alias, Als} | Props]}, State};
-				 true -> {PubRec, State}
-			end;
-		{T, N} ->
-			{PubRec, State#connection_state{topic_alias_map = maps:put(N, T, TopicAliasMap)}}
+%% @todo split this function to client and server in/out side separate functions.
+%% This is out of publish:
+topic_alias_handle('5.0', 
+									 #publish{topic = Topic, properties = Props, dir = out} = PubRec, 
+									 #connection_state{topic_alias_out_map = TopicAliasOUTMap, config = #connect{properties = ConnectProps}} = State) ->
+	Alias = proplists:get_value(?Topic_Alias, Props, -1),
+	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
+	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+		 true ->
+			case {Topic, Alias} of
+				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State, State}; 
+				{T, N} ->
+					{PubRec, State#connection_state{topic_alias_out_map = maps:put(N, T, TopicAliasOUTMap)}};
+				{"", N} ->
+					if State#connection_state.end_type == client ->
+							case maps:get(N, TopicAliasOUTMap, undefined) of
+								undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State}; 
+								_ -> {PubRec, State}
+							end;
+						 true ->
+							 {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State}
+					end;
+				{T, -1} -> %% if server publish msg to a client that already has topic alias map but server has no knowledge about this.
+					if State#connection_state.end_type == server ->
+							Map1 = maps:filter(fun(_K,V) when V == T -> true; (_K,_) -> false end, TopicAliasOUTMap),
+							MapSize = maps:size(Map1),
+							if MapSize > 0 ->
+										Als = hd(maps:keys(Map1)),
+										{PubRec#publish{topic = "", properties = [{?Topic_Alias, Als} | Props]}, State};
+								 true -> {PubRec, State}
+							end;
+						 true -> {PubRec, State}
+					end
+			end
+	end;
+%% This is in of publish:
+topic_alias_handle('5.0',
+									 #publish{topic = Topic, properties = Props, dir=in} = PubRec,
+									 #connection_state{topic_alias_in_map = TopicAliasINMap, config = #connect{properties = ConnectProps}} = State) ->
+	Alias = proplists:get_value(?Topic_Alias, Props, -1),
+	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
+	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+		 true ->
+%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+			case {Topic, Alias} of
+				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State};
+				{T, N} ->
+					{PubRec, State#connection_state{topic_alias_in_map = maps:put(N, T, TopicAliasINMap)}};
+				{"", N} ->
+					case maps:get(N, TopicAliasINMap, undefined) of
+%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+						undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+						Topic -> {PubRec#publish{topic = Topic, properties = proplists:delete(?Topic_Alias, Props)}, State}
+					end;
+				{_T, -1} -> {PubRec, State}
+			end
 	end;
 topic_alias_handle(_, PubRec, State) ->
 	{PubRec, State}.

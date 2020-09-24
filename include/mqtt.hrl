@@ -141,7 +141,8 @@
 		connected = 0 :: 0 | 1, %% is used ?
 		packet_id = 100 :: integer(),
 %%		subscriptions = #{} :: map(), %% @todo keep in persistance storage
-		topic_alias_map = #{}, %% TopicAlias => TopicName
+		topic_alias_in_map = #{} :: map(), %% TopicAlias => TopicName
+		topic_alias_out_map = #{} :: map(), %% TopicAlias => TopicName
 		processes = #{} :: map(), %% @todo keep in persistance storage for QoS =1,2
 		tail = <<>> :: binary(),
 		ping_count = 0 :: integer(), %% is used ?

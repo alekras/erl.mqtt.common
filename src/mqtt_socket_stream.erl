@@ -76,7 +76,7 @@ process(State, Binary) ->
 			Packet_Id = State#connection_state.packet_id,
 			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			if Resp_code =:= 0 ->
-					New_State = State#connection_state{config = Config, session_present = SP, topic_alias_map = #{}},
+					New_State = State#connection_state{config = Config, session_present = SP, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
 					New_State_2 =
 					case Config#connect.clean_session of
 						1 -> 
@@ -418,7 +418,7 @@ server_send_publish(Pid, Params) ->
 	lager:debug([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
 %% @todo process look up topic alias for the Pid client/session and update #publish record
 	R =
-	case gen_server:call(Pid, {publish, Params}, ?MQTT_GEN_SERVER_TIMEOUT) of
+	case gen_server:call(Pid, {publish, Params#publish{dir=out}}, ?MQTT_GEN_SERVER_TIMEOUT) of
 		{ok, Ref} -> 
 			case Params#publish.qos of
 				0 -> ok;
@@ -508,7 +508,7 @@ handle_get_topic_from_alias('5.0', #publish{topic = Prms_Topic} = PubParam, Stat
 				TopicAlias = proplists:get_value(?Topic_Alias, PubParam#publish.properties, 0),
 				if TopicAlias == 0 -> error;
 					 true ->
-							maps:get(TopicAlias, State#connection_state.topic_alias_map, "")
+							maps:get(TopicAlias, State#connection_state.topic_alias_in_map, error)
 				end;
 		 true -> Prms_Topic
 	end;
