@@ -410,19 +410,19 @@ topic_alias_handle('5.0',
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
 	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
-	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:1", message="Topic Alias invalid"}, State};
 		 true ->
 			case {Topic, Alias} of
 				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State, State}; 
+				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3:2", message="Protocol Error"}, State}; 
 				{"", N} ->
 					if State#connection_state.end_type == client ->
 							case maps:get(N, TopicAliasOUTMap, undefined) of
-								undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State}; 
+								undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:3", message="Topic Alias invalid"}, State}; 
 								_ -> {PubRec, State}
 							end;
 						 true ->
-							 {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State}
+							 {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:4", message="Topic Alias invalid"}, State}
 					end;
 				{T, -1} -> %% if server publish msg to a client that already has topic alias map but server has no knowledge about this.
 					if State#connection_state.end_type == server ->
@@ -446,16 +446,16 @@ topic_alias_handle('5.0',
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
 	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
-	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:a", message="Topic Alias invalid"}, State};
 		 true ->
 %% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 			case {Topic, Alias} of
 				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3", message="Protocol Error"}, State};
+				{"", -1} -> {#mqtt_client_error{type=protocol, errno=16#82, source="topic_alias_handle/3:b", message="Protocol Error"}, State};
 				{"", N} ->
 					case maps:get(N, TopicAliasINMap, undefined) of
 %% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-						undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3", message="Topic Alias invalid"}, State};
+						undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:c", message="Topic Alias invalid"}, State};
 						Topic -> {PubRec#publish{topic = Topic, properties = proplists:delete(?Topic_Alias, Props)}, State}
 					end;
 				{_T, -1} -> {PubRec, State};
