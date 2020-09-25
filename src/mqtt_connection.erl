@@ -410,7 +410,10 @@ topic_alias_handle('5.0',
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
 	SkipCheck = State#connection_state.test_flag =:= skip_alias_max_check,
 	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
-	if ((Alias == 0) orelse (Alias > AliasMax)) and (not SkipCheck) -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:1", message="Topic Alias invalid"}, State};
+	if ((Alias == 0) orelse (Alias > AliasMax)) and (not SkipCheck) ->
+			{#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:1", message="Topic Alias invalid"}, State};
+		 SkipCheck ->
+			{PubRec, State};
 		 true ->
 			case {Topic, Alias} of
 				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
