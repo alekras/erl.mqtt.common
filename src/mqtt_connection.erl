@@ -122,7 +122,7 @@ handle_call({publish, #publish{qos = 0} = PubRec},
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
 		{#mqtt_client_error{} = Response, NewState} ->
-			{reply, {Response, Ref}, NewState};
+			{reply, {error, Response, Ref}, NewState};
 		{Params, NewState} ->
 			Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
 			lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
@@ -136,7 +136,7 @@ handle_call({publish, #publish{qos = QoS} = PubRec},
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
 	case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
 		{#mqtt_client_error{} = Response, NewState} ->
-			{reply, {Response, Ref}, NewState};
+			{reply, {error, Response, Ref}, NewState};
 		{Params, NewState} ->
 			Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
 %% store message before sending
@@ -148,7 +148,7 @@ handle_call({publish, #publish{qos = QoS} = PubRec},
 					New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
 					lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
 					{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
-				{error, Reason} -> {reply, {error, Reason}, State} %% do not update State!
+				{error, Reason} -> {reply, {error, Reason, Ref}, State} %% do not update State!
 			end
 	end;
 
