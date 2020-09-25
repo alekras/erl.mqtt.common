@@ -456,7 +456,7 @@ topic_alias_handle('5.0',
 					case maps:get(N, TopicAliasINMap, undefined) of
 %% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 						undefined -> {#mqtt_client_error{type=protocol, errno=16#94, source="topic_alias_handle/3:c", message="Topic Alias invalid"}, State};
-						Topic -> {PubRec#publish{topic = Topic, properties = proplists:delete(?Topic_Alias, Props)}, State}
+						AliasTopic -> {PubRec#publish{topic = AliasTopic, properties = proplists:delete(?Topic_Alias, Props)}, State}
 					end;
 				{_T, -1} -> {PubRec, State};
 				{T, N} ->
