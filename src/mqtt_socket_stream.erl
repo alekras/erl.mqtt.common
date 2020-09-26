@@ -379,11 +379,12 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 %% Internal functions
 %% ====================================================================
 
-handle_conack_properties('5.0', #connection_state{config = #connect{properties = ConfProps}} = State, Properties) ->
+handle_conack_properties('5.0', #connection_state{config = Config} = State, Properties) ->
 	case proplists:get_value(?Topic_Alias_Maximum, Properties, undefined) of
 		undefined -> State;
 		TAMaximum ->
-			State#connection_state{config = #connect{properties = [{?Topic_Alias_Maximum, TAMaximum} | ConfProps]}}
+			ConfProps = Config#connect.properties,
+			State#connection_state{config = Config#connect{properties = [{?Topic_Alias_Maximum, TAMaximum} | ConfProps]}}
 	end;
 handle_conack_properties(_, State, _) ->
 	State.
