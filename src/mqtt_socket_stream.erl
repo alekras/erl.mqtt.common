@@ -106,15 +106,16 @@ process(State, Binary) ->
 					{Host, Port} = get_peername(Transport, Socket),
 					lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
 					IsConnected =
-					if CRC == 0 ->
+					if CRC == 0 -> %% TODO process all codes for v5.0
 							lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
 							1;
 						true ->
 							lager:info([{endtype, client}], "Client ~p is disconnected to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
 							0
 					end,
+					NewState = handle_conack_properties(Version, State, Properties),
 					process(
-						State#connection_state{processes = maps:remove(connect, Processes), 
+						NewState#connection_state{processes = maps:remove(connect, Processes), 
 																		session_present = SP,
 																		connected = IsConnected},
 						Tail);
@@ -377,6 +378,15 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+handle_conack_properties('5.0', #connection_state{config = #connect{properties = ConfProps}} = State, Properties) ->
+	case maps:get(?Topic_Alias_Maximum, Properties, undefined) of
+		undefined -> State;
+		TAMaximum ->
+			State#connection_state{config = #connect{properties = maps:put(?Topic_Alias_Maximum, TAMaximum, ConfProps)}}
+	end;
+handle_conack_properties(_, State, _) ->
+	State.
 
 get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
