@@ -576,9 +576,10 @@ handle_server_publish('5.0',
 			[ begin
 					GroupSize = length(GroupList),
 					N = rand:uniform(GroupSize),
+					lager:debug([{endtype, server}], "Shared subscription:: GroupList=~p~n     Random N=~p~n", [GroupList, N]),
 					#storage_subscription{key = #subs_primary_key{client_id = CliId}, options = Opts} = lists:nth(N, GroupList),
 					case Storage:get(server, {client_id, CliId}) of
-						undefined -> 
+						undefined ->
 							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
 						Pid ->
 							ShTopicQoS = Opts#subscription_options.max_qos,
