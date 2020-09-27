@@ -383,8 +383,8 @@ handle_conack_properties('5.0', #connection_state{config = Config} = State, Prop
 	case proplists:get_value(?Topic_Alias_Maximum, Properties, undefined) of
 		undefined -> State;
 		TAMaximum ->
-			ConfProps = Config#connect.properties,
-			State#connection_state{config = Config#connect{properties = [{?Topic_Alias_Maximum, TAMaximum} | ConfProps]}}
+			ConfProps = lists:keystore(?Topic_Alias_Maximum, 1, Config#connect.properties, {?Topic_Alias_Maximum, TAMaximum}),
+			State#connection_state{config = Config#connect{properties = ConfProps}}
 	end;
 handle_conack_properties(_, State, _) ->
 	State.
