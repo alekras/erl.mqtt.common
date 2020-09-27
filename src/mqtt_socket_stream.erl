@@ -562,14 +562,17 @@ handle_server_publish('5.0',
 	case Storage:get_matched_shared_topics(server, PubTopic) of
 		[] -> ok;
 		ShSubsList -> 
-			ShNamesMap = maps:new(),
-			[
-				case maps:get(ShareName, ShNamesMap) of
-					{badkey, _} -> maps:put(ShareName, [Subs], ShNamesMap);
-					GroupList -> maps:put(ShareName, [Subs | GroupList], ShNamesMap)
-				end
-				|| #storage_subscription{key = #subs_primary_key{shareName = ShareName}} = Subs <- ShSubsList],
-			
+			F = fun(Subs, ShNamesMap) ->
+						ShareName = Subs#subs_primary_key.shareName,
+						GroupList =
+						try
+							maps:get(ShareName, ShNamesMap)
+						catch
+							error:{badkey, _} -> []
+						end,
+						maps:put(ShareName, [Subs | GroupList], ShNamesMap)
+					end,
+			ShNamesMap = lists:foldl(F, #{}, ShSubsList),
 			[ begin
 					GroupSize = length(GroupList),
 					N = rand:uniform(GroupSize),
