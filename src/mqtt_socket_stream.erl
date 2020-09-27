@@ -563,7 +563,7 @@ handle_server_publish('5.0',
 		[] -> ok;
 		ShSubsList -> 
 			F = fun(Subs, ShNamesMap) ->
-						ShareName = Subs#subs_primary_key.shareName,
+						ShareName = Subs#storage_subscription.key#subs_primary_key.shareName,
 						GroupList =
 						try
 							maps:get(ShareName, ShNamesMap)
