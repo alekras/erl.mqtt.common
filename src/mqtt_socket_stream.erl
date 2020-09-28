@@ -176,7 +176,7 @@ process(State, Binary) ->
 			process(State, Tail);
 %% Client side::
 		{suback, Packet_Id, Return_codes, Properties, Tail} ->
-			lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p~n", [Client_Id, Packet_Id, Return_codes]),
+			lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p Processes:~100p~n", [Client_Id, Packet_Id, Return_codes, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, Subscriptions} when is_list(Subscriptions) ->
 %% store session subscriptions
