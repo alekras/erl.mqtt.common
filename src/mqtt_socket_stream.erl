@@ -478,9 +478,9 @@ handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage} = 
 																	Options, 
 																	#subs_primary_key{topicFilter = TopicFilter, shareName = undefined} = Key) ->
 	Retain_Messages = Storage:get(State#connection_state.end_type, {topic, TopicFilter}),
-	lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n", [Retain_Messages]),
-	QoS = Options#subscription_options.max_qos,
 	Exist = Storage:get(State#connection_state.end_type, Key),
+	lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n   Exist=~p~n", [Retain_Messages, Exist]),
+	QoS = Options#subscription_options.max_qos,
 	Retain_handling = Options#subscription_options.retain_handling,
 	if (Retain_handling == 0) or ((Retain_handling == 1) and (Exist == undefined)) ->
 			Retain_as_published = Options#subscription_options.retain_as_published,
