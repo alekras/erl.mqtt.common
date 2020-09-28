@@ -167,19 +167,28 @@ process(State, Binary) ->
 					Sub_Options#subscription_options.max_qos
 				end || {Topic, Options} <- Subscriptions],
 			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return subscribe properties @todo generate return codes
-			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
-			Transport:send(Socket, Packet),
+			case Transport:send(Socket, Packet) of
+				ok -> 
+					lager:info([{endtype, server}], "Subscribe ~p is completed for client: ~p~n", [Subscriptions, Client_Id]);
+				{error, Reason} -> 
+					lager:error([{endtype, server}], "Cannot send Suback packet with reason: ~p for client: ~p~n", [Reason, Client_Id])
+			end,
 			process(State, Tail);
 %% Client side::
 		{suback, Packet_Id, Return_codes, Properties, Tail} ->
+			lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p~n", [Client_Id, Packet_Id, Return_codes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, Subscriptions} when is_list(Subscriptions) ->
 %% store session subscriptions
 					[ begin 
-							Storage:save(State#connection_state.end_type, #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, options = Options, callback = Callback})
+							Storage:save(client,
+													 #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id},
+																								 options = Options,
+																								 callback = Callback
+													 })
 						end || {Topic, Options, Callback} <- Subscriptions], %% @todo check clean_session flag
 					Pid ! {suback, Ref, Return_codes, Properties},
-					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
+					lager:info([{endtype, client}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 					process(
 						State#connection_state{
 							processes = maps:remove(Packet_Id, Processes)
