@@ -144,9 +144,8 @@ process(State, Binary) ->
 				Tail);
 %% Server side::
 		{subscribe, Packet_Id, Subscriptions, Properties, Tail} ->
-			Return_Codes = [ QoS || {_, QoS} <- Subscriptions],
 %% store session subscriptions
-
+			Return_Codes = 
 			[ begin %% Topic, QoS - new subscriptions
 					Sub_Options = 
 						if Version == '5.0' -> Options;
@@ -164,7 +163,8 @@ process(State, Binary) ->
 													#storage_subscription{key = Key,
 																								options = Sub_Options, 
 																								callback = not_defined_yet}
-											)
+											),
+					Sub_Options#subscription_options.max_qos
 				end || {Topic, Options} <- Subscriptions],
 			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return subscribe properties @todo generate return codes
 			lager:info([{endtype, State#connection_state.end_type}], "Subscription(s) ~p is completed for client: ~p~n", [Subscriptions, Client_Id]),
