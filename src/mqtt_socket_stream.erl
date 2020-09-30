@@ -50,6 +50,7 @@ process(State, Binary) ->
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Processes = State#connection_state.processes,
+	ProcessesExt = State#connection_state.processes_ext,
 	Storage = State#connection_state.storage,
 	case input_parser(Version, Binary) of
 
@@ -57,7 +58,7 @@ process(State, Binary) ->
 			lager:alert([{endtype, State#connection_state.end_type}], "Connection packet cannot be parsed: ~p~n", [Tail]),
 			self() ! disconnect,
 			process(State, <<>>);
-
+%% server side only
 		{connect, Config, Tail} ->
 			%% check credentials 
 			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
@@ -66,14 +67,14 @@ process(State, Binary) ->
 			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end; %% @todo maybe just ClientPid ! disconnect ?
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end; %% TODO maybe just ClientPid ! disconnect ?
 				 true -> ok
 			end,
 			Resp_code =
 			if Encrypted_password_db =/= Encrypted_password_cli -> 5;
 				 true -> 0
 			end,
-			Packet_Id = State#connection_state.packet_id,
+%%			Packet_Id = State#connection_state.packet_id, %% is never used
 			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			if Resp_code =:= 0 ->
 					New_State = State#connection_state{config = Config, session_present = SP, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
@@ -87,10 +88,11 @@ process(State, Binary) ->
 					end,
 					New_Client_Id = Config#connect.client_id,
 					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
-					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties @todo
+					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
-					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail);
+%%					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail); %% Packet_Id is never used
+					process(New_State_2#connection_state{connected = 1}, Tail);
 				true ->
 					Packet = packet(connack, ConnVersion, {SP, Resp_code}, []),
 					Transport:send(Socket, Packet),
@@ -98,7 +100,7 @@ process(State, Binary) ->
 					self() ! disconnect,
 					process(State, Tail)
 			end;
-
+%% client side only
 		{connack, SP, CRC, Msg, Properties, Tail} ->
 			case maps:get(connect, Processes, undefined) of
 				{Pid, Ref} ->
@@ -142,7 +144,7 @@ process(State, Binary) ->
 				State#connection_state{processes = maps:remove(pingreq, Processes), 
 																ping_count = State#connection_state.ping_count - 1},
 				Tail);
-%% Server side::
+%% Server side only
 		{subscribe, Packet_Id, Subscriptions, Properties, Tail} ->
 %% store session subscriptions
 			Return_Codes = 
@@ -155,7 +157,7 @@ process(State, Binary) ->
 					{ShareName, TopicFilter} =
 					case mqtt_data:is_topicFilter_valid(Topic) of
 						{true, [SN, TF]} -> {if SN == "" -> undefined; true -> SN end, TF};
-						false -> {undefined, ""}		%% @todo process the error!
+						false -> {undefined, ""}		%% TODO process the error!
 			 		end,
 					Key = #subs_primary_key{topicFilter = TopicFilter, shareName = ShareName, client_id = Client_Id},
 					handle_retain_msg_after_subscribe(Version, State, Sub_Options, Key),
@@ -166,7 +168,7 @@ process(State, Binary) ->
 											),
 					Sub_Options#subscription_options.max_qos
 				end || {Topic, Options} <- Subscriptions],
-			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% @todo now just return subscribe properties @todo generate return codes
+			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% TODO now just return subscribe properties TODO generate return codes
 			case Transport:send(Socket, Packet) of
 				ok -> 
 					lager:info([{endtype, server}], "Subscribe ~p is completed for client: ~p~n", [Subscriptions, Client_Id]);
@@ -186,7 +188,7 @@ process(State, Binary) ->
 																								 options = Options,
 																								 callback = Callback
 													 })
-						end || {Topic, Options, Callback} <- Subscriptions], %% @todo check clean_session flag
+						end || {Topic, Options, Callback} <- Subscriptions], %% TODO check clean_session flag
 					Pid ! {suback, Ref, Return_codes, Properties},
 					lager:info([{endtype, client}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 					process(
@@ -203,7 +205,7 @@ process(State, Binary) ->
 			ReasonCodeList =
 			[ begin 
 					Storage:remove(State#connection_state.end_type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}),
-					0 %% @todo add reason code list
+					0 %% TODO add reason code list
 				end || Topic <- Topics],
 			Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, Properties),
 			Transport:send(Socket, Packet),
@@ -217,7 +219,7 @@ process(State, Binary) ->
 %% discard session subscriptions
 					[ begin 
 							Storage:remove(State#connection_state.end_type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id})
-						end || Topic <- Topics], %% @todo check clean_session flag
+						end || Topic <- Topics], %% TODO check clean_session flag
 					lager:info([{endtype, State#connection_state.end_type}], "Client ~p is unsubscribed from topics ~p~n", [Client_Id, Topics]),
 					process(
 						State#connection_state{
@@ -228,7 +230,7 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = Props} = Record, Packet_Id, Tail} ->
+		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = Record, Packet_Id, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case mqtt_connection:topic_alias_handle(Version, Record, State) of
@@ -251,7 +253,7 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 					process(NewState, Tail);
 				2 ->
 					NewState1 = 
-						case maps:is_key(Packet_Id, Processes) of
+						case maps:is_key(Packet_Id, ProcessesExt) of
 							true when Dup =:= 0 -> 
 								lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, NewState#connection_state.processes]),
 								NewState;
@@ -270,8 +272,8 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 								end,
 								case Transport:send(Socket, Packet) of
 									ok -> 
-										New_processes = Processes#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
-										NewState#connection_state{processes = New_processes};
+										New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
+										NewState#connection_state{processes_ext = New_processes};
 									{error, _Reason} -> NewState
 								end
 						end,
@@ -296,7 +298,6 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 			end;
 
 		?test_fragment_skip_rcv_pubrec
-%%		?test_fragment_skip_send_pubrel
 		{pubrec, {Packet_Id, ResponseCode}, _Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
@@ -318,10 +319,11 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 				undefined ->
 					process(State, Tail)
 			end;
+
 		?test_fragment_skip_rcv_pubrel
 		{pubrel, {Packet_Id, _ReasonCode}, Properties, Tail} ->
 			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
-			case maps:get(Packet_Id, Processes, undefined) of
+			case maps:get(Packet_Id, ProcessesExt, undefined) of
 				{_From, _Params} ->
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					if
@@ -342,8 +344,8 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 					New_State =
 					case Transport:send(Socket, Packet) of
 						ok ->
-							New_processes = maps:remove(Packet_Id, Processes),
-							State#connection_state{processes = New_processes};
+							New_processes = maps:remove(Packet_Id, ProcessesExt),
+							State#connection_state{processes_ext = New_processes};
 						{error, _Reason} -> State
 					end,
 					process(New_State, Tail);
