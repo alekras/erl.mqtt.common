@@ -170,8 +170,8 @@ handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
 	Packet = packet(pubrec, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrec}}},
-			{reply, {ok, Ref}, State#connection_state{processes = New_processes}};
+			New_processes = (State#connection_state.processes_ext)#{Packet_Id => {From, #publish{last_sent = pubrec}}},
+			{reply, {ok, Ref}, State#connection_state{processes_ext = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
 handle_call({republish, #publish{last_sent = publish} = Params, Packet_Id},

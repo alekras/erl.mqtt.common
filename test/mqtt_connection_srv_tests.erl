@@ -344,7 +344,7 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	connect_v3(),
 	subscribe_v3(),
 	
-	mock_tcp:set_expectation([<<64,2,0,100>>,<<50,16,0,5,84,111,112,105,99,0,101,80,97,121,108,111,97,100>>]), % puback packet, publish packet server -> subscriber
+	mock_tcp:set_expectation([<<64,2,0,100>>,<<50,16,0,5,84,111,112,105,99,0,100,80,97,121,108,111,97,100>>]), % puback packet, publish packet server -> subscriber
 	conn_server ! {tcp, undefined, <<50,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
 	wait_mock_tcp("(puback sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
@@ -362,7 +362,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	connect_v5(),
 	subscribe_v5(),
 
-	mock_tcp:set_expectation([<<64,2,100:16>>,<<50,17,0,5,84,111,112,105,99,101:16, 0,80,97,121,108,111,97,100>>]),
+	mock_tcp:set_expectation([<<64,2,100:16>>,<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>]),
 	conn_server ! {tcp, undefined, <<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
 	wait_mock_tcp("(puback sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
@@ -382,7 +382,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 	subscribe_v5(),
 
 	mock_tcp:set_expectation([<<64,2,100:16>>,
-														<<50,19, 5:16,84,111,112,105,99, 101:16, 2,1,1, 80,97,121,108,111,97,100>>]),
+														<<50,19, 5:16,84,111,112,105,99, 100:16, 2,1,1, 80,97,121,108,111,97,100>>]),
 	conn_server ! {tcp, undefined, <<50,19, 5:16,84,111,112,105,99, 100:16, 2,1,1, 80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
 	wait_mock_tcp("(puback sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
@@ -405,16 +405,16 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	conn_server ! {tcp, undefined, <<52,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
 	wait_mock_tcp("(pubrec sent -> client)"),
 
-	mock_tcp:set_expectation([<<112,2,0,100>>,<<52,16,0,5,84,111,112,105,99, 101:16, 80,97,121,108,111,97,100>>]), %% expect pubcomp packet from server -> client
+	mock_tcp:set_expectation([<<112,2,0,100>>,<<52,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>]), %% expect pubcomp packet from server -> client
 	conn_server ! {tcp, undefined, <<98,2,0,100>>}, %% Pubrel packet from client -> server
 	wait_mock_tcp("(pubcomp sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
-	mock_tcp:set_expectation(<<98,2,0,101>>), % pubrel packet from server -> subscriber
-	conn_server ! {tcp, undefined, <<80,2,0,101>>}, %% pubrec packet from subscriber -> server
+	mock_tcp:set_expectation(<<98,2,0,100>>), % pubrel packet from server -> subscriber
+	conn_server ! {tcp, undefined, <<80,2,0,100>>}, %% pubrec packet from subscriber -> server
 	wait_mock_tcp("(pubrel sent -> subscriber)"),
 
-	conn_server ! {tcp, undefined, <<112,2,0,101>>}, %% pubcomp packet from subscriber -> server
+	conn_server ! {tcp, undefined, <<112,2,0,100>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
 	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
@@ -431,16 +431,16 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	conn_server ! {tcp, undefined, <<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
 	wait_mock_tcp("(pubrec sent -> client)"),
 
-	mock_tcp:set_expectation([<<112,2,0,100>>,<<52,17,0,5,84,111,112,105,99,101:16, 0,80,97,121,108,111,97,100>>]), %% expect pubcomp packet from server -> client
+	mock_tcp:set_expectation([<<112,2,0,100>>,<<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>]), %% expect pubcomp packet from server -> client
 	conn_server ! {tcp, undefined, <<98,5,0,100,0,0>>}, %% Pubrel packet from client -> server
 	wait_mock_tcp("(pubcomp sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
-	mock_tcp:set_expectation(<<98,2,0,101>>), % pubrel packet from server -> subscriber
-	conn_server ! {tcp, undefined, <<80,5,0,101,0,0>>}, %% pubrec packet from subscriber -> server
+	mock_tcp:set_expectation(<<98,2,0,100>>), % pubrel packet from server -> subscriber
+	conn_server ! {tcp, undefined, <<80,5,0,100,0,0>>}, %% pubrec packet from subscriber -> server
 	wait_mock_tcp("(pubrel sent -> subscriber)"),
 
-	conn_server ! {tcp, undefined, <<112,5,0,101,0,0>>}, %% pubcomp packet from subscriber -> server
+	conn_server ! {tcp, undefined, <<112,5,0,100,0,0>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
 	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
@@ -459,20 +459,20 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 	wait_mock_tcp("(pubrec sent -> client)"),
 
 	mock_tcp:set_expectation([<<112,2,0,100>>, %% expect pubcomp packet from server -> client
-			<<52,27,0,5,84,111,112,105,99,101:16,10,9,0,4,1,2,3,4,35,1,44,80,97,121,108,111,97,100>>]), %% expect publish packet from server -> subscriber
+			<<52,27,0,5,84,111,112,105,99,100:16,10,9,0,4,1,2,3,4,35,1,44,80,97,121,108,111,97,100>>]), %% expect publish packet from server -> subscriber
 	conn_server ! {tcp, undefined, <<98,43,0,100,16,39, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,23:16,"No matching subscribers"/utf8>>}, %% Pubrel packet from client -> server
 	wait_mock_tcp("(pubcomp sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
-	mock_tcp:set_expectation(<<98,3,0,101,16>>), % pubrel packet from server -> subscriber
-	conn_server ! {tcp, undefined, <<80,43,101:16,16, 39, 
+	mock_tcp:set_expectation(<<98,3,0,100,16>>), % pubrel packet from server -> subscriber
+	conn_server ! {tcp, undefined, <<80,43,100:16,16, 39, 
 																	 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 
 																	 31,23:16,"No matching subscribers"/utf8>>}, %% pubrec packet from subscriber -> server
 	wait_mock_tcp("(pubrel sent -> subscriber)"),
 
 %% <<112,61,0,100,1,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
 %% 																	 31, 27:16,"Packet Identifier not found"/utf8>>
-	conn_server ! {tcp, undefined, <<112,61,0,101,1,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
+	conn_server ! {tcp, undefined, <<112,61,0,100,1,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
 																	 31, 27:16,"Packet Identifier not found"/utf8>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
