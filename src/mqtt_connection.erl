@@ -345,11 +345,18 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 						Pid ->
 							TopicQoS = TopicOptions#subscription_options.max_qos,
 							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
-							Params = #publish{topic = Topic, 
-																qos = QoS, 
-																retain = Config#connect.will_retain, 
-																payload = Config#connect.will_message},
-							erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
+							{WillDelayInt, Properties} =
+							case lists:keytake(?Will_Delay_Interval, 1, Config#connect.will_properties) of
+								false -> {0, Config#connect.will_properties};
+								{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
+							end,
+							Params = #publish{topic = Topic,
+																qos = QoS,
+																retain = Config#connect.will_retain,
+																payload = Config#connect.will_message,
+																properties = Properties},
+							{ok, _} = timer:apply_after(WillDelayInt * 1000, mqtt_socket_stream, server_send_publish, [Pid, Params])
+%%							erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
 					end
 					|| #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, options = TopicOptions} <- List
 				],
@@ -358,7 +365,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 															qos = Config#connect.will_qos, 
 															retain = Config#connect.will_retain, 
 															payload = Config#connect.will_message},
-						Storage:save(server, Params1); %% TODO avoid duplocates ???
+						Storage:save(server, Params1); %% TODO avoid duplicates ???
 					true -> ok
 				end;
 			true -> ok
