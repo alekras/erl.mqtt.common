@@ -147,12 +147,16 @@ process(State, Binary) ->
 %% Server side only
 		{subscribe, Packet_Id, Subscriptions, Properties, Tail} ->
 %% store session subscriptions
+			SubId = proplists:get_value(?Subscription_Identifier, Properties, 0),
 			Return_Codes = 
 			[ begin %% Topic, QoS - new subscriptions
 					Sub_Options = 
-						if Version == '5.0' -> Options;
+						if Version == '5.0' -> 
+									if SubId == 0 -> Options;
+										 true -> Options#subscription_options{identifier = SubId}
+									end;
 							 true ->
-								#subscription_options{max_qos = Options}
+									#subscription_options{max_qos = Options}
 						end,
 					{ShareName, TopicFilter} =
 					case mqtt_data:is_topicFilter_valid(Topic) of
@@ -168,7 +172,7 @@ process(State, Binary) ->
 											),
 					Sub_Options#subscription_options.max_qos
 				end || {Topic, Options} <- Subscriptions],
-			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, Properties), %% TODO now just return subscribe properties TODO generate return codes
+			Packet = packet(suback, Version, {Return_Codes, Packet_Id}, []), %% TODO now just return empty properties
 			case Transport:send(Socket, Packet) of
 				ok -> 
 					lager:info([{endtype, server}], "Subscribe ~p is completed for client: ~p~n", [Subscriptions, Client_Id]);
@@ -207,7 +211,7 @@ process(State, Binary) ->
 					Storage:remove(State#connection_state.end_type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}),
 					0 %% TODO add reason code list
 				end || Topic <- Topics],
-			Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, Properties),
+			Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, []), %% TODO now just return empty properties
 			Transport:send(Socket, Packet),
 			lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 			process(State, Tail);
@@ -564,7 +568,12 @@ handle_server_publish('5.0',
 								QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
 								Retain_as_published = Options#subscription_options.retain_as_published,
 								Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
-								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
+								SubId = Options#subscription_options.identifier,
+								NewPubProps = 
+									if SubId == 0 -> Param#publish.properties;
+										 true -> lists:keystore(?Subscription_Identifier, 1, Param#publish.properties, {?Subscription_Identifier, SubId})
+									end,
+								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, properties = NewPubProps, retain = Retain1}])
 						end
 				end
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
@@ -594,16 +603,16 @@ handle_server_publish('5.0',
 						undefined ->
 							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
 						Pid ->
-							NoLocal = Opts#subscription_options.nolocal,
-							ProcessCliD = State#connection_state.config#connect.client_id,
-							if (NoLocal =:= 1) and (ProcessCliD =:= CliId) -> ok;
-								 true ->
+%							NoLocal = Opts#subscription_options.nolocal,
+%							ProcessCliD = State#connection_state.config#connect.client_id,
+%							if (NoLocal =:= 1) and (ProcessCliD =:= CliId) -> ok;
+%								 true ->
 									ShTopicQoS = Opts#subscription_options.max_qos,
 									QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
 									Retain_as_published = Opts#subscription_options.retain_as_published,
 									Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
 									erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
-							end
+%							end
 					end
 				end
 				|| {_ShareName, GroupList} <- maps:to_list(ShNamesMap)]
