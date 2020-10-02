@@ -75,7 +75,7 @@
 		nolocal = 0 :: 0 | 1,
 		retain_as_published = 0 :: 0 | 1,
 		retain_handling = 0 :: 0 | 1 | 2,
-		identifier :: integer()
+		identifier = 0 :: integer()
 	}
 ).
 
