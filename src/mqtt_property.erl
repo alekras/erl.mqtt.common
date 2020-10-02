@@ -170,6 +170,7 @@ form_prop({PropertyName, PropertyValue})
 
 %% Variable byte integer type
 form_prop({?Subscription_Identifier = PropertyName, PropertyValue}) ->
+	lager:debug([{endtype, client}], "~n     ***************~n~p~n~p~n********~n", [PropertyName, PropertyValue]),
 	<<(mqtt_data:encode_variable_byte_integer(PropertyName))/binary, (mqtt_data:encode_variable_byte_integer(PropertyValue))/binary>>;
 
 % UTF-8 Pair type
