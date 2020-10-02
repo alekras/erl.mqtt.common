@@ -488,11 +488,10 @@ handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage} = 
 			Retain_as_published = Options#subscription_options.retain_as_published,
 			[ begin
 					QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
-					Retain = if Retain_as_published == 0 -> 0; true -> Params#publish.retain end,
 					erlang:spawn(?MODULE, 
 												server_send_publish, 
 												[self(), 
-												Params#publish{qos = QoS_4_Retain, retain = Retain}])
+												Params#publish{qos = QoS_4_Retain}])
 				end || #publish{qos = Params_QoS} = Params <- Retain_Messages];
 		 true -> ok
 	end;
@@ -563,7 +562,9 @@ handle_server_publish('5.0',
 							 true ->
 								TopicQoS = Options#subscription_options.max_qos,
 								QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
-								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = 0}])
+								Retain_as_published = Options#subscription_options.retain_as_published,
+								Retain = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain}])
 						end
 				end
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
@@ -593,9 +594,16 @@ handle_server_publish('5.0',
 						undefined ->
 							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
 						Pid ->
-							ShTopicQoS = Opts#subscription_options.max_qos,
-							QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
-							erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = 0}])
+							NoLocal = Opts#subscription_options.nolocal,
+							ProcessCliD = State#connection_state.config#connect.client_id,
+							if (NoLocal =:= 1) and (ProcessCliD =:= CliId) -> ok;
+								 true ->
+									ShTopicQoS = Opts#subscription_options.max_qos,
+									QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
+									Retain_as_published = Opts#subscription_options.retain_as_published,
+									Retain = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+									erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain}])
+							end
 					end
 				end
 				|| {_ShareName, GroupList} <- maps:to_list(ShNamesMap)]
