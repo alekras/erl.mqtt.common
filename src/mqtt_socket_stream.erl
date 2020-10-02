@@ -563,8 +563,8 @@ handle_server_publish('5.0',
 								TopicQoS = Options#subscription_options.max_qos,
 								QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
 								Retain_as_published = Options#subscription_options.retain_as_published,
-								Retain = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
-								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain}])
+								Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
 						end
 				end
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
@@ -601,8 +601,8 @@ handle_server_publish('5.0',
 									ShTopicQoS = Opts#subscription_options.max_qos,
 									QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
 									Retain_as_published = Opts#subscription_options.retain_as_published,
-									Retain = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
-									erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain}])
+									Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+									erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
 							end
 					end
 				end
