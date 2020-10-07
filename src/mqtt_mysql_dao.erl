@@ -138,9 +138,20 @@ start(End_Type) ->
 						"topic varchar(512) DEFAULT '',"
 						" publish_rec blob"
 %						", PRIMARY KEY (topic)"
-						" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
+						") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
 					R5 = connection:execute_query(Conn, Query5),
-					lager:debug([{endtype, End_Type}], "create retain table: ~p", [R5]);
+					lager:debug([{endtype, End_Type}], "create retain table: ~p", [R5]),
+					
+					Query6 =
+						"CREATE TABLE IF NOT EXISTS session_state ("
+						"client_id char(25) DEFAULT '',"
+						" session_expiry_interval int DEFAULT 0,"
+						" end_time int DEFAULT 0,"
+						" will_publish_rec blob,"
+						" PRIMARY KEY (client_id)"
+						") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
+					R6 = connection:execute_query(Conn, Query6),
+					lager:debug([{endtype, End_Type}], "create session_state table: ~p", [R6]);
 				 true -> ok
 			end,
 
@@ -155,6 +166,13 @@ save(End_Type, #storage_publish{key = #primary_key{client_id = Client_Id, packet
 		integer_to_list(Packet_Id), ",x'",
 		binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(End_Type, Query);
+save(server, #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = WillPubRec}) ->
+	Query = ["REPLACE INTO session_state VALUES (",
+		"'", Client_Id, "',",
+		integer_to_list(SessExp), ",",
+		integer_to_list(End), ",",
+		"x'", binary_to_hex(term_to_binary(WillPubRec)), "')"],
+	execute_query(server, Query);
 save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = Topic}, options = Options, callback = CB}) ->
 	CBin = term_to_binary(CB),
 	OptionsBin = term_to_binary(Options),
@@ -188,6 +206,10 @@ remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 		Client_Id, "' and packet_id=",
 		integer_to_list(Packet_Id)],
 	execute_query(End_Type, Query);
+remove(server, {session_client_id, Client_Id}) ->
+	Query = ["DELETE FROM session_state WHERE client_id='",
+		Client_Id, "'"],
+	execute_query(server, Query);
 remove(End_Type, #subs_primary_key{client_id = Client_Id, _ = '_'}) ->
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "'"],
@@ -214,6 +236,13 @@ get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
 	case execute_query(End_Type, Query) of
 		[] -> undefined;
 		[[R2]] -> #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = binary_to_term(R2)}
+	end;
+get(server, {session_client_id, Client_Id}) ->
+	Query = ["SELECT session_expiry_interval, end_time, will_publish_rec FROM session_state WHERE client_id='",
+		Client_Id, "'"],
+	case execute_query(server, Query) of
+		[] -> undefined;
+		[[SessExp, End, WillPubRec]] -> #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = binary_to_term(WillPubRec)}
 	end;
 get(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) -> %% @todo delete it
 	Query = ["SELECT share_name, options, callback FROM subscription WHERE client_id='",
@@ -287,6 +316,11 @@ get_all(End_Type, {session, Client_Id}) ->
 	R = execute_query(End_Type, Query),
 	[#storage_publish{key = #primary_key{client_id = CI, packet_id = PI}, document = binary_to_term(Publish_Rec)}
 		|| [CI, PI, Publish_Rec] <- R];
+get_all(server, session_state) ->
+	Query = ["SELECT client_id, session_expiry_interval, end_time, will_publish_rec FROM session_state"],
+	R = execute_query(server, Query),
+	[#session_state{client_id = CI, session_expiry_interval = SE, end_time = End, will_publish = binary_to_term(WillPubRec)}
+		|| [CI, SE, End, WillPubRec] <- R];
 get_all(End_Type, topic) ->
 	Query = <<"SELECT topic FROM subscription">>,
 	execute_query(End_Type, Query),
@@ -306,7 +340,11 @@ cleanup(End_Type, Client_Id) ->
 		"DELETE FROM connectpid WHERE client_id='",
 		Client_Id, "'"]),
 	lager:debug([{endtype, End_Type}], "connectpid delete: ~p", [R3]),
-	datasource:return_connection(mqtt_storage, Conn).
+	datasource:return_connection(mqtt_storage, Conn),
+	if End_Type =:= server ->
+			remove(server, {session_client_id, Client_Id});
+		true -> ok
+	end.
 
 cleanup(End_Type) ->
 	Conn = datasource:get_connection(mqtt_storage),
@@ -318,7 +356,9 @@ cleanup(End_Type) ->
 	lager:debug([{endtype, End_Type}], "connectpid delete: ~p", [R3]),
 	if End_Type =:= server ->
 		R4 = connection:execute_query(Conn, "DELETE FROM retain"),
-		lager:debug([{endtype, End_Type}], "retain delete: ~p", [R4]);
+		lager:debug([{endtype, End_Type}], "retain delete: ~p", [R4]),
+		R5 = connection:execute_query(Conn, "DELETE FROM session_state"),
+		lager:debug([{endtype, End_Type}], "session_state delete: ~p", [R5]);
 		true -> ok
 	end,
 	datasource:return_connection(mqtt_storage, Conn).

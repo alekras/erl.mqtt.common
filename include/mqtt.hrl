@@ -39,17 +39,18 @@
 %% </dl>
 %% }).
 -record(connect, 
-  {
-    client_id :: string(),
-    user_name :: string(),
-    password :: binary(),
-    will = 0 :: 0 | 1,
-    will_qos = 0 :: 0 | 1 | 2,
-    will_retain = 0 :: 0 | 1,
-    will_topic = "" :: string(),
+	{
+		client_id :: string(),
+		user_name :: string(),
+		password :: binary(),
+		will = 0 :: 0 | 1,
+		will_qos = 0 :: 0 | 1 | 2,
+		will_retain = 0 :: 0 | 1,
+		will_topic = "" :: string(),
 		will_properties = [] :: list(),
-    will_message = <<>> :: binary(),
-    clean_session = 1 :: 0 | 1,
+		will_message = <<>> :: binary(),
+		will_publish = undefined :: term(),
+		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
 		properties = [] :: list(),
 		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'
@@ -88,14 +89,14 @@
 
 -record(storage_publish,
 	{
-    key :: #primary_key{},
+		key :: #primary_key{},
 		document :: #publish{}
 	}
 ).
 
 -record(storage_retain,
 	{
-    topic :: string(),
+		topic :: string(),
 		document :: #publish{}
 	}
 ).
@@ -129,6 +130,14 @@
 		password :: binary()
 	}
 ).
+
+-record(session_state,
+	{
+		client_id :: string(),
+		session_expiry_interval = 0 :: integer(),
+		end_time = 0 :: integer(),
+		will_publish = undefined :: #publish{}
+	}).
 
 -record(connection_state, 
   { socket :: port(),

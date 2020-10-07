@@ -276,6 +276,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 		will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
 		will_message = WillMessage,
 		will_properties = WillProperties,
+		will_publish = #publish{qos = Will_QoS, retain = Will_retain, topic = binary_to_list(WillTopic), payload = WillMessage, properties = WillProperties},
 		clean_session = Clean_Session,
 		keep_alive = Keep_Alive,
 		version = MQTT_Version,

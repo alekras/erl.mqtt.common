@@ -49,10 +49,10 @@
 db_id(client) ->
 	[session_db_cli, subscription_db_cli, connectpid_db_cli];
 db_id(server) ->
-	[session_db_srv, subscription_db_srv, connectpid_db_srv, users_db_srv, retain_db_srv].
+	[session_db_srv, subscription_db_srv, connectpid_db_srv, users_db_srv, retain_db_srv, session_state_db_srv].
 
 db_type(client) -> [set, set, set];
-db_type(server) -> [set, set, set, set, duplicate_bag].
+db_type(server) -> [set, set, set, set, duplicate_bag, set].
 
 db_id(1, client) -> session_db_cli;
 db_id(1, server) -> session_db_srv;
@@ -61,12 +61,13 @@ db_id(2, server) -> subscription_db_srv;
 db_id(3, client) -> connectpid_db_cli;
 db_id(3, server) -> connectpid_db_srv;
 db_id(4, server) -> users_db_srv;
-db_id(5, server) -> retain_db_srv.
+db_id(5, server) -> retain_db_srv;
+db_id(6, server) -> session_state_db_srv.
 
 db_file(client) ->
 	["session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"];
 db_file(server) ->
-	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin"].
+	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin", "session_state_db_srv"].
 
 end_type_2_name(client) -> mqtt_client;
 end_type_2_name(server) -> mqtt_server.
@@ -90,6 +91,15 @@ save(End_Type, #storage_publish{key = Key} = Document) ->
 	case dets:insert(Session_db, Document) of
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "session_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
+			false;
+		ok ->
+			true
+	end;
+save(server, #session_state{} = Doc) ->
+	SessionState_db = db_id(6, server),
+	case dets:insert(SessionState_db, Doc) of
+		{error, Reason} ->
+			lager:error([{endtype, server}], "session_state_db: Insert failed: ~p; reason ~p~n", [Doc#session_state.client_id, Reason]),
 			false;
 		ok ->
 			true
@@ -139,6 +149,14 @@ remove(End_Type, #primary_key{} = Key) ->
 			false;
 		ok -> true
 	end;
+remove(server, {session_client_id, Client_Id}) ->
+	SessionState_db = db_id(6, server),
+	case dets:match_delete(SessionState_db, #session_state{client_id = Client_Id, _ = '_'}) of
+		{error, Reason} ->
+			lager:error([{endtype, server}], "Delete is failed for client Id: ~p with error code: ~p~n", [Client_Id, Reason]),
+			false;
+		ok -> true
+	end;
 remove(End_Type, #subs_primary_key{} = Key) ->
 	Subscription_db = db_id(2, End_Type),
 	case dets:match_delete(Subscription_db, #storage_subscription{key = Key, _ = '_'}) of
@@ -179,6 +197,16 @@ get(End_Type, #primary_key{} = Key) ->
 			lager:error([{endtype, End_Type}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
 		[D] -> D;
+		_ ->
+			undefined
+	end;
+get(server, {session_client_id, Client_Id}) ->
+	SessionState_db = db_id(6, server),
+	case dets:match_object(SessionState_db, #session_state{client_id = Client_Id, _ = '_'}) of
+		{error, Reason} ->
+			lager:error([{endtype, server}], "Get failed: client=~p reason=~p~n", [Client_Id, Reason]),
+			undefined;
+		[#session_state{} = Doc] -> Doc;
 		_ ->
 			undefined
 	end;
@@ -275,6 +303,14 @@ get_all(End_Type, {session, ClientId}) ->
 			[];
 		R -> R
 	end;
+get_all(server, session_state) ->
+	SessionState_db = db_id(6, server),
+	case dets:match_object(SessionState_db, #session_state{_ = '_'}) of 
+		{error, Reason} -> 
+			lager:error([{endtype, server}], "match_object failed: ~p~n", [Reason]),
+			[];
+		R -> R
+	end;
 get_all(End_Type, topic) ->
 	Subscription_db = db_id(2, End_Type),
 	case dets:match_object(Subscription_db, #storage_subscription{_='_'}) of 
@@ -299,7 +335,11 @@ cleanup(End_Type, ClientId) ->
 			ok;
 		ok -> ok
 	end,
-	remove(End_Type, {client_id, ClientId}).
+	remove(End_Type, {client_id, ClientId}),
+	if End_Type =:= server ->
+				remove(server, {session_client_id, ClientId});
+			true -> ok
+	end.
 
 cleanup(End_Type) ->
 	Session_db = db_id(1, End_Type),
@@ -310,7 +350,9 @@ cleanup(End_Type) ->
 	dets:delete_all_objects(ConnectionPid_db),
 	if End_Type =:= server ->
 			Retain_db = db_id(5, server),
-			dets:delete_all_objects(Retain_db);
+			dets:delete_all_objects(Retain_db),
+			SessionState_db = db_id(6, server),
+			dets:delete_all_objects(SessionState_db);
 		true -> ok
 	end.
 

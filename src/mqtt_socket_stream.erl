@@ -81,22 +81,24 @@ process(State, Binary) ->
 					New_State_2 =
 					case Config#connect.clean_session of
 						1 -> 
-							Storage:cleanup(State#connection_state.end_type, Config#connect.client_id),
+							Storage:cleanup(server, Config#connect.client_id),
 							New_State;
 						0 ->	 
 							mqtt_connection:restore_session(New_State) 
 					end,
 					New_Client_Id = Config#connect.client_id,
-					Storage:save(State#connection_state.end_type, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
+					Storage:save(server, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
+					Storage:save(server, #session_state{client_id = New_Client_Id,
+							will_publish = Config#connect.will_publish}),
 					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 					Transport:send(Socket, Packet),
-					lager:info([{endtype, State#connection_state.end_type}], "Connection to client ~p is established~n", [New_Client_Id]),
+					lager:info([{endtype, server}], "Connection to client ~p is established~n", [New_Client_Id]),
 %%					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail); %% Packet_Id is never used
 					process(New_State_2#connection_state{connected = 1}, Tail);
 				true ->
 					Packet = packet(connack, ConnVersion, {SP, Resp_code}, []),
 					Transport:send(Socket, Packet),
-					lager:warning([{endtype, State#connection_state.end_type}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
+					lager:warning([{endtype, server}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
 					self() ! disconnect,
 					process(State, Tail)
 			end;
@@ -107,6 +109,9 @@ process(State, Binary) ->
 					Pid ! {connack, Ref, SP, CRC, Msg, Properties},
 					{Host, Port} = get_peername(Transport, Socket),
 					lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
+					if SP == 0 -> Storage:cleanup(client, Client_Id);
+						 true -> ok
+					end,
 					IsConnected =
 					if CRC == 0 -> %% TODO process all codes for v5.0
 							lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
@@ -204,7 +209,7 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		
-		{unsubscribe, Packet_Id, Topics, Properties, Tail} ->
+		{unsubscribe, Packet_Id, Topics, _Properties, Tail} ->
 %% discard session subscriptions
 			ReasonCodeList =
 			[ begin 
@@ -489,7 +494,6 @@ handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage} = 
 	QoS = Options#subscription_options.max_qos,
 	Retain_handling = Options#subscription_options.retain_handling,
 	if (Retain_handling == 0) or ((Retain_handling == 1) and (Exist == undefined)) ->
-			Retain_as_published = Options#subscription_options.retain_as_published,
 			[ begin
 					QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
 					erlang:spawn(?MODULE, 

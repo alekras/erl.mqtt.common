@@ -39,7 +39,8 @@
 -export([	
 	next/2,
 	restore_session/1,
-	topic_alias_handle/3
+	topic_alias_handle/3,
+	session_expire/2
 ]).
 
 -import(mqtt_output, [packet/4]).
@@ -336,40 +337,10 @@ terminate(Reason, #connection_state{socket = Socket, transport = Transport, proc
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
 	lager:notice([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
 	if (Config#connect.will =:= 1) and (Reason =:= shutdown) ->
-				List = Storage:get_matched_topics(server, Config#connect.will_topic),
-				lager:debug([{endtype, server}], "Will Topic list = ~128p~n", [List]),
-				[
-					case Storage:get(server, {client_id, Client_Id}) of
-						undefined -> 
-							lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
-						Pid ->
-							TopicQoS = TopicOptions#subscription_options.max_qos,
-							QoS = if Config#connect.will_qos > TopicQoS -> TopicQoS; true -> Config#connect.will_qos end, 
-							{WillDelayInt, Properties} =
-							case lists:keytake(?Will_Delay_Interval, 1, Config#connect.will_properties) of
-								false -> {0, Config#connect.will_properties};
-								{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
-							end,
-							Params = #publish{topic = Topic,
-																qos = QoS,
-																retain = Config#connect.will_retain,
-																payload = Config#connect.will_message,
-																properties = Properties},
-							{ok, _} = timer:apply_after(WillDelayInt * 1000, mqtt_socket_stream, server_send_publish, [Pid, Params])
-%%							erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
-					end
-					|| #storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, options = TopicOptions} <- List
-				],
-				if (Config#connect.will_retain =:= 1) ->
-						Params1 = #publish{topic = Config#connect.will_topic, 
-															qos = Config#connect.will_qos, 
-															retain = Config#connect.will_retain, 
-															payload = Config#connect.will_message},
-						Storage:save(server, Params1); %% TODO avoid duplicates ???
-					true -> ok
-				end;
-			true -> ok
+			will_publish_handle(Storage, Config);
+		 true -> ok
 	end,
+	session_end_handle(Storage, Config),
 	Storage:remove(State#connection_state.end_type, {client_id, Config#connect.client_id}),
 	Transport:close(Socket),
 	ok.
@@ -475,3 +446,60 @@ topic_alias_handle('5.0',
 	end;
 topic_alias_handle(_, PubRec, State) ->
 	{PubRec, State}.
+
+will_publish_handle(Storage, Config) ->
+	Sess_Client_Id = Config#connect.client_id,
+	PubRec = Config#connect.will_publish,
+	List = Storage:get_matched_topics(server, PubRec#publish.topic),
+	lager:debug([{endtype, server}], "Will matched Topic list = ~128p~n", [List]),
+	{WillDelayInt, Properties} =
+	case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
+		false -> {0, PubRec#publish.properties};
+		{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
+	end,
+	Params = PubRec#publish{properties = Properties},
+	[
+		case Storage:get(server, {client_id, Client_Id}) of
+			undefined -> 
+				lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+			Pid ->
+				TopicQoS = TopicOptions#subscription_options.max_qos,
+				QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
+				{ok, _} = timer:apply_after(WillDelayInt * 1000,
+																		mqtt_socket_stream,
+																		server_send_publish,
+																		[Pid, Params#publish{qos = QoS}])
+%%					erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
+		end
+		|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
+	],
+	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
+	Storage:save(server, SessionState#session_state{will_publish = undefined}),
+	if (PubRec#publish.retain =:= 1) ->
+			Storage:save(server, Params); %% TODO avoid duplicates ???
+		 true -> ok
+	end.
+
+session_expire(Storage, Config) ->
+	Sess_Client_Id = Config#connect.client_id,
+	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
+	Will_PubRec = SessionState#session_state.will_publish,
+	if Will_PubRec == undefined -> ok;
+		 true ->
+			 will_publish_handle(Storage, Config)
+	end,
+	Storage:cleanup(server, Sess_Client_Id).
+	
+session_end_handle(Storage, Config) ->
+	Sess_Client_Id = Config#connect.client_id,
+	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
+	Exp_Interval = SessionState#session_state.session_expiry_interval,
+	if Exp_Interval == 16#FFFFFFFF -> ok;
+		 Exp_Interval == 0 ->
+			Storage:cleanup(server, Sess_Client_Id);
+		 true ->
+			{ok, _} = timer:apply_after(Exp_Interval * 1000,
+																	?MODULE,
+																	session_expire,
+																	[Storage, Config])
+	end.

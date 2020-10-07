@@ -132,6 +132,10 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	Storage:save(server, #publish{topic = "Season/December/01", payload = <<"Payload E">>}),
 	Storage:save(server, #publish{topic = "Season/December/02", payload = <<"Payload F">>}),
 	Storage:save(server, #publish{topic = "Season/May/21", payload = <<"Payload G">>}),
+	
+	Storage:save(server, #session_state{client_id = "lemon", end_time = 10, will_publish = #publish{}}),
+	Storage:save(server, #session_state{client_id = "orange", end_time = 20, will_publish = #publish{}}),
+	Storage:save(server, #session_state{client_id = "apple", end_time = 30, will_publish = #publish{}}),
 
 	R = Storage:get_all(server, {session, "lemon"}),
 %	?debug_Fmt("::test:: after create session ~p", [R]),	
@@ -142,6 +146,9 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R2 = Storage:get_all(server, topic),
 %	?debug_Fmt("::test:: after create topic ~p", [R2]),	
 	?assertEqual(11, length(R2)),
+	R3 = Storage:get_all(server, session_state),
+%	?debug_Fmt("::test:: after create topic ~p", [R3]),	
+	?assertEqual(3, length(R3)),
 
 %% 	R2 = dets:match_object(connectpid_db, #storage_connectpid{_ = '_'}),
 %% %	?debug_Fmt("::test:: after create ~p", [R2]),	
@@ -189,6 +196,9 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 	?assertEqual(2, length(R4d)),
 	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload D">>}, R4d)),
 	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload DD">>}, R4d)),
+	
+	R4f = Storage:get(server, {session_client_id, "lemon"}),
+	?assertMatch(#session_state{client_id="lemon", end_time=10}, R4f),
 	?passed
 end}.
 
@@ -234,6 +244,8 @@ read_all(X, Storage) -> {"read all [" ++ atom_to_list(X) ++ "]", timeout, 1, fun
 	R = Storage:get_all(server, {session, "lemon"}),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),	
 	?assertEqual(3, length(R)),
+	R1 = Storage:get_all(server, session_state),
+	?assertEqual(3, length(R1)),
 	?passed
 end}.
 	
@@ -242,15 +254,21 @@ update(X, Storage) -> {"update [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 101}),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),
 	?assertEqual(#publish{topic = "",payload = <<>>}, R#storage_publish.document),
+	
 	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = undefined}),
 	R1 = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 201}),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(undefined, R1#storage_publish.document),
+	
 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {erlang, binary_to_list}}),
 	[R2] = Storage:get(server, #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}),
 %	?debug_Fmt("::test:: read returns ~120p", [R2]),
 	?assertEqual(2, R2#storage_subscription.options#subscription_options.max_qos),
 	?assertEqual({erlang, binary_to_list}, R2#storage_subscription.callback),
+	
+	Storage:save(server, #session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}),
+	R3 = Storage:get(server, {session_client_id, "apple"}),
+	?assertMatch(#session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}, R3),
 	?passed
 end}.
 	
@@ -269,6 +287,11 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R2 = Storage:get(server, {topic,"/Season/December"}),
 %	?debug_Fmt("::test:: after delete ~p", [R2]),	
 	?assertEqual([], R2),
+
+	Storage:remove(server, {session_client_id,"lemon"}),
+	R3 = Storage:get(server, {session_client_id,"lemon"}),
+%	?debug_Fmt("::test:: after delete ~p", [R3]),	
+	?assertEqual(undefined, R3),
 
 	?passed
 end}.
