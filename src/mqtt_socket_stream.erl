@@ -75,14 +75,13 @@ process(State, Binary) ->
 				 true -> 0
 			end,
 %%			Packet_Id = State#connection_state.packet_id, %% is never used
-			SP = if Config#connect.clean_session =:= 0 -> 1; true -> 0 end,
 			if Resp_code =:= 0 ->
-					New_State = State#connection_state{config = Config, session_present = SP, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
+					New_State = State#connection_state{config = Config, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
 					New_State_2 =
 					case Config#connect.clean_session of
 						1 -> 
 							Storage:cleanup(server, Config#connect.client_id),
-							New_State;
+							New_State#connection_state{session_present = 0};
 						0 ->	 
 							mqtt_connection:restore_session(New_State) 
 					end,
@@ -91,13 +90,13 @@ process(State, Binary) ->
 					Storage:save(server, #session_state{client_id = New_Client_Id,
 							session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
 							will_publish = Config#connect.will_publish}),
-					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
+					Packet = packet(connack, ConnVersion, {New_State_2#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, server}], "Connection to client ~p is established~n", [New_Client_Id]),
 %%					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail); %% Packet_Id is never used
 					process(New_State_2#connection_state{connected = 1}, Tail);
 				true ->
-					Packet = packet(connack, ConnVersion, {SP, Resp_code}, []),
+					Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
 					Transport:send(Socket, Packet),
 					lager:warning([{endtype, server}], "Connection to client ~p is broken by reason: ~p~n", [Config#connect.client_id, Resp_code]),
 					self() ! disconnect,

@@ -360,12 +360,21 @@ next(Packet_Id, #connection_state{storage = Storage} = State) ->
 		true -> next(PI, State)
 	end.
 
-restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = End_Type} = State) ->
-	Records = Storage:get_all(End_Type, {session, Client_Id}),
+restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = client} = State) ->
+	Records = Storage:get_all(client, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, End_Type}], "In restore session: MessageList = ~128p~n", [MessageList]),
-	New_State = lists:foldl(fun restore_state/2, State, MessageList),
-	New_State.
+	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
+	lists:foldl(fun restore_state/2, State, MessageList);
+restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = server} = State) ->
+	case Storage:get(server, {session_client_id, Client_Id}) of
+		undefined ->
+			State#connection_state{session_present= 0};
+		_ ->
+			Records = Storage:get_all(server, {session, Client_Id}),
+			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
+			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
+	end.
 
 restore_state({Packet_Id, Params}, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
