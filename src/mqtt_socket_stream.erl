@@ -64,10 +64,10 @@ process(State, Binary) ->
 			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
 			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
-			lager:debug([{endtype, server}], "Client PID = ~p~n", [ClientPid]),
+			lager:debug([{endtype, server}], "Previous Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end; %% TODO maybe just ClientPid ! disconnect ?
+				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end;
 				 true -> ok
 			end,
 			Resp_code =
@@ -89,6 +89,7 @@ process(State, Binary) ->
 					New_Client_Id = Config#connect.client_id,
 					Storage:save(server, #storage_connectpid{client_id = New_Client_Id, pid = self()}),
 					Storage:save(server, #session_state{client_id = New_Client_Id,
+							session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
 							will_publish = Config#connect.will_publish}),
 					Packet = packet(connack, ConnVersion, {SP, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 					Transport:send(Socket, Packet),
