@@ -6,3 +6,4 @@
 /subscription-db-cli.bin
 /subscription-db-srv.bin
 /users-db-srv.bin
+/session_state_db_srv.bin

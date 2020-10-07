@@ -67,7 +67,7 @@ db_id(6, server) -> session_state_db_srv.
 db_file(client) ->
 	["session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"];
 db_file(server) ->
-	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin", "session_state_db_srv"].
+	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin", "session_state_db_srv.bin"].
 
 end_type_2_name(client) -> mqtt_client;
 end_type_2_name(server) -> mqtt_server.
