@@ -223,7 +223,8 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
 
-	mock_tcp:set_expectation(<<144,21, 100:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 2>>), %% Suback packet
+%%	mock_tcp:set_expectation(<<144,21, 100:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 2>>), %% Suback packet
+	mock_tcp:set_expectation(<<144,4,100:16, 0,2>>), %% Suback packet
 	conn_server ! {tcp, undefined, <<130,28,100:16, 17,11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 5:16,"Topic"/utf8,2>>}, %% Subscribe request
 	wait_mock_tcp("suback"),
 
@@ -279,7 +280,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	conn_server ! {tcp, undefined, <<130,11,0,100,0,0,5,84,111,112,105,99,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
-	mock_tcp:set_expectation(<<176,17,0,101,13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 0>>), %% Unsuback packet
+	mock_tcp:set_expectation(<<176,4,101:16, 0,0>>), %% Unsuback packet
 	conn_server ! {tcp, undefined, <<162,23,0,101,
 										13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,
 										0,5,84,111,112,105,99>>}, %% Unsubscription request

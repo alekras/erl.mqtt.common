@@ -266,22 +266,29 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			{_, Password_bin} = mqtt_data:extract_binary_field(RestBin4)
 	end,
 	
-	Config = #connect{
+	Config1 = #connect{
 		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Client_id, utf8),???
 		user_name = binary_to_list(UserName), %% @todo do we need a list?
 		password = Password_bin,
 		will = Will,
-		will_qos = Will_QoS,
-		will_retain = Will_retain,
-		will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
-		will_message = WillMessage,
-		will_properties = WillProperties,
-		will_publish = #publish{qos = Will_QoS, retain = Will_retain, topic = binary_to_list(WillTopic), payload = WillMessage, properties = WillProperties},
 		clean_session = Clean_Session,
 		keep_alive = Keep_Alive,
 		version = MQTT_Version,
 		properties = Properties
 	},
+	Config =
+	if Will == 0 ->
+			 Config1;
+		 Will == 1 ->
+			 Config1#connect{
+				will_qos = Will_QoS,
+				will_retain = Will_retain,
+				will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
+				will_message = WillMessage,
+				will_properties = WillProperties,
+				will_publish = #publish{qos = Will_QoS, retain = Will_retain, topic = binary_to_list(WillTopic), payload = WillMessage, properties = WillProperties}
+			 }
+	end,
 	{connect, Config, Tail}.
 
 parse_subscription(_, <<>>, Subscriptions) -> lists:reverse(Subscriptions);

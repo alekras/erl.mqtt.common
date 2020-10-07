@@ -198,7 +198,7 @@ packet_output_props('5.0' = Ver) ->
 								},
 								[]
 	),
-	io:format(user, "~n --- value=~256p~n", [Value]),
+%	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<16,91, 4:16,"MQTT"/utf8, 5, 246, 3,232, 
 								 10, 17, 16#FFFFFFFF:32, 39, 65000:32, 
 								 9:16,"publisher"/utf8, 
@@ -273,21 +273,22 @@ input_parser_will() ->
 						will_retain = 1,
 						will_message = <<"Good bye!">>,
 						will_topic = "Last_msg",
+						will_publish = #publish{topic="Last_msg", qos=2, retain=1, payload= <<"Good bye!">>},
 						clean_session = 1,
 						keep_alive = 1000,
 						version = '3.1.1'
 					},
 
 	R1 = mqtt_input:input_parser(undefined, <<16,58, 6:16,"MQIsdp"/utf8, 3, 246, 3,232, 9:16,"publisher"/utf8, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest",7,7>>),
-%	io:format(user, "~n R1= ~256p~n", [R1]),
+	io:format(user, "~n R1= ~256p~n", [R1]),
 	?assertEqual({connect, Config#connect{version = '3.1'}, <<7:8,7:8>>}, R1),
 	
 	R2 = mqtt_input:input_parser(undefined, <<16,56, 4:16,"MQTT"/utf8, 4, 246, 3,232, 9:16,"publisher"/utf8, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest",7,7>>),
-%	io:format(user, "~n R2= ~256p~n", [R2]),
+	io:format(user, "~n R2= ~256p~n", [R2]),
 	?assertEqual({connect, Config#connect{version = '3.1.1'}, <<7:8,7:8>>}, R2),
 	
 	R3 = mqtt_input:input_parser(undefined, <<16,58, 4:16,"MQTT"/utf8, 5, 246, 3,232, 0, 9:16,"publisher"/utf8, 0, 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest",7,7>>),
-%	io:format(user, "~n R3= ~256p~n", [R3]),
+	io:format(user, "~n R3= ~256p~n", [R3]),
 	?assertEqual({connect, Config#connect{version = '5.0'}, <<7:8,7:8>>}, R3),
 
 	?passed.
@@ -303,6 +304,9 @@ input_parser_willProps() ->
 						will_message = <<"Good bye!">>,
 						will_topic = "Last_msg",
 						will_properties = [{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}],
+						will_publish = #publish{topic="Last_msg", qos=2, retain=1,
+																		payload= <<"Good bye!">>,
+																		properties= [{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}]},
 						clean_session = 1,
 						keep_alive = 1000,
 						version = '5.0'
@@ -311,7 +315,7 @@ input_parser_willProps() ->
 	R1 = mqtt_input:input_parser(undefined, <<16,81, 4:16,"MQTT"/utf8, 5, 246, 3,232, 0, 9:16,"publisher"/utf8, 
 								 23, 8, 15:16,"AfterClose/Will"/utf8, 24, 6000:32, 
 								 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest",7,7>>),
-%	io:format(user, "~n R1= ~256p~n", [R1]),
+	io:format(user, "~n R1= ~256p~n", [R1]),
 	?assertEqual({connect, Config, <<7:8,7:8>>}, R1),
 	
 	?passed.
@@ -327,6 +331,9 @@ input_parser_props() ->
 						will_message = <<"Good bye!">>,
 						will_topic = "Last_msg",
 						will_properties = [{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}],
+						will_publish = #publish{topic="Last_msg", qos=2, retain=1,
+																		payload= <<"Good bye!">>,
+																		properties= [{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}]},
 						clean_session = 1,
 						keep_alive = 1000,
 						properties = [{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}],
@@ -338,7 +345,7 @@ input_parser_props() ->
 								 9:16,"publisher"/utf8, 
 								 23, 8, 15:16,"AfterClose/Will"/utf8, 24, 6000:32, 
 								 8:16,"Last_msg"/utf8, 9:16,"Good bye!", 5:16,"guest"/utf8, 5:16,"guest",7,7>>),
-%	io:format(user, "~n R1= ~256p~n", [R1]),
+	io:format(user, "~n R1= ~256p~n", [R1]),
 	?assertEqual({connect, Config, <<7:8,7:8>>}, R1),
 	
 	?passed.
