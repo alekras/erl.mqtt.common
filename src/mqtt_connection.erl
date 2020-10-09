@@ -175,16 +175,25 @@ handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
 			{reply, {ok, Ref}, State#connection_state{processes_ext = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
-handle_call({republish, #publish{last_sent = publish} = Params, Packet_Id},
+handle_call({republish, #publish{last_sent = publish, experation_time= ExpT} = Params, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
-	Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
-	case Transport:send(Socket, Packet) of
-		ok -> 
-			New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params}},
-			{reply, {ok, Ref}, State#connection_state{processes = New_processes}};
-		{error, Reason} -> {reply, {error, Reason}, State}
+	RemainedTime =
+	case ExpT of
+		infinity -> 1;
+		_ -> ExpT - erlang:system_time(millisecond)
+	end,
+	if RemainedTime > 0 ->
+			Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
+			case Transport:send(Socket, Packet) of
+				ok -> 
+					New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params}},
+					{reply, {ok, Ref}, State#connection_state{processes = New_processes}};
+				{error, Reason} -> {reply, {error, Reason}, State}
+			end;
+		 ?ELSE -> 
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish Message is expired ~p, PI: ~p.~n", [Params, Packet_Id])
 	end;
 
 handle_call({subscribe, Subscriptions}, From, State) ->

@@ -63,10 +63,11 @@
 		dup = 0 :: 0 | 1,
 		qos = 0 :: 0 | 1 | 2,
 		retain = 0 :: 0 | 1,
-		last_sent = none :: none | publish | pubrec | pubrel | pubcomp,
-		dir = out :: in | out, 
 		payload = <<>> :: binary(),
-		properties = [] ::list()
+		properties = [] ::list(),
+		last_sent = none :: none | publish | pubrec | pubrel | pubcomp,
+		dir = out :: in | out,
+		experation_time = infinity :: integer()
 	}
 ).
 

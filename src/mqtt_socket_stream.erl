@@ -239,7 +239,8 @@ process(State, Binary) ->
 					process(State, Tail)
 			end;
 		?test_fragment_skip_rcv_publish
-		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = Record, Packet_Id, Tail} ->
+		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = PubRec, Packet_Id, Tail} ->
+			Record = msg_experation_handle(Version, PubRec),
 			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case mqtt_connection:topic_alias_handle(Version, Record, State) of
@@ -247,48 +248,48 @@ process(State, Binary) ->
 					gen_server:cast(self(), {disconnect, ErrNo, [{?Reason_String, Msg}]}),
 					process(NewState, Tail);
 				{NewRecord, NewState} -> 
-lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
-			case QoS of
-				0 -> 	
-					delivery_to_application(NewState, NewRecord),
-					process(NewState, Tail);
-				1 ->
-					delivery_to_application(NewState, NewRecord),  %% TODO check for successful delivery
-					Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% TODO properties?
-					case Transport:send(Socket, Packet) of
-						ok -> ok;
-						{error, _Reason} -> ok
-					end,
-					process(NewState, Tail);
-				2 ->
-					NewState1 = 
-						case maps:is_key(Packet_Id, ProcessesExt) of
-							true when Dup =:= 0 -> 
-								lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, NewState#connection_state.processes]),
-								NewState;
-							_ ->
-								case NewState#connection_state.end_type of 
-									client -> 
-										delivery_to_application(NewState, NewRecord);
-									server -> none
-								end,
+					%%lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
+					case QoS of
+						0 -> 	
+							delivery_to_application(NewState, NewRecord),
+							process(NewState, Tail);
+						1 ->
+							delivery_to_application(NewState, NewRecord),  %% TODO check for successful delivery
+							Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% TODO properties?
+							case Transport:send(Socket, Packet) of
+								ok -> ok;
+								{error, _Reason} -> ok
+							end,
+							process(NewState, Tail);
+						2 ->
+							NewState1 = 
+							case maps:is_key(Packet_Id, ProcessesExt) of
+								true when Dup =:= 0 -> 
+									lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, NewState#connection_state.processes]),
+									NewState;
+								_ ->
+									case NewState#connection_state.end_type of 
+										client -> 
+											delivery_to_application(NewState, NewRecord);
+										server -> none
+									end,
 %% store PI after receiving message
-								Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-								Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
-								Packet = 
-								if NewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
-									true -> packet(pubrec, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString Or/And UserProperty 
-								end,
-								case Transport:send(Socket, Packet) of
-									ok -> 
-										New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
-										NewState#connection_state{processes_ext = New_processes};
-									{error, _Reason} -> NewState
-								end
-						end,
-					process(NewState1, Tail);
-				_ -> process(State, Tail)
-			end
+									Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
+									Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
+									Packet = 
+									if NewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
+										?ELSE -> packet(pubrec, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString Or/And UserProperty 
+									end,
+									case Transport:send(Socket, Packet) of
+										ok -> 
+											New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
+											NewState#connection_state{processes_ext = New_processes};
+										{error, _Reason} -> NewState
+									end
+							end,
+							process(NewState1, Tail);
+						_ -> process(State, Tail)
+					end
 			end;
 
 		?test_fragment_skip_rcv_puback
@@ -296,8 +297,8 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
 %% discard message after pub ack
-					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-					Storage:remove(State#connection_state.end_type, Prim_key),
+%					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, %% we do not need it !!!
+%					Storage:remove(State#connection_state.end_type, Prim_key),
 					Pid ! {puback, Ref, ReasonCode, Properties},
 					process(
 						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
@@ -561,80 +562,90 @@ handle_get_topic_from_alias(_, #publish{topic = Prms_Topic}, _) ->
 
 handle_server_publish('5.0',
 												#connection_state{storage = Storage} = State,
-												#publish{qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Param, PubTopic) ->
-	case Storage:get_matched_topics(server, PubTopic) of
-		[] when Retain =:= 1 -> ok;
-		[] ->
-			lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [PubTopic, Params_QoS, Payload]);
-		List ->
-			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
-			%% TODO if Client_Id topic matches multi subscriptions then create one message with multiple subscription identifier.
-			[
-				case Storage:get(server, {client_id, Client_Id}) of
-					undefined -> 
-						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
-					Pid ->
-						NoLocal = Options#subscription_options.nolocal,
-						ProcessCliD = State#connection_state.config#connect.client_id,
-						if (NoLocal =:= 1) and (ProcessCliD =:= Client_Id) -> ok;
-							 true ->
-								TopicQoS = Options#subscription_options.max_qos,
-								QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
-								Retain_as_published = Options#subscription_options.retain_as_published,
-								Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
-								SubId = Options#subscription_options.identifier,
-								NewPubProps = 
-									if SubId == 0 -> Param#publish.properties;
-										 true -> lists:keystore(?Subscription_Identifier, 1, Param#publish.properties, {?Subscription_Identifier, SubId})
-									end,
-								erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, properties = NewPubProps, retain = Retain1}])
-						end
-				end
-				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
-			]
+												#publish{qos = Params_QoS, payload = Payload, experation_time = ExpT, retain = Retain, dup = Dup} = Param, PubTopic) ->
+	RemainedTime =
+	case ExpT of
+		infinity -> 1;
+		_ -> ExpT - erlang:system_time(millisecond)
 	end,
-	%%handle shared subscriptions :
-	case Storage:get_matched_shared_topics(server, PubTopic) of
-		[] -> ok;
-		ShSubsList -> 
-			F = fun(Subs, ShNamesMap) ->
-						ShareName = Subs#storage_subscription.key#subs_primary_key.shareName,
-						GroupList =
-						try
-							maps:get(ShareName, ShNamesMap)
-						catch
-							error:{badkey, _} -> []
-						end,
-						maps:put(ShareName, [Subs | GroupList], ShNamesMap)
-					end,
-			ShNamesMap = lists:foldl(F, #{}, ShSubsList),
-			[ begin
-					GroupSize = length(GroupList),
-					N = rand:uniform(GroupSize),
-					lager:debug([{endtype, server}], "Shared subscription:: GroupList=~p~n     Random N=~p~n", [GroupList, N]),
-					#storage_subscription{key = #subs_primary_key{client_id = CliId}, options = Opts} = lists:nth(N, GroupList),
-					case Storage:get(server, {client_id, CliId}) of
-						undefined ->
-							lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
-						Pid ->
+	if RemainedTime > 0 ->
+			case Storage:get_matched_topics(server, PubTopic) of
+				[] when Retain =:= 1 -> ok;
+				[] ->
+					lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [PubTopic, Params_QoS, Payload]);
+				List ->
+					lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+					%% TODO if Client_Id topic matches multi subscriptions then create one message with multiple subscription identifier.
+					[
+						case Storage:get(server, {client_id, Client_Id}) of
+							undefined -> 
+								lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+							Pid ->
+								NoLocal = Options#subscription_options.nolocal,
+								ProcessCliD = State#connection_state.config#connect.client_id,
+								if (NoLocal =:= 1) and (ProcessCliD =:= Client_Id) -> ok;
+									 true ->
+										TopicQoS = Options#subscription_options.max_qos,
+										QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
+										Retain_as_published = Options#subscription_options.retain_as_published,
+										Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+										SubId = Options#subscription_options.identifier,
+										NewPubProps = 
+											if SubId == 0 -> Param#publish.properties;
+												 true -> lists:keystore(?Subscription_Identifier, 1, Param#publish.properties, {?Subscription_Identifier, SubId})
+											end,
+										erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, properties = NewPubProps, retain = Retain1}])
+								end
+						end
+						|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
+					]
+			end,
+			%%handle shared subscriptions :
+			case Storage:get_matched_shared_topics(server, PubTopic) of
+				[] -> ok;
+				ShSubsList -> 
+					F = fun(Subs, ShNamesMap) ->
+								ShareName = Subs#storage_subscription.key#subs_primary_key.shareName,
+								GroupList =
+								try
+									maps:get(ShareName, ShNamesMap)
+								catch
+									error:{badkey, _} -> []
+								end,
+								maps:put(ShareName, [Subs | GroupList], ShNamesMap)
+							end,
+					ShNamesMap = lists:foldl(F, #{}, ShSubsList),
+					[ begin
+							GroupSize = length(GroupList),
+							N = rand:uniform(GroupSize),
+							lager:debug([{endtype, server}], "Shared subscription:: GroupList=~p~n     Random N=~p~n", [GroupList, N]),
+							#storage_subscription{key = #subs_primary_key{client_id = CliId}, options = Opts} = lists:nth(N, GroupList),
+							case Storage:get(server, {client_id, CliId}) of
+								undefined ->
+									lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
+								Pid ->
 %							NoLocal = Opts#subscription_options.nolocal,
 %							ProcessCliD = State#connection_state.config#connect.client_id,
 %							if (NoLocal =:= 1) and (ProcessCliD =:= CliId) -> ok;
 %								 true ->
-									ShTopicQoS = Opts#subscription_options.max_qos,
-									QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
-									Retain_as_published = Opts#subscription_options.retain_as_published,
-									Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
-									erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
+											ShTopicQoS = Opts#subscription_options.max_qos,
+											QoS = if Params_QoS > ShTopicQoS -> ShTopicQoS; true -> Params_QoS end,
+											Retain_as_published = Opts#subscription_options.retain_as_published,
+											Retain1 = if Retain_as_published == 0 -> 0; true -> Param#publish.retain end,
+											erlang:spawn(?MODULE, server_send_publish, [Pid, Param#publish{qos = QoS, retain = Retain1}])
 %							end
-					end
-				end
-				|| {_ShareName, GroupList} <- maps:to_list(ShNamesMap)]
-
-	end,
-	lager:info([{endtype, server}], 
-						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
-						 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]);
+							end
+						end
+						|| {_ShareName, GroupList} <- maps:to_list(ShNamesMap)]
+			end,
+			lager:info([{endtype, server}], 
+								 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
+								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]);
+		true ->
+			lager:info([{endtype, server}], 
+								 "Message for client ~p is expired [topic ~p:~p, dup=~p, retain=~p]~n", 
+								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain])
+	end;
 handle_server_publish(_,
 												#connection_state{storage = Storage} = State,
 												#publish{qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Param, PubTopic) ->
@@ -659,6 +670,14 @@ handle_server_publish(_,
 	lager:info([{endtype, server}], 
 						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
 						 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]).
+
+msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->
+	Msg_Exp_Interval = proplists:get_value(?Message_Expiry_Interval, Props, infinity),
+	if (Msg_Exp_Interval == 0) or (Msg_Exp_Interval == infinity) -> PubRec#publish{experation_time= infinity};
+		 ?ELSE -> PubRec#publish{experation_time= (erlang:system_time(millisecond) + Msg_Exp_Interval * 1000)}
+	end;
+msg_experation_handle(_, PubRec) ->
+PubRec.
 
 get_peername(ssl, Socket) ->
 	case ssl:peername(Socket) of
