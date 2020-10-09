@@ -379,14 +379,24 @@ lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p N
 			end;
 
 		{disconnect, DisconnectReasonCode, Properties, Tail} ->
+			ConfProps = (State#connection_state.config)#connect.properties,
+			if Version == '5.0' ->
+					 SessExpCnfg = proplists:get_value(?Session_Expiry_Interval, ConfProps, 0),
+					 SessExpDscn = proplists:get_value(?Session_Expiry_Interval, Properties, 0),
+					 if (SessExpCnfg == 0) and (SessExpDscn > 0) ->
+								gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Protocol Error"}]});
+							?ELSE ->
+								self() ! disconnect
+					 end;
+				 ?ELSE ->
+					 self() ! disconnect %% stop the process, close the socket !!!
+			end,
 %%			Storage:remove(State#connection_state.end_type, {client_id, Client_Id}),
-			self() ! disconnect, %% TODO stop the process, close the socket !!!
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p disconnected with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
-			%% TODO on client side: callback with reason and properties
 			if State#connection_state.end_type =:= client ->
 					do_callback(State#connection_state.default_callback, [{DisconnectReasonCode, Properties}]);
 				true -> ok
 			end,
+			lager:info([{endtype, State#connection_state.end_type}], "Client ~p are disconnecting with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
 			process(State#connection_state{connected = 0}, Tail);
 
 		_ ->
