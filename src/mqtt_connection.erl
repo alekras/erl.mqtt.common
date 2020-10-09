@@ -193,7 +193,8 @@ handle_call({republish, #publish{last_sent = publish, experation_time= ExpT} = P
 				{error, Reason} -> {reply, {error, Reason}, State}
 			end;
 		 ?ELSE -> 
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish Message is expired ~p, PI: ~p.~n", [Params, Packet_Id])
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish Message is expired ~p, PI: ~p.~n", [Params, Packet_Id]),
+			{reply, {ok, Ref}, State}
 	end;
 
 handle_call({subscribe, Subscriptions}, From, State) ->
@@ -389,7 +390,7 @@ restore_state({Packet_Id, Params}, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
 	Pid = spawn(gen_server, call, [self(), {republish, Params, Packet_Id}, ?MQTT_GEN_SERVER_TIMEOUT]),
 	New_processes = (State#connection_state.processes)#{Packet_Id => {{Pid, undefined}, Params}},
-	State#connection_state{processes = New_processes}.
+	State#connection_state{processes = New_processes, packet_id= next(Packet_Id, State)}.
 
 keep_alive_timer(undefined, undefined) -> undefined;
 keep_alive_timer(Keep_Alive_Time, undefined) ->
