@@ -296,9 +296,9 @@ process(State, Binary) ->
 		{puback, {Packet_Id, ReasonCode}, Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
-%% discard message after pub ack
-%					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, %% we do not need it !!!
-%					Storage:remove(State#connection_state.end_type, Prim_key),
+%% discard message<QoS=1> after pub ack
+					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, 
+					Storage:remove(State#connection_state.end_type, Prim_key),
 					Pid ! {puback, Ref, ReasonCode, Properties},
 					process(
 						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
