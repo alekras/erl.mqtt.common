@@ -514,10 +514,10 @@ session_expire(Storage, Config) ->
 	end,
 	Storage:cleanup(server, Sess_Client_Id).
 	
-session_end_handle(Storage, Config) ->
+session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
 	Sess_Client_Id = Config#connect.client_id,
 	SSt = Storage:get(server, {session_client_id, Sess_Client_Id}),
-	lager:debug([{endtype, server}], ">>> session_end_handle: Client=~p SessionState=~p ~n", [Sess_Client_Id,SSt,SSt#session_state.session_expiry_interval]),
+	lager:debug([{endtype, server}], ">>> session_end_handle: Client=~p SessionState=~p Exp_Interval=~p~n", [Sess_Client_Id,SSt,SSt#session_state.session_expiry_interval]),
 	case SSt of
 		undefined -> ok;
 		SessionState ->
@@ -531,4 +531,6 @@ session_end_handle(Storage, Config) ->
 																			session_expire,
 																			[Storage, Config])
 			end
-	end.
+	end;
+session_end_handle(_Storage, _Config) ->
+	ok.
