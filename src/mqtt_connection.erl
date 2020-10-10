@@ -348,10 +348,10 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 	lager:notice([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
 	if (Config#connect.will =:= 1) and (Reason =:= shutdown) ->
 			will_publish_handle(Storage, Config);
-		 true -> ok
+		 ?ELSE -> ok
 	end,
 	session_end_handle(Storage, Config),
-	Storage:remove(State#connection_state.end_type, {client_id, Config#connect.client_id}),
+	Storage:remove(server, {client_id, Config#connect.client_id}),
 	Transport:close(Socket),
 	ok.
 
@@ -516,7 +516,9 @@ session_expire(Storage, Config) ->
 	
 session_end_handle(Storage, Config) ->
 	Sess_Client_Id = Config#connect.client_id,
-	case Storage:get(server, {session_client_id, Sess_Client_Id}) of
+	SSt = Storage:get(server, {session_client_id, Sess_Client_Id}),
+	lager:debug([{endtype, server}], ">>> session_end_handle: Client=~p SessionState=~p ~n", [Sess_Client_Id,SSt,SSt#session_state.session_expiry_interval]),
+	case SSt of
 		undefined -> ok;
 		SessionState ->
 			Exp_Interval = SessionState#session_state.session_expiry_interval,
