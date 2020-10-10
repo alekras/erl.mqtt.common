@@ -511,14 +511,17 @@ session_expire(Storage, Config) ->
 	
 session_end_handle(Storage, Config) ->
 	Sess_Client_Id = Config#connect.client_id,
-	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
-	Exp_Interval = SessionState#session_state.session_expiry_interval,
-	if Exp_Interval == 16#FFFFFFFF -> ok;
-		 Exp_Interval == 0 ->
-			Storage:cleanup(server, Sess_Client_Id);
-		 true ->
-			{ok, _} = timer:apply_after(Exp_Interval * 1000,
-																	?MODULE,
-																	session_expire,
-																	[Storage, Config])
+	case Storage:get(server, {session_client_id, Sess_Client_Id}) of
+		undefined -> ok;
+		SessionState ->
+			Exp_Interval = SessionState#session_state.session_expiry_interval,
+			if Exp_Interval == 16#FFFFFFFF -> ok;
+				 Exp_Interval == 0 ->
+					Storage:cleanup(server, Sess_Client_Id);
+				 true ->
+					{ok, _} = timer:apply_after(Exp_Interval * 1000,
+																			?MODULE,
+																			session_expire,
+																			[Storage, Config])
+			end
 	end.
