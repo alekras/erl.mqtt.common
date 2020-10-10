@@ -389,7 +389,7 @@ restore_session(#connection_state{config = #connect{client_id = Client_Id}, stor
 	Records = Storage:get_all(EndType, {session, Client_Id}),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
 	lager:debug([{endtype, EndType}], "In restore session: MessageList = ~128p~n", [MessageList]),
-	lists:foldl(fun restore_state/2, State, MessageList).
+	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
 
 restore_state({Packet_Id, Params}, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
