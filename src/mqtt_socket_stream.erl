@@ -475,7 +475,7 @@ server_send_publish(Pid, Params) ->
 lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
-						#mqtt_client_error{type = publish, source = "mqtt_connection:server_send_publish/2", message = "puback timeout"}
+						#mqtt_client_error{type = publish, source = "mqtt_socket_stream:server_send_publish/2", message = "puback timeout"}
 					end;
 				2 ->
 					receive
@@ -483,14 +483,14 @@ lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n
 lager:debug([{endtype, server}], "Received pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
-						#mqtt_client_error{type = publish, source = "mqtt_connection:server_send_publish/2", message = "pubcomp timeout"}
+						#mqtt_client_error{type = publish, source = "mqtt_socket_stream:server_send_publish/2", message = "pubcomp timeout"}
 					end
 			end;
 		{error, Reason} ->
-				#mqtt_client_error{type = publish, source = "mqtt_connection:server_send_publish/2", message = Reason}
+				#mqtt_client_error{type = publish, source = "mqtt_socket_stream:server_send_publish/2", message = Reason}
 	end,
 	case R of
-		ok -> lager:debug([{endtype, server}], "Server successfuly have published message to subscriber.~n", []);
+		ok -> lager:debug([{endtype, server}], "Server has successfuly published message to subscriber.~n", []);
 		_	-> lager:error([{endtype, server}], "~128p~n", [R])
 	end.
 

@@ -323,6 +323,7 @@ get_all(End_Type, topic) ->
 cleanup(End_Type, ClientId) ->
 	Session_db = db_id(1, End_Type),
 	Subscription_db = db_id(2, End_Type),
+lager:debug([{endtype, End_Type}], ">>> clean up: ~p~n", [ClientId]),
 	case dets:match_delete(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason1} -> 
 			lager:error([{endtype, End_Type}], "match_delete failed: ~p~n", [Reason1]),

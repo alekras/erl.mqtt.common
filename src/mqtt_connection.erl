@@ -509,7 +509,7 @@ session_expire(Storage, Config) ->
 	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
 	Will_PubRec = SessionState#session_state.will_publish,
 	if Will_PubRec == undefined -> ok;
-		 true ->
+		 ?ELSE ->
 			 will_publish_handle(Storage, Config)
 	end,
 	Storage:cleanup(server, Sess_Client_Id).
@@ -525,7 +525,7 @@ session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
 			if Exp_Interval == 16#FFFFFFFF -> ok;
 				 Exp_Interval == 0 ->
 					Storage:cleanup(server, Sess_Client_Id);
-				 true ->
+				 ?ELSE ->
 					{ok, _} = timer:apply_after(Exp_Interval * 1000,
 																			?MODULE,
 																			session_expire,
