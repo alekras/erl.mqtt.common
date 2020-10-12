@@ -236,5 +236,13 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 %	?debug_Fmt("::test:: read returns ~120p", [R4]),	
 	?assertEqual(5, length(R4)),
 
+	Storage:cleanup(client, "orange"),
+	R5 = Storage:get_all(client, topic),
+	?debug_Fmt("::test:: after cleanup ~p", [R5]),	
+%%	?assertEqual(undefined, R5),
+	?assertEqual(3, length(R5)),
+	R6 = Storage:get_all(client, {session, "orange"}),	
+	?debug_Fmt("::test:: read returns ~120p", [R6]),	
+
 	?passed
 end}.

@@ -333,16 +333,17 @@ lager:debug([{endtype, End_Type}], ">>> clean up: ~p~n", [ClientId]),
 	end,
 
 	MatchSpec = ets:fun2ms(
-							 fun(#storage_subscription{key = #subs_primary_key{client_id = CI}} = Object) when CI == ClientId -> 
-									Object
+							 fun(#storage_subscription{key = #subs_primary_key{client_id = CI}}) when CI == ClientId -> 
+									true
 							 end),
-	dets:select_delete(Subscription_db, MatchSpec),
+	lager:debug([{endtype, End_Type}], "MatchSpec: ~p~n", [MatchSpec]),
+	case dets:select_delete(Subscription_db, MatchSpec) of
 %% 	case dets:match_delete(Subscription_db, #storage_subscription{key = #subs_primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of
-%% 		{error, Reason2} -> 
-%% 			lager:error([{endtype, End_Type}], "match_delete failed: ~p~n", [Reason2]),
-%% 			ok;
-%% 		ok -> ok
-%% 	end,
+		{error, Reason2} -> 
+			lager:error([{endtype, End_Type}], "match_delete failed: ~p~n", [Reason2]);
+		N ->
+			lager:debug([{endtype, End_Type}], "match_delete returns: ~p~n", [N])
+	end,
 	remove(End_Type, {client_id, ClientId}),
 	if End_Type =:= server ->
 				remove(server, {session_client_id, ClientId});
