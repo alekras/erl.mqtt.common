@@ -175,7 +175,7 @@ handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
 			{reply, {ok, Ref}, State#connection_state{processes_ext = New_processes}};
 		{error, Reason} -> {reply, {error, Reason}, State}
 	end;
-handle_call({republish, #publish{last_sent = publish, experation_time= ExpT} = Params, Packet_Id},
+handle_call({republish, #publish{last_sent = publish, expiration_time= ExpT} = Params, Packet_Id},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),

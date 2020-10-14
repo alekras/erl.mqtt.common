@@ -76,7 +76,7 @@ start(End_Type) ->
 	DB_Folder = application:get_env(end_type_2_name(End_Type), dets_home_folder, "dets-storage"),
 	L = lists:zip3(db_id(End_Type), db_file(End_Type), db_type(End_Type)),
 	L1 = [ 
-		case dets:open_file(DB_ID, [{file, filename:join(DB_Folder, DB_File)}, {type, DB_Type}, {auto_save, 10000}, {keypos, 2}]) of
+		case dets:open_file(DB_ID, [{file, filename:join(DB_Folder, DB_File)}, {type, DB_Type}, {auto_save, 60000}, {keypos, 2}]) of
 			{ok, DB_ID} ->
 				true;
 			{error, Reason1} ->
@@ -323,7 +323,6 @@ get_all(End_Type, topic) ->
 cleanup(End_Type, ClientId) ->
 	Session_db = db_id(1, End_Type),
 	Subscription_db = db_id(2, End_Type),
-lager:debug([{endtype, End_Type}], ">>> clean up: ~p~n", [ClientId]),
 
 	case dets:match_delete(Session_db, #storage_publish{key = #primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of 
 		{error, Reason1} -> 
@@ -336,13 +335,13 @@ lager:debug([{endtype, End_Type}], ">>> clean up: ~p~n", [ClientId]),
 							 fun(#storage_subscription{key = #subs_primary_key{client_id = CI}}) when CI == ClientId -> 
 									true
 							 end),
-	lager:debug([{endtype, End_Type}], "MatchSpec: ~p~n", [MatchSpec]),
 	case dets:select_delete(Subscription_db, MatchSpec) of
 %% 	case dets:match_delete(Subscription_db, #storage_subscription{key = #subs_primary_key{client_id = ClientId, _ = '_'}, _ = '_'}) of
 		{error, Reason2} -> 
 			lager:error([{endtype, End_Type}], "match_delete failed: ~p~n", [Reason2]);
 		N ->
-			lager:debug([{endtype, End_Type}], "match_delete returns: ~p~n", [N])
+%%			lager:debug([{endtype, End_Type}], "match_delete returns: ~p~n", [N])
+			N
 	end,
 	remove(End_Type, {client_id, ClientId}),
 	if End_Type =:= server ->

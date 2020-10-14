@@ -67,7 +67,7 @@
 		properties = [] ::list(),
 		last_sent = none :: none | publish | pubrec | pubrel | pubcomp,
 		dir = out :: in | out,
-		experation_time = infinity :: integer()
+		expiration_time = infinity :: integer()
 	}
 ).
 
@@ -147,8 +147,10 @@
 		storage = mqtt_dets_dao :: atom(),
 		end_type = client :: client | server,
 		default_callback :: tuple(),
-		session_present :: 0 | 1,
+		session_present = 0 :: 0 | 1,
 		connected = 0 :: 0 | 1, %% is used ?
+		receive_max = 10 :: integer(),
+		send_quota = 10 :: integer(),
 		packet_id = 100 :: integer(),
 %%		subscriptions = #{} :: map(), %% @todo keep in persistance storage
 		topic_alias_in_map = #{} :: map(), %% TopicAlias => TopicName

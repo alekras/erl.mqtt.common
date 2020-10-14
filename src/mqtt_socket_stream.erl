@@ -254,40 +254,55 @@ process(State, Binary) ->
 							delivery_to_application(NewState, NewRecord),
 							process(NewState, Tail);
 						1 ->
-							delivery_to_application(NewState, NewRecord),  %% TODO check for successful delivery
-							Packet = if NewState#connection_state.test_flag =:= skip_send_puback -> <<>>; true -> packet(puback, Version, {Packet_Id, 0}, []) end, %% TODO properties?
-							case Transport:send(Socket, Packet) of
-								ok -> ok;
-								{error, _Reason} -> ok
-							end,
-							process(NewState, Tail);
-						2 ->
-							NewState1 = 
-							case maps:is_key(Packet_Id, ProcessesExt) of
-								true when Dup =:= 0 -> 
-									lager:warning([{endtype, NewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, NewState#connection_state.processes]),
-									NewState;
-								_ ->
-									case NewState#connection_state.end_type of 
-										client -> 
-											delivery_to_application(NewState, NewRecord);
-										server -> none
-									end,
-%% store PI after receiving message
-									Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-									Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
+							case decr_send_quote_handle(Version, NewState) of
+								{error, VeryNewState} ->
+									gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
+									process(VeryNewState, Tail);
+								{ok, VeryNewState} ->
+									delivery_to_application(VeryNewState, NewRecord),  %% TODO check for successful delivery
 									Packet = 
-									if NewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
-										?ELSE -> packet(pubrec, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString Or/And UserProperty 
-									end,
+										if VeryNewState#connection_state.test_flag =:= skip_send_puback -> <<>>; 
+											 true -> packet(puback, Version, {Packet_Id, 0}, [])  %% TODO properties?
+										end,
 									case Transport:send(Socket, Packet) of
-										ok -> 
-											New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
-											NewState#connection_state{processes_ext = New_processes};
-										{error, _Reason} -> NewState
-									end
-							end,
-							process(NewState1, Tail);
+										ok -> ok;
+										{error, _Reason} -> ok %% TODO : process error
+									end,
+									process(VeryNewState, Tail)
+							end;
+						2 ->
+							case decr_send_quote_handle(Version, NewState) of
+								{error, VeryNewState} ->
+									gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
+									process(VeryNewState, Tail);
+								{ok, VeryNewState} ->
+									NewState1 = 
+									case maps:is_key(Packet_Id, ProcessesExt) of
+										true when Dup =:= 0 -> 
+											lager:warning([{endtype, VeryNewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, VeryNewState#connection_state.processes]),
+											VeryNewState;
+										_ ->
+											case VeryNewState#connection_state.end_type of 
+												client -> 
+													delivery_to_application(VeryNewState, NewRecord);
+												server -> none
+											end,
+		%% store PI after receiving message
+											Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
+											Storage:save(VeryNewState#connection_state.end_type, #storage_publish{key = Prim_key, document = NewRecord#publish{last_sent = pubrec}}),
+											Packet = 
+											if VeryNewState#connection_state.test_flag =:= skip_send_pubrec -> <<>>;
+												?ELSE -> packet(pubrec, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString Or/And UserProperty 
+											end,
+											case Transport:send(Socket, Packet) of
+												ok -> 
+													New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
+													VeryNewState#connection_state{processes_ext = New_processes};
+												{error, _Reason} -> VeryNewState
+											end
+									end,
+									process(NewState1, Tail)
+							end;
 						_ -> process(State, Tail)
 					end
 			end;
@@ -297,11 +312,12 @@ process(State, Binary) ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
 %% discard message<QoS=1> after pub ack
+					NewState = inc_send_quote_handle(Version, State),
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, 
-					Storage:remove(State#connection_state.end_type, Prim_key),
+					Storage:remove(NewState#connection_state.end_type, Prim_key),
 					Pid ! {puback, Ref, ReasonCode, Properties},
 					process(
-						State#connection_state{processes = maps:remove(Packet_Id, Processes)},
+						NewState#connection_state{processes = maps:remove(Packet_Id, Processes)},
 						Tail);
 				undefined ->
 					process(State, Tail)
@@ -311,6 +327,7 @@ process(State, Binary) ->
 		{pubrec, {Packet_Id, ResponseCode}, _Properties, Tail} ->
 			case maps:get(Packet_Id, Processes, undefined) of
 				{From, Params} ->
+%% TODO Check ResponseCode > 0x80 for NewState = inc_send_quote_handle(Version, State)
 %% store message before pubrel
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 					Storage:save(State#connection_state.end_type, #storage_publish{key = Prim_key, document = #publish{last_sent = pubrel}}),
@@ -367,14 +384,15 @@ process(State, Binary) ->
 %			lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
 				{{Pid, Ref}, _Params} ->
+					NewState = inc_send_quote_handle(Version, State),
 					case Pid of
 						undefined -> none;
 						_ -> 	Pid ! {pubcomp, Ref, ReasonCode, Properties}
 					end,
 %% discard message after pub comp
 					Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
-					Storage:remove(State#connection_state.end_type, Prim_key),
-					process(State#connection_state{processes = maps:remove(Packet_Id, Processes)}, Tail);
+					Storage:remove(NewState#connection_state.end_type, Prim_key),
+					process(NewState#connection_state{processes = maps:remove(Packet_Id, Processes)}, Tail);
 				undefined ->
 					process(State, Tail)
 			end;
@@ -562,7 +580,7 @@ handle_get_topic_from_alias(_, #publish{topic = Prms_Topic}, _) ->
 
 handle_server_publish('5.0',
 												#connection_state{storage = Storage} = State,
-												#publish{qos = Params_QoS, payload = Payload, experation_time = ExpT, retain = Retain, dup = Dup} = Param, PubTopic) ->
+												#publish{qos = Params_QoS, payload = Payload, expiration_time = ExpT, retain = Retain, dup = Dup} = Param, PubTopic) ->
 	RemainedTime =
 	case ExpT of
 		infinity -> 1;
@@ -673,11 +691,28 @@ handle_server_publish(_,
 
 msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->
 	Msg_Exp_Interval = proplists:get_value(?Message_Expiry_Interval, Props, infinity),
-	if (Msg_Exp_Interval == 0) or (Msg_Exp_Interval == infinity) -> PubRec#publish{experation_time= infinity};
-		 ?ELSE -> PubRec#publish{experation_time= (erlang:system_time(millisecond) + Msg_Exp_Interval * 1000)}
+	if (Msg_Exp_Interval == 0) or (Msg_Exp_Interval == infinity) -> PubRec#publish{expiration_time= infinity};
+		 ?ELSE -> PubRec#publish{expiration_time= (erlang:system_time(millisecond) + Msg_Exp_Interval * 1000)}
 	end;
 msg_experation_handle(_, PubRec) ->
 PubRec.
+
+decr_send_quote_handle('5.0', State) ->
+	Send_Quote = State#connection_state.send_quota - 1,
+	if Send_Quote =< 0 -> {error, State};
+		 ?ELSE -> {ok, State#connection_state{send_quota = Send_Quote}}
+	end;
+decr_send_quote_handle(_, State) ->
+	{ok, State}.
+
+inc_send_quote_handle('5.0', State) ->
+	Send_Quote = State#connection_state.send_quota + 1,
+	Rec_Max = State#connection_state.receive_max,
+	if Send_Quote > Rec_Max -> State;
+		 ?ELSE -> State#connection_state{send_quota = Send_Quote}
+	end;
+inc_send_quote_handle(_, State) ->
+	State.
 
 get_peername(ssl, Socket) ->
 	case ssl:peername(Socket) of
