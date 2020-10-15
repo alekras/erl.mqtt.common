@@ -35,8 +35,8 @@ close(_Socket) -> ok.
 %% Internal functions
 %% ====================================================================
 
-loop({Pid, []} = State) ->
-%	io:format(user, "~n >>> mock_tcp:loop() = ~256p~n", [State]),
+loop({Pid, []} = _State) ->
+%	io:format(user, "~n >>> mock_tcp:loop() = ~256p~n", [_State]),
 	loop({Pid, [undefined]});
 loop({Pid, [ExpectValue | EVList]} = State) ->
 	receive

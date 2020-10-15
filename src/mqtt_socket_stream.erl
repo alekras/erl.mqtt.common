@@ -74,7 +74,6 @@ process(State, Binary) ->
 			if Encrypted_password_db =/= Encrypted_password_cli -> 5;
 				 true -> 0
 			end,
-%%			Packet_Id = State#connection_state.packet_id, %% is never used
 			if Resp_code =:= 0 ->
 					New_State = State#connection_state{config = Config, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
 					New_State_2 =
@@ -90,11 +89,11 @@ process(State, Binary) ->
 					Storage:save(server, #session_state{client_id = New_Client_Id,
 							session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
 							will_publish = Config#connect.will_publish}),
-					Packet = packet(connack, ConnVersion, {New_State_2#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
+					New_State_3 = receive_max_set_handle(ConnVersion, New_State_2),
+					Packet = packet(connack, ConnVersion, {New_State_3#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 					Transport:send(Socket, Packet),
 					lager:info([{endtype, server}], "Connection to client ~p is established~n", [New_Client_Id]),
-%%					process(New_State_2#connection_state{packet_id = mqtt_connection:next(Packet_Id, New_State_2), connected = 1}, Tail); %% Packet_Id is never used
-					process(New_State_2#connection_state{connected = 1}, Tail);
+					process(New_State_3#connection_state{connected = 1}, Tail);
 				true ->
 					Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
 					Transport:send(Socket, Packet),
@@ -697,6 +696,15 @@ msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->
 msg_experation_handle(_, PubRec) ->
 PubRec.
 
+receive_max_set_handle('5.0', #connection_state{config = #connect{properties = Props}} = State) ->
+	case proplists:get_value(?Receive_Maximum, Props, -1) of
+		-1 -> State#connection_state{receive_max = 65535, send_quota = 65535};
+		 0 -> State; %% TODO protocol_error;
+		 N -> State#connection_state{receive_max = N, send_quota = N}
+	end;
+receive_max_set_handle(_, State) ->
+	State.
+	
 decr_send_quote_handle('5.0', State) ->
 	Send_Quote = State#connection_state.send_quota - 1,
 	if Send_Quote =< 0 -> {error, State};
