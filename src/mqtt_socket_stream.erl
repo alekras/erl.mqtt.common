@@ -35,7 +35,8 @@
 %% ====================================================================
 -export([
 	process/2,
-	server_send_publish/2
+	server_send_publish/2,
+	decr_send_quote_handle/2
 ]).
 
 -import(mqtt_output, [packet/4]).
@@ -253,7 +254,7 @@ process(State, Binary) ->
 							delivery_to_application(NewState, NewRecord),
 							process(NewState, Tail);
 						1 ->
-							case decr_send_quote_handle(Version, NewState) of
+							case decr_send_quote_handle(Version, NewState) of %% TODO do we need it for Qos=1 ?
 								{error, VeryNewState} ->
 									gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
 									process(VeryNewState, Tail);
@@ -267,7 +268,8 @@ process(State, Binary) ->
 										ok -> ok;
 										{error, _Reason} -> ok %% TODO : process error
 									end,
-									process(VeryNewState, Tail)
+									VeryNewState_1 = inc_send_quote_handle(Version, VeryNewState), %% TODO do we need it for Qos=1 ?
+									process(VeryNewState_1, Tail)
 							end;
 						2 ->
 							case decr_send_quote_handle(Version, NewState) of
@@ -371,7 +373,8 @@ process(State, Binary) ->
 					case Transport:send(Socket, Packet) of
 						ok ->
 							New_processes = maps:remove(Packet_Id, ProcessesExt),
-							State#connection_state{processes_ext = New_processes};
+							VeryNewState = State#connection_state{processes_ext = New_processes},
+							inc_send_quote_handle(Version, VeryNewState);
 						{error, _Reason} -> State
 					end,
 					process(New_State, Tail);
@@ -428,11 +431,17 @@ process(State, Binary) ->
 %% ====================================================================
 
 handle_conack_properties('5.0', #connection_state{config = Config} = State, Properties) ->
+	NewState =
 	case proplists:get_value(?Topic_Alias_Maximum, Properties, undefined) of
 		undefined -> State;
 		TAMaximum ->
 			ConfProps = lists:keystore(?Topic_Alias_Maximum, 1, Config#connect.properties, {?Topic_Alias_Maximum, TAMaximum}),
 			State#connection_state{config = Config#connect{properties = ConfProps}}
+	end,
+	case proplists:get_value(?Receive_Maximum, Properties, -1) of
+		-1 -> NewState#connection_state{receive_max = 65535, send_quota = 65535};
+		 0 -> NewState; %% TODO protocol_error;
+		 N -> NewState#connection_state{receive_max = N, send_quota = N}
 	end;
 handle_conack_properties(_, State, _) ->
 	State.

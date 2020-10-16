@@ -135,21 +135,30 @@ handle_call({publish, #publish{qos = 0} = PubRec},
 handle_call({publish, #publish{qos = QoS} = PubRec}, 
 						{_, Ref} = From, 
 						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
-		{#mqtt_client_error{} = Response, NewState} ->
-			{reply, {error, Response, Ref}, NewState};
-		{Params, NewState} ->
-			Packet = if NewState#connection_state.test_flag =:= skip_send_publish -> <<>>; true -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, []) end,
+	case mqtt_socket_stream:decr_send_quote_handle(Config#connect.version, State) of
+		{error, NewState} ->
+			gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
+			{reply, {error, #mqtt_client_error{type= protocol, errno= 16#93, message= "Receive Maximum exceeded"}, Ref}, NewState};
+		{ok, NewState} ->
+			case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, NewState) of
+				{#mqtt_client_error{} = Response, VeryNewState} ->
+					{reply, {error, Response, Ref}, VeryNewState};
+				{Params, VeryNewState} ->
+					Packet =
+						if VeryNewState#connection_state.test_flag =:= skip_send_publish -> <<>>;
+							 ?ELSE -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, [])
+						end,
 %% store message before sending
-			Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
-			Prim_key = #primary_key{client_id = (NewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
-			Storage:save(NewState#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
-			case Transport:send(Socket, Packet) of
-				ok -> 
-					New_processes = (NewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-					lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
-					{reply, {ok, Ref}, NewState#connection_state{packet_id = next(Packet_Id, NewState), processes = New_processes}};
-				{error, Reason} -> {reply, {error, Reason, Ref}, State} %% do not update State!
+					Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
+					Prim_key = #primary_key{client_id = (VeryNewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
+					Storage:save(VeryNewState#connection_state.end_type, #storage_publish{key = Prim_key, document = Params2Save}),
+					case Transport:send(Socket, Packet) of
+						ok -> 
+							New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
+							lager:info([{endtype, VeryNewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
+							{reply, {ok, Ref}, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes}};
+						{error, Reason} -> {reply, {error, Reason, Ref}, NewState} %% do not update State!
+					end
 			end
 	end;
 
