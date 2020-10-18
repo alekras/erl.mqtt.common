@@ -441,7 +441,7 @@ handle_conack_properties('5.0', #connection_state{config = Config} = State, Prop
 	case proplists:get_value(?Receive_Maximum, Properties, -1) of
 		-1 -> NewState#connection_state{receive_max = 65535, send_quota = 65535};
 		 0 -> NewState; %% TODO protocol_error;
-		 N -> NewState#connection_state{receive_max = N, send_quota = N}
+		 N -> NewState#connection_state{receive_max = N + 1, send_quota = N + 1} %% it allows server side to treat the number publish proceses 
 	end;
 handle_conack_properties(_, State, _) ->
 	State.
