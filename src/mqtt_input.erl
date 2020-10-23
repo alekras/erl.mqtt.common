@@ -94,7 +94,7 @@ input_parser('5.0', <<?PUBREC_PACK_TYPE, Bin/binary>>) ->
 	parse_pub_response(pubrec, Bin);
 input_parser(_, <<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrec, {Packet_Id, 0}, [], Tail};
 
-input_parser(_, <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, Packet_Id, [], Tail}; %% @todo issue with websocket client from HiveMQ
+input_parser(_, <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, {Packet_Id, 0}, [], Tail}; %% @todo issue with websocket client from HiveMQ
 
 input_parser('5.0', <<?PUBREL_PACK_TYPE, Bin/binary>>) -> 
 	parse_pub_response(pubrel, Bin);

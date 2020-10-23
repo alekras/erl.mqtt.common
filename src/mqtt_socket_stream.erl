@@ -420,8 +420,8 @@ process(State, Binary) ->
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p are disconnecting with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
 			process(State#connection_state{connected = 0}, Tail);
 
-		_ ->
-			lager:error([{endtype, State#connection_state.end_type}], "unparsed message: ~p state:~p~n", [Binary, State]),
+		_M ->
+			lager:error([{endtype, State#connection_state.end_type}], "unparsed message: ~p, input binary: ~p Current State: ~p~n", [_M, Binary, State]),
 			self() ! disconnect,
 			process(State, <<>>)
 	end.
