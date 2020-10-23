@@ -292,9 +292,6 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 	{connect, Config, Tail}.
 
 parse_subscription(_, <<>>, Subscriptions) -> lists:reverse(Subscriptions);
-parse_subscription('3.1.1', InputBinary, Subscriptions) ->
-	{<<QoS:8, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
-	parse_subscription('3.1.1', BinaryRest, [{Topic, QoS} | Subscriptions]);
 parse_subscription('5.0', InputBinary, Subscriptions) ->
 	{<<0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
 	parse_subscription('5.0', BinaryRest,
@@ -303,7 +300,10 @@ parse_subscription('5.0', InputBinary, Subscriptions) ->
 																						 nolocal = NoLocal,
 																						 retain_as_published = RetainAsPub,
 																						 retain_handling = RetainHandling}
-											} | Subscriptions]).
+											} | Subscriptions]);
+parse_subscription(Vrs, InputBinary, Subscriptions) ->
+	{<<QoS:8, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
+	parse_subscription(Vrs, BinaryRest, [{Topic, QoS} | Subscriptions]).
 
 parse_unsubscription(<<>>, Topics) -> lists:reverse(Topics);
 parse_unsubscription(InputBinary, Topics) ->
