@@ -41,7 +41,8 @@
 	is_topicFilter_valid/1,
 	is_match/2,
 	topic_regexp/1,
-	validate_config/1
+	validate_config/1,
+	validate_publish/2
 ]).
 
 %% Variable byte Integer:
@@ -182,6 +183,30 @@ validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
 		?ELSE -> ok
 	end,
 	true.
+
+validate_publish('5.0', #publish{topic= Topic, payload= Payload, properties= Props}) ->
+	true = validate_string_field(Topic, "Publish Topic"),
+	case is_topicFilter_valid(Topic) of
+		false -> throw(#mqtt_client_error{type= topic, message= "Publish Topic"});
+		_ -> ok
+	end,
+	WP = mqtt_property:validate(publish, Props),
+	if not WP -> throw(#mqtt_client_error{type= will_property, message= "Publish Properties"});
+		?ELSE -> ok
+	end,
+	case proplists:get_value(?Payload_Format_Indicator, Props, 0) of
+		0 -> ok;
+		1 -> true = validate_string_field(Payload, "Publish Payload")
+	end,
+	true;
+validate_publish(_, #publish{topic= Topic}) ->
+	true = validate_string_field(Topic, "Publish Topic"),
+	case is_topicFilter_valid(Topic) of
+		false -> throw(#mqtt_client_error{type= topic, message= "Publish Topic"});
+		_ -> ok
+	end,
+	true.
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
