@@ -95,20 +95,24 @@ handle_call({connect, Conn_config}, From, #connection_state{end_type = client} =
 handle_call({connect, Conn_config, Callback},
 						{_, Ref} = From,
 						#connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = client} = State) ->
-	case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
-		ok -> 
-			New_processes = (State#connection_state.processes)#{connect => From},
-			New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
-			New_State_2 =
-			case Conn_config#connect.clean_session of
-				1 -> 
-					Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
-					New_State;
-				0 ->	 
-					restore_session(New_State) 
-			end,
-			{reply, {ok, Ref}, New_State_2};
-		{error, Reason} -> {reply, {error, Reason}, State}
+	try 
+		mqtt_data:validate_config(Conn_config),
+		case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
+			ok -> 
+				New_processes = (State#connection_state.processes)#{connect => From},
+				New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
+				New_State_2 =
+				case Conn_config#connect.clean_session of
+					1 -> 
+						Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
+						New_State;
+					0 ->	 
+						restore_session(New_State) 
+				end,
+				{reply, {ok, Ref}, New_State_2};
+			{error, Reason} -> {reply, {error, Reason}, State}
+		end
+	catch throw:E -> {reply, {error, E}, State}
 	end;
 
 ?test_fragment_set_test_flag
@@ -506,8 +510,12 @@ will_publish_handle(Storage, Config) ->
 		end
 		|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
 	],
-	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
-	Storage:save(server, SessionState#session_state{will_publish = undefined}),
+
+	case Storage:get(server, {session_client_id, Sess_Client_Id}) of
+		undefined -> skip;
+		Record -> Storage:save(server, Record#session_state{will_publish = undefined})
+	end,
+
 	if (PubRec#publish.retain =:= 1) ->
 			Storage:save(server, Params); %% TODO avoid duplicates ???
 		 true -> ok

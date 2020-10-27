@@ -108,11 +108,11 @@ do_stop(_Pid) ->
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1')~n", []),
 	mock_tcp:start(),
-	#connect{client_id = "test_client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '3.1.1'};
+	#connect{client_id = "test0Client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '3.1.1'};
 setup('5.0') ->
 	?debug_Fmt("::test:: >>> setup('5.0')~n", []),
 	mock_tcp:start(),
-	#connect{client_id = "test_client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '5.0'}.
+	#connect{client_id = "test0Client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '5.0'}.
 
 cleanup(X, Y) ->
 	?debug_Fmt("::test:: >>> cleanup(~p,~p) ~n", [X,Y#connect.client_id]),
@@ -123,7 +123,7 @@ cleanup(X, Y) ->
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
-	conn_server ! {tcp, undefined, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, undefined, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
 	mock_tcp:set_expectation(<<16#D0:8, 0:8>>), %% PingResp packet
@@ -145,7 +145,7 @@ end};
 connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
-	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
 	mock_tcp:set_expectation(<<16#D0:8, 0:8>>), %% PingResp packet
@@ -171,7 +171,7 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ a
 	conn_server ! {tcp, undefined, 
 			<<16,93, 4:16,"MQTT"/utf8,5,246,234,96, 
 				10, 17, 16#FFFFFFFF:32, 39, 65000:32, %% properties
-				11:16,"test_client"/utf8, 
+				11:16,"test0Client"/utf8, 
 				23, 8, 15:16,"AfterClose/Will"/utf8, 24, 6000:32, %% will properties
 				8:16,"Last_msg"/utf8, 9:16,"Good bye!",
 				5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
@@ -499,12 +499,12 @@ wait_mock_tcp(R) ->
 
 connect_v3() ->
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
-	conn_server ! {tcp, undefined, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, undefined, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack").
 
 connect_v5() ->
 	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
-	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test_client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack").
 
 subscribe_v3() ->

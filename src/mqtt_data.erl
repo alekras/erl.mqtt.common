@@ -23,6 +23,9 @@
 
 -module(mqtt_data).
 
+-include("mqtt.hrl").
+-include("mqtt_property.hrl").
+
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -37,7 +40,8 @@
 	fieldSize/1,
 	is_topicFilter_valid/1,
 	is_match/2,
-	topic_regexp/1
+	topic_regexp/1,
+	validate_config/1
 ]).
 
 %% Variable byte Integer:
@@ -115,10 +119,8 @@ is_topicFilter_valid(TopicFilter) ->
 														"){1}$"),
 	case re:run(TopicFilter, Pattern, [global, {capture, [shareName, topicFilter], list}]) of
 		{match, [R]} -> 
-%			?debug_Fmt("::test:: >>> is_valid ~p match: ~p", [TopicFilter, R]),
 			{true, R};
 		_E ->
-%			?debug_Fmt("::test:: >>> is_valid ~p NOT match: ~p", [TopicFilter, _E]),
 			false
 	end.
 
@@ -129,10 +131,69 @@ is_match(Topic, TopicFilter) ->
 		_E ->		false
 	end.
 
+validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
+												 will_publish = WillPubRec,
+												 properties= Props, version= '5.0'}) ->
+	true = validate_string_field(ClientId, "Client Id"),
+	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
+		nomatch ->
+			throw(#mqtt_client_error{type= name, message= "Client Id"});
+		_ -> ok
+	end,
+	true = validate_string_field(User, "User name"),
+	P = mqtt_property:validate(connect, Props),
+	if not P -> throw(#mqtt_client_error{type= property, message= "Connect Properties"});
+		 ?ELSE -> ok
+	end,
+	if (WillFlag == 1) and is_record(WillPubRec, publish) ->
+			#publish{topic= WillTopic, payload= WillPayload, properties= WillProps} = WillPubRec,
+			true = validate_string_field(WillTopic, "Will Topic"),
+			case is_topicFilter_valid(WillTopic) of
+				false -> throw(#mqtt_client_error{type= topic, message= "Will Topic"});
+				_ -> ok
+			end,
+			WP = mqtt_property:validate(will, WillProps),
+			if not WP -> throw(#mqtt_client_error{type= will_property, message= "Will Properties"});
+				?ELSE -> ok
+			end,
+			case proplists:get_value(?Payload_Format_Indicator, WillProps, 0) of
+				0 -> ok;
+				1 -> true = validate_string_field(WillPayload, "Will Payload")
+			end;
+		?ELSE -> ok
+	end,
+	true;
+validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
+												 will_publish = WillPubRec}) ->
+	true = validate_string_field(ClientId, "Client Id"),
+	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
+		nomatch ->
+			throw(#mqtt_client_error{type= name, message= "Client Id"});
+		_ -> ok
+	end,
+	true = validate_string_field(User, "User name"),
+	if (WillFlag == 1) and is_record(WillPubRec, publish) ->
+			#publish{topic= WillTopic} = WillPubRec,
+			true = validate_string_field(WillTopic, "Will Topic"),
+			case is_topicFilter_valid(WillTopic) of
+				false -> throw(#mqtt_client_error{type= topic, message= "Will Topic"});
+				_ -> ok
+			end;
+		?ELSE -> ok
+	end,
+	true.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
+validate_string_field(String, Name) ->
+	case unicode:characters_to_list(String, utf8) of
+		{error, _, _} -> throw(#mqtt_client_error{type= utf8, message= Name});
+		{incomplete, _, _} -> throw(#mqtt_client_error{type= utf8, message= Name});
+		_ -> true
+	end.
+	
+	
 topic_regexp(TopicFilter) ->
 	R1 = re:replace(TopicFilter, "\\+", "([^\\/]*)", [global, {return, list}]),
 	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),

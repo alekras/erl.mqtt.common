@@ -61,14 +61,25 @@ process(State, Binary) ->
 			process(State, <<>>);
 %% server side only
 		{connect, Config, Tail} ->
-			%% check credentials 
+%% validate connect config.
+			try 
+				mqtt_data:validate_config(Config)
+			catch
+				throw:#mqtt_client_error{message= Msg} -> 
+					gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Protocol Error: " ++ Msg}]}),
+					process(State, Tail)
+			end,
+%% check credentials 
 			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
 			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
 			lager:debug([{endtype, server}], "Previous Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,
 			if ClientPid =:= undefined -> ok;
-				 is_pid(ClientPid) -> try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) catch _:_ -> ok end;
+				 is_pid(ClientPid) ->
+						try gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]}) 
+						catch _:_ -> ok 
+						end;
 				 true -> ok
 			end,
 			Resp_code =
