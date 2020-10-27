@@ -50,7 +50,8 @@ unit_test_() ->
 		{"extract_variable_byte_integer", fun extract_variable_byte_integer/0},
 		{"encode_variable_byte_integer", fun encode_variable_byte_integer/0},
 		{"is_match", fun is_match/0},
-		{"validate connect config", fun connect_validate/0}
+		{"validate connect config", fun connect_validate/0},
+		{"validate publish packet", fun publish_validate/0}
 	].
 
 extract_variable_byte_integer() ->
@@ -148,4 +149,11 @@ connect_validate() ->
 																									will= 1,
 																									will_publish = #publish{topic= "Topic", payload= <<"Will Message">>, properties= [{?Subscription_Identifier_Available, 1}]}})),
 
+	?passed.
+
+publish_validate() ->
+	?assertNotException(throw, true, mqtt_data:validate_publish('3.1.1',#publish{topic= "Topic/a"})),
+	?assertNotException(throw, true, mqtt_data:validate_publish('5.0',#publish{topic= "Topic/a"})),
+	?assertException(throw, #mqtt_client_error{type= utf8, message="Publish Topic"}, mqtt_data:validate_publish('3.1.1',#publish{topic= <<"Topic/",16#d801:16,"a">>})),
+	
 	?passed.

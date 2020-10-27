@@ -135,7 +135,7 @@ handle_call({publish, #publish{qos = 0} = PubRec},
 				lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
 				{reply, {ok, Ref}, NewState}
 		end
-	catch throw:E -> {reply, {error, E}, State}
+	catch throw:E -> {reply, {error, E, Ref}, State}
 	end;
 %%?test_fragment_skip_send_publish
 
@@ -170,7 +170,7 @@ handle_call({publish, #publish{qos = QoS} = PubRec},
 						end
 				end
 		end
-	catch throw:E -> {reply, {error, E}, State}
+	catch throw:E -> {reply, {error, E, Ref}, State}
 	end;
 
 handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
