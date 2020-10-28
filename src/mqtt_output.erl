@@ -236,7 +236,8 @@ payload(connect, Config) ->
 		0 ->
 			<<>>;
 		_ ->
-			mqtt_data:encode_utf8_string(Config#connect.password)
+%%			mqtt_data:encode_utf8_string(Config#connect.password)
+			mqtt_data:encode_binary_field(Config#connect.password)
 	end,
 	<<(mqtt_data:encode_utf8_string(Config#connect.client_id))/binary, 
 		Will_bin/binary, 
