@@ -281,13 +281,18 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			 Config1;
 		 Will == 1 ->
 			 Config1#connect{
-				will_qos = Will_QoS,
-				will_retain = Will_retain,
-				will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
-				will_message = WillMessage,
-				will_properties = WillProperties,
-				will_publish = #publish{qos = Will_QoS, retain = Will_retain, topic = binary_to_list(WillTopic), payload = WillMessage, properties = WillProperties}
-			 }
+%% 				will_qos = Will_QoS,
+%% 				will_retain = Will_retain,
+%% 				will_topic = binary_to_list(WillTopic), %% @todo do we need a list?
+%% 				will_message = WillMessage,
+%% 				will_properties = WillProperties,
+				will_publish = #publish{
+					qos = Will_QoS,
+					retain = Will_retain,
+					topic = binary_to_list(WillTopic),
+					payload = WillMessage,
+					properties = WillProperties
+			}}
 	end,
 	{connect, Config, Tail}.
 

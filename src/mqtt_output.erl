@@ -176,14 +176,14 @@ fixed_header(auth, _Flags, Length) ->
 variable_header(connect, Config) ->
 	User = case mqtt_data:fieldSize(Config#connect.user_name) of 0 -> 0; _ -> 1 end,
 	Password = case mqtt_data:fieldSize(Config#connect.password) of 0 -> 0; _ -> 1 end,
-	case mqtt_data:fieldSize(Config#connect.will_topic) of
+	case Config#connect.will of
 		0 ->
 			Will_retain = 0,
 			Will_QoS = 0,
 			Will = 0;
 		_ ->
-			Will_retain = Config#connect.will_retain,
-			Will_QoS = Config#connect.will_qos,
+			Will_retain = Config#connect.will_publish#publish.retain,
+			Will_QoS = Config#connect.will_publish#publish.qos,
 			Will = Config#connect.will
 	end,
 	Clean_Session = Config#connect.clean_session,
@@ -216,13 +216,13 @@ payload(connect, Config) ->
 			true ->
 				WP =
 				if Config#connect.version == '5.0' ->
-					mqtt_property:to_binary(Config#connect.will_properties);
+					mqtt_property:to_binary(Config#connect.will_publish#publish.properties);
 				true -> 
 					<<>>
 				end,
 				<<WP/binary, 
-					(mqtt_data:encode_utf8_string(Config#connect.will_topic))/binary, 
-					(mqtt_data:encode_binary_field(Config#connect.will_message))/binary>>
+					(mqtt_data:encode_utf8_string(Config#connect.will_publish#publish.topic))/binary, 
+					(mqtt_data:encode_binary_field(Config#connect.will_publish#publish.payload))/binary>>
 	end,
 	Username_bin =
 	case mqtt_data:fieldSize(Config#connect.user_name) of

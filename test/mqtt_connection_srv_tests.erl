@@ -178,9 +178,9 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ a
 	wait_mock_tcp("connack"),
 
 	Conn_State = sys:get_state(conn_server),
-	?debug_Fmt("::test:: will properties = ~p ~n", [Conn_State#connection_state.config#connect.will_properties]),
+	?debug_Fmt("::test:: will properties = ~p ~n", [Conn_State#connection_state.config#connect.will_publish#publish.properties]),
 	?debug_Fmt("::test:: properties = ~p ~n", [Conn_State#connection_state.config#connect.properties]),
-	?assertEqual([{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}], Conn_State#connection_state.config#connect.will_properties),
+	?assertEqual([{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}], Conn_State#connection_state.config#connect.will_publish#publish.properties),
 	?assertEqual([{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}], Conn_State#connection_state.config#connect.properties),
 
 	mock_tcp:set_expectation(<<224,0>>),

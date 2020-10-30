@@ -186,11 +186,8 @@ end}.
 connection_props_test('5.0' = Version, Conn_config) -> {"Connection test with properties [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	Config = Conn_config#connect{
 						will = 1,
-						will_qos = 2,
-						will_retain = 1,
-						will_message = <<"Good bye!">>,
-						will_topic = "Last_msg",
-						will_properties = [{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}],
+						will_publish = #publish{qos= 2, retain= 1, topic= "Last_msg", payload= <<"Good bye!">>,
+																		properties = [{?Will_Delay_Interval, 6000}, {?Response_Topic, "AfterClose/Will"}]},
 						properties = [{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}]
 					},
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Config]),
