@@ -252,7 +252,8 @@ process(State, Binary) ->
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = PubRec, Packet_Id, Tail} ->
 			Record = msg_experation_handle(Version, PubRec),
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p~n", [Packet_Id, Record, State#connection_state.processes]),
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> publish comes PI = ~p, Record = ~p Prosess List = ~p, send_quota:~p~n",
+									[Packet_Id, Record, State#connection_state.processes, State#connection_state.send_quota]),
 			lager:info([{endtype, State#connection_state.end_type}], "Published message for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 			case mqtt_connection:topic_alias_handle(Version, Record, State) of
 				{#mqtt_client_error{errno = ErrNo, message = Msg}, NewState} ->

@@ -164,7 +164,8 @@ handle_call({publish, #publish{qos = QoS} = PubRec},
 						case Transport:send(Socket, Packet) of
 							ok -> 
 								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-								lager:info([{endtype, VeryNewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>~n", [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id]),
+								lager:info([{endtype, VeryNewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>, s_q:~p~n",
+													 [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id, State#connection_state.send_quota]),
 								{reply, {ok, Ref}, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes}};
 							{error, Reason} -> {reply, {error, Reason, Ref}, NewState} %% do not update State!
 						end
@@ -255,7 +256,8 @@ handle_call({disconnect, ReasonCode, Properties},
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
-			lager:info([{endtype, State#connection_state.end_type}], "<handle_call> Client ~p sent disconnect request.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "<handle_call> Client ~p sent disconnect request with reason code:~p, and properties:~p.",
+								 [Config#connect.client_id, ReasonCode, Properties]),
 			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes, packet_id = 100}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
@@ -289,7 +291,8 @@ handle_cast({disconnect, ReasonCode, Properties}, %% TODO add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "<handle_cast> Client ~p sent disconnect request.", [Config#connect.client_id]),
+			lager:info([{endtype, State#connection_state.end_type}], "<handle_cast> Client ~p sent disconnect request with reason code:~p, and properties:~p.",
+								 [Config#connect.client_id, ReasonCode, Properties]),
 			{stop, shutdown, State#connection_state{connected = 0}};
 		{error, closed} -> {stop, shutdown, State};
 		{error, Reason} -> {stop, {shutdown, Reason}, State}
