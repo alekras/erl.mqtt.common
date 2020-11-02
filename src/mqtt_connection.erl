@@ -40,7 +40,7 @@
 	next/2,
 	restore_session/1,
 	topic_alias_handle/3,
-	session_expire/2
+	session_expire/3
 ]).
 
 -import(mqtt_output, [packet/4]).
@@ -528,16 +528,15 @@ will_publish_handle(Storage, Config) ->
 		 true -> ok
 	end.
 
-session_expire(Storage, Config) ->
-	Sess_Client_Id = Config#connect.client_id,
-	SessionState = Storage:get(server, {session_client_id, Sess_Client_Id}),
-	Will_PubRec = SessionState#session_state.will_publish,
-	if Will_PubRec == undefined -> ok;
-		 ?ELSE ->
-			 will_publish_handle(Storage, Config)
-	end,
-	Storage:cleanup(server, Sess_Client_Id).
-	
+session_expire(Storage, SessionState, Config) ->
+	lager:debug([{endtype, server}], ">>> session_expire: SessionState=~p Config=~p~n", [SessionState,Config]),
+		Will_PubRec = SessionState#session_state.will_publish,
+		if Will_PubRec == undefined -> ok;
+			 ?ELSE ->
+				 will_publish_handle(Storage, Config)
+		end,
+		Storage:cleanup(server, Config#connect.client_id).
+
 session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
 	Sess_Client_Id = Config#connect.client_id,
 	SSt = Storage:get(server, {session_client_id, Sess_Client_Id}),
@@ -553,7 +552,7 @@ session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
 					{ok, _} = timer:apply_after(Exp_Interval * 1000,
 																			?MODULE,
 																			session_expire,
-																			[Storage, Config])
+																			[Storage, SessionState, Config])
 			end
 	end;
 session_end_handle(_Storage, _Config) ->
