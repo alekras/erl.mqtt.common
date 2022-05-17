@@ -122,7 +122,8 @@
 -record(user,
 	{
 		user_id :: string(),
-		password :: binary()
+		password :: binary(),
+		roles = [] :: list()
 	}
 ).
 

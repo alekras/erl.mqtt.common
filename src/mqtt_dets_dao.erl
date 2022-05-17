@@ -237,7 +237,7 @@ get(server, {user_id, Key}) ->
 		{error, Reason} ->
 			lager:error([{endtype, server}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
-		[#user{password = Pswd}] -> Pswd;
+		[#user{password = Pswd, roles = Roles}] -> #{password => Pswd, roles => Roles};
 		_ ->
 			undefined
 	end;

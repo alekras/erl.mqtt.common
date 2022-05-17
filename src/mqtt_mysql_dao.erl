@@ -128,6 +128,7 @@ start(End_Type) ->
 						"CREATE TABLE IF NOT EXISTS users ("
 						"user_id char(25) DEFAULT '',"
 						" password tinyblob,"
+						" roles blob,"
 						" PRIMARY KEY (user_id)"
 						" ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8",
 					R4 = connection:execute_query(Conn, Query4),
@@ -190,10 +191,12 @@ save(End_Type, #storage_connectpid{client_id = Client_Id, pid = Pid}) ->
 		Client_Id, "',x'",
 		binary_to_hex(term_to_binary(Pid)), "')"],
 	execute_query(End_Type, Query);
-save(server, #user{user_id = User_Id, password = Pswd}) ->
+save(server, #user{user_id = User_Id, password = Pswd, roles = Roles}) ->
 	Query = ["REPLACE INTO users VALUES ('",
-		User_Id, "',x'",
-		binary_to_hex(term_to_binary(crypto:hash(md5, Pswd))), "')"],
+		User_Id, 
+		"',x'", binary_to_hex(term_to_binary(crypto:hash(md5, Pswd))),
+		"',x'", binary_to_hex(term_to_binary(Roles)),
+		"')"],
 	execute_query(server, Query);
 save(server, #publish{topic = Topic} = Document) ->
 	Query = ["REPLACE INTO retain VALUES ('",
@@ -270,11 +273,11 @@ get(End_Type, {client_id, Client_Id}) ->
 	end;
 get(server, {user_id, User_Id}) ->
 	Query = [
-		"SELECT password FROM users WHERE user_id='",
+		"SELECT password, roles FROM users WHERE user_id='",
 		User_Id, "'"],
 	case execute_query(server, Query) of
 		[] -> undefined;
-		[[Password]] -> binary_to_term(Password)
+		[[Password, Roles]] -> #{password => binary_to_term(Password), roles => binary_to_term(Roles)}
 	end;
 get(server, {topic, TopicFilter}) ->
 	Query = ["SELECT * FROM retain"],

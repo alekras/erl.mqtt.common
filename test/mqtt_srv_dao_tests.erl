@@ -120,9 +120,9 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:save(server, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}),
  	Storage:save(server, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}),
 
-	Storage:save(server, #user{user_id = "guest", password = <<"guest">>}),
-	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>}),
-	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>}),
+	Storage:save(server, #user{user_id = "guest", password = <<"guest">>, roles = ["USER", "ADMIN"]}),
+	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>, roles = ["USER", "ADMIN", "OWNER"]}),
+	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>, roles = []}),
 
 	Storage:save(server, #publish{topic = "AK", payload = <<"Payload A">>}),
 	Storage:save(server, #publish{topic = "AK/Test", payload = <<"Payload B">>}),
@@ -176,7 +176,7 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2a]),	
  	?assertEqual(undefined, R2a),
 	R3 = Storage:get(server, {user_id, "alex"}),
- 	?assertEqual(crypto:hash(md5, <<"aaaaaaa">>), R3),
+ 	?assertEqual(#{password => crypto:hash(md5, <<"aaaaaaa">>), roles => ["USER", "ADMIN", "OWNER"]}, R3),
 	R4a = Storage:get(server, {topic, "AK"}),
 %	?debug_Fmt("::test:: read returns R4a ~120p", [R4a]),	
 	?assertEqual([#publish{topic = "AK", payload = <<"Payload A">>}], R4a),

@@ -70,7 +70,7 @@ process(State, Binary) ->
 					process(State, Tail)
 			end,
 %% check credentials 
-			Encrypted_password_db = Storage:get(server, {user_id, Config#connect.user_name}),
+			#{password := Encrypted_password_db} = Storage:get(server, {user_id, Config#connect.user_name}),
 			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
 			lager:debug([{endtype, server}], "Previous Client PID = ~p~n", [ClientPid]),
