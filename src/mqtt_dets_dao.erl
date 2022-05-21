@@ -41,8 +41,9 @@
 	get_matched_topics/2,
 	get_matched_shared_topics/2,
 	get_all/2,
-  cleanup/2,
+	cleanup/2,
 	cleanup/1,
+	cleanup_users/0,
   exist/2
 ]).
 
@@ -124,7 +125,8 @@ save(End_Type, #storage_connectpid{client_id = Key} = Document) ->
 	end;
 save(server, #user{user_id = Key, password = Pswd} = Doc) ->
 	User_db = db_id(4, server),
-	case dets:insert(User_db, Doc#user{password = crypto:hash(md5, Pswd)}) of
+	User_name = if is_binary(Key) -> Key; true -> list_to_binary(Key) end,
+	case dets:insert(User_db, Doc#user{user_id = User_name, password = crypto:hash(md5, Pswd)}) of
 		{error, Reason} ->
 			lager:error([{endtype, server}], "user_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false;
@@ -175,7 +177,8 @@ remove(End_Type, {client_id, Key}) ->
 	end;
 remove(server, {user_id, Key}) ->
 	User_db = db_id(4, server),
-	case dets:match_delete(User_db, #user{user_id = Key, _ = '_'}) of
+	User_name = if is_binary(Key) -> Key; true -> list_to_binary(Key) end,
+	case dets:match_delete(User_db, #user{user_id = User_name, _ = '_'}) of
 		{error, Reason} ->
 			lager:error([{endtype, server}], "Delete is failed for key: ~p with error code: ~p~n", [Key, Reason]),
 			false;
@@ -233,7 +236,8 @@ get(End_Type, {client_id, Key}) ->
 	end;
 get(server, {user_id, Key}) ->
 	User_db = db_id(4, server),
-	case dets:match_object(User_db, #user{user_id = Key, _ = '_'}) of
+	User_name = if is_binary(Key) -> Key; true -> list_to_binary(Key) end,
+	case dets:match_object(User_db, #user{user_id = User_name, _ = '_'}) of
 		{error, Reason} ->
 			lager:error([{endtype, server}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
@@ -363,6 +367,9 @@ cleanup(End_Type) ->
 			dets:delete_all_objects(SessionState_db);
 		true -> ok
 	end.
+
+cleanup_users() ->
+	dets:delete_all_objects(db_id(4, server)).
 
 exist(End_Type, Key) ->
 	Session_db = db_id(1, End_Type),

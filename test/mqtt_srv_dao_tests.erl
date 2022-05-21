@@ -78,9 +78,11 @@ do_start() ->
 	lager:start(),
 	mqtt_mysql_dao:start(server),
 	mqtt_mysql_dao:cleanup(server),
+	mqtt_mysql_dao:cleanup_users(),
 
 	mqtt_dets_dao:start(server),
-	mqtt_dets_dao:cleanup(server).
+	mqtt_dets_dao:cleanup(server),
+	mqtt_dets_dao:cleanup_users().
 
 do_stop(_X) ->
 %	mqtt_mysql_dao:cleanup(server),
@@ -176,7 +178,11 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2a]),	
  	?assertEqual(undefined, R2a),
 	R3 = Storage:get(server, {user_id, "alex"}),
- 	?assertEqual(#{password => crypto:hash(md5, <<"aaaaaaa">>), roles => ["USER", "ADMIN", "OWNER"]}, R3),
+	?debug_Fmt("::test:: read get User Info returns R3 ~120p", [R3]),	
+	?assertEqual(#{password => crypto:hash(md5, <<"aaaaaaa">>), roles => ["USER", "ADMIN", "OWNER"]}, R3),
+	R3a = Storage:get(server, {user_id, <<"alex">>}),
+	?debug_Fmt("::test:: read get User Info returns R3a ~120p", [R3a]),	
+	?assertEqual(#{password => crypto:hash(md5, <<"aaaaaaa">>), roles => ["USER", "ADMIN", "OWNER"]}, R3a),
 	R4a = Storage:get(server, {topic, "AK"}),
 %	?debug_Fmt("::test:: read returns R4a ~120p", [R4a]),	
 	?assertEqual([#publish{topic = "AK", payload = <<"Payload A">>}], R4a),

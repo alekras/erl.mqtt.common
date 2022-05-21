@@ -86,7 +86,7 @@ do_start() ->
 	Transport = mock_tcp,
 
 	Storage = mqtt_dets_dao,
-	Storage:save(server, #user{user_id = "guest", password = <<"guest">>}),
+	Storage:save(server, #user{user_id = <<"guest">>, password = <<"guest">>}),
 
 	Socket = undefined,
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},

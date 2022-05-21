@@ -42,9 +42,10 @@
 	get_matched_topics/2,
 	get_matched_shared_topics/2,
 	get_all/2,
-  cleanup/2,
-  cleanup/1,
-  exist/2
+	cleanup/2,
+	cleanup/1,
+	cleanup_users/0,
+	exist/2
 ]).
 
 db_id(client) ->
@@ -364,6 +365,12 @@ cleanup(End_Type) ->
 		lager:debug([{endtype, End_Type}], "session_state delete: ~p", [R5]);
 		true -> ok
 	end,
+	datasource:return_connection(mqtt_storage, Conn).
+
+cleanup_users() ->
+	Conn = datasource:get_connection(mqtt_storage),
+	R0 = connection:execute_query(Conn, "DELETE FROM users"),
+	lager:debug([{endtype, server}], "users delete: ~p", [R0]),
 	datasource:return_connection(mqtt_storage, Conn).
 
 exist(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
