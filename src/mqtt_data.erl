@@ -230,7 +230,8 @@ conv(N) -> N + 87.
 %% binary_to_hex(<<N:4, Binary/bitstring>>) ->
 %% 	[(87 + N) | binary_to_hex(Binary)].
 
-hex_to_binary(Hex) -> list_to_binary(hex_to_bin(Hex)).
+hex_to_binary(Hex) when is_list(Hex) -> list_to_binary(hex_to_bin(Hex));
+hex_to_binary(Hex) when is_binary(Hex) -> list_to_binary(hex_to_bin(binary_to_list(Hex))).
 	
 hex_to_bin([]) -> [];
 hex_to_bin([L, M | Hex_tail]) ->

@@ -241,7 +241,7 @@ get(server, {user_id, Key}) ->
 		{error, Reason} ->
 			lager:error([{endtype, server}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
-		[#user{password = Pswd, roles = Roles}] -> #{password => mqtt_data:binary_to_hex(Pswd), roles => Roles};
+		[#user{password = Pswd, roles = Roles}] -> #{password => list_to_binary(mqtt_data:binary_to_hex(Pswd)), roles => Roles};
 		_ ->
 			undefined
 	end;

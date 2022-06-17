@@ -278,7 +278,7 @@ get(server, {user_id, User_Id}) ->
 		User_Id, "'"],
 	case execute_query(server, Query) of
 		[] -> undefined;
-		[[Password, Roles]] -> #{password => mqtt_data:binary_to_hex(Password), roles => binary_to_term(Roles)}
+		[[Password, Roles]] -> #{password => list_to_binary(mqtt_data:binary_to_hex(Password)), roles => binary_to_term(Roles)}
 	end;
 get(server, {topic, TopicFilter}) ->
 	Query = ["SELECT * FROM retain"],
