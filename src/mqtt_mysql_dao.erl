@@ -166,14 +166,14 @@ save(End_Type, #storage_publish{key = #primary_key{client_id = Client_Id, packet
 	Query = ["REPLACE INTO session VALUES ('",
 		Client_Id, "',",
 		integer_to_list(Packet_Id), ",x'",
-		binary_to_hex(term_to_binary(Document)), "')"],
+		mqtt_data:binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(End_Type, Query);
 save(server, #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = WillPubRec}) ->
 	Query = ["REPLACE INTO session_state VALUES (",
 		"'", Client_Id, "',",
 		integer_to_list(SessExp), ",",
 		integer_to_list(End), ",",
-		"x'", binary_to_hex(term_to_binary(WillPubRec)), "')"],
+		"x'", mqtt_data:binary_to_hex(term_to_binary(WillPubRec)), "')"],
 	execute_query(server, Query);
 save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = Topic}, options = Options, callback = CB}) ->
 	CBin = term_to_binary(CB),
@@ -184,25 +184,25 @@ save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_
 		mqtt_data:topic_regexp(Topic), "'",
 		if ShareName == undefined -> ",''"; true -> ",'" ++ ShareName ++ "'" end,
 %		integer_to_list(QoS), ",x'",
-		",x'", binary_to_hex(OptionsBin), "'",
-		",x'", binary_to_hex(CBin), "')"],
+		",x'", mqtt_data:binary_to_hex(OptionsBin), "'",
+		",x'", mqtt_data:binary_to_hex(CBin), "')"],
 	execute_query(End_Type, Query);
 save(End_Type, #storage_connectpid{client_id = Client_Id, pid = Pid}) ->
 	Query = ["REPLACE INTO connectpid VALUES ('",
 		Client_Id, "',x'",
-		binary_to_hex(term_to_binary(Pid)), "')"],
+		mqtt_data:binary_to_hex(term_to_binary(Pid)), "')"],
 	execute_query(End_Type, Query);
 save(server, #user{user_id = User_Id, password = Pswd, roles = Roles}) ->
 	Query = ["REPLACE INTO users VALUES ('",
 		User_Id, 
-		"',x'", binary_to_hex(term_to_binary(crypto:hash(md5, Pswd))),
-		"',x'", binary_to_hex(term_to_binary(Roles)),
+		"',x'", mqtt_data:binary_to_hex(crypto:hash(md5, Pswd)),
+		"',x'", mqtt_data:binary_to_hex(term_to_binary(Roles)),
 		"')"],
 	execute_query(server, Query);
 save(server, #publish{topic = Topic} = Document) ->
 	Query = ["REPLACE INTO retain VALUES ('",
 		Topic, "',x'",
-		binary_to_hex(term_to_binary(Document)), "')"],
+		mqtt_data:binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(server, Query).
 
 remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
@@ -278,7 +278,7 @@ get(server, {user_id, User_Id}) ->
 		User_Id, "'"],
 	case execute_query(server, Query) of
 		[] -> undefined;
-		[[Password, Roles]] -> #{password => binary_to_term(Password), roles => binary_to_term(Roles)}
+		[[Password, Roles]] -> #{password => mqtt_data:binary_to_hex(Password), roles => binary_to_term(Roles)}
 	end;
 get(server, {topic, TopicFilter}) ->
 	Query = ["SELECT * FROM retain"],
@@ -403,23 +403,3 @@ execute_query(End_Type, Query) ->
 	datasource:return_connection(mqtt_storage, Conn),
 	Rez.
 
-binary_to_hex(Binary) -> [conv(N) || <<N:4>> <= Binary].
-
-% 48 = $0
-% 87 = ($a - 10)
-conv(N) when N < 10 -> N + 48; 
-conv(N) -> N + 87. 
-
-%% binary_to_hex(Binary) -> binary_to_hex(Binary, []).
-%% 
-%% binary_to_hex(<<>>, Hex) -> lists:reverse(Hex);
-%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) when N < 10 ->
-%% 	binary_to_hex(Binary, [(48 + N) | Hex]);
-%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) ->
-%% 	binary_to_hex(Binary, [(87 + N) | Hex]).
-
-%% binary_to_hex(<<>>) -> [];
-%% binary_to_hex(<<N:4, Binary/bitstring>>) when N < 10 ->
-%% 	[(48 + N) | binary_to_hex(Binary)];
-%% binary_to_hex(<<N:4, Binary/bitstring>>) ->
-%% 	[(87 + N) | binary_to_hex(Binary)].

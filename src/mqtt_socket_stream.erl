@@ -75,7 +75,7 @@ process(State, Binary) ->
 				undefined -> <<>>;
 				#{password := Password_db} -> Password_db
 			end,
-			Encrypted_password_cli = crypto:hash(md5, Config#connect.password),
+			Encrypted_password_cli = mqtt_data:binary_to_hex(crypto:hash(md5, Config#connect.password)),
 			ClientPid = Storage:get(server, {client_id, Config#connect.client_id}),
 			lager:debug([{endtype, server}], "Previous Client PID = ~p~n", [ClientPid]),
 			ConnVersion = Config#connect.version,

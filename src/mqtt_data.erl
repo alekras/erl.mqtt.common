@@ -42,7 +42,9 @@
 	is_match/2,
 	topic_regexp/1,
 	validate_config/1,
-	validate_publish/2
+	validate_publish/2,
+	binary_to_hex/1,
+	hex_to_binary/1
 ]).
 
 %% Variable byte Integer:
@@ -206,6 +208,37 @@ validate_publish(_, #publish{topic= Topic}) ->
 		_ -> ok
 	end,
 	true.
+
+binary_to_hex(Binary) -> [conv(N) || <<N:4>> <= Binary].
+
+% 48 = $0
+% 55 = ($A - 10)
+% 87 = ($a - 10)
+conv(N) when N < 10 -> N + 48; 
+conv(N) -> N + 87. 
+%% binary_to_hex(Binary) -> binary_to_hex(Binary, []).
+%% 
+%% binary_to_hex(<<>>, Hex) -> lists:reverse(Hex);
+%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) when N < 10 ->
+%% 	binary_to_hex(Binary, [(48 + N) | Hex]);
+%% binary_to_hex(<<N:4, Binary/bitstring>>, Hex) ->
+%% 	binary_to_hex(Binary, [(87 + N) | Hex]).
+
+%% binary_to_hex(<<>>) -> [];
+%% binary_to_hex(<<N:4, Binary/bitstring>>) when N < 10 ->
+%% 	[(48 + N) | binary_to_hex(Binary)];
+%% binary_to_hex(<<N:4, Binary/bitstring>>) ->
+%% 	[(87 + N) | binary_to_hex(Binary)].
+
+hex_to_binary(Hex) -> list_to_binary(hex_to_bin(Hex)).
+	
+hex_to_bin([]) -> [];
+hex_to_bin([L, M | Hex_tail]) ->
+	[hex_digit_to_dec(L) * 16 + hex_digit_to_dec(M) | hex_to_bin(Hex_tail)].
+
+hex_digit_to_dec(S) when $0 =< S, S =< $9 -> S - $0;
+hex_digit_to_dec(S) when $A =< S, S =< $F -> S - 55;
+hex_digit_to_dec(S) when $a =< S, S =< $f -> S - 87.
 
 %% ====================================================================
 %% Internal functions

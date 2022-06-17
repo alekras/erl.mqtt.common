@@ -51,7 +51,8 @@ unit_test_() ->
 		{"encode_variable_byte_integer", fun encode_variable_byte_integer/0},
 		{"is_match", fun is_match/0},
 		{"validate connect config", fun connect_validate/0},
-		{"validate publish packet", fun publish_validate/0}
+		{"validate publish packet", fun publish_validate/0},
+		{"validate hex transformation", fun hex_validate/0}
 	].
 
 extract_variable_byte_integer() ->
@@ -157,3 +158,9 @@ publish_validate() ->
 	?assertException(throw, #mqtt_client_error{type= utf8, message="Publish Topic"}, mqtt_data:validate_publish('3.1.1',#publish{topic= <<"Topic/",16#d801:16,"a">>})),
 	
 	?passed.
+
+hex_validate() ->
+	?assertEqual("0111ff", mqtt_data:binary_to_hex(<<1,17,255>>)),
+	?assertEqual(<<1,17,255>>, mqtt_data:hex_to_binary("0111ff")),
+	?assertEqual("011147503a4b5c6d7e8fff", mqtt_data:binary_to_hex(mqtt_data:hex_to_binary("011147503a4b5C6d7e8fff"))).
+
