@@ -224,7 +224,8 @@ get(End_Type, #subs_primary_key{} = Key) -> %% @todo delete it
 		D when is_list(D) -> D;
 		_ -> undefined
 	end;
-get(End_Type, {client_id, Key}) ->
+get(End_Type, {client_id, Key}) when is_binary(Key) -> get(End_Type, {client_id, binary_to_list(Key)});
+get(End_Type, {client_id, Key}) when is_list(Key) ->
 	ConnectionPid_db = db_id(3, End_Type),
 	case dets:match_object(ConnectionPid_db, #storage_connectpid{client_id = Key, _ = '_'}) of
 		{error, Reason} ->
