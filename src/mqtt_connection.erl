@@ -374,7 +374,13 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 		 ?ELSE -> ok
 	end,
 	session_end_handle(Storage, Config),
-	Storage:remove(server, {client_id, Config#connect.client_id}),
+	MySelf = self(),
+	case Storage:get(server, {client_id, Config#connect.client_id}) of
+		MySelf ->
+			Storage:remove(server, {client_id, Config#connect.client_id});
+		_ ->
+			ok
+	end,
 	Transport:close(Socket),
 	ok.
 
