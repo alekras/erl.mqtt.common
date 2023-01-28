@@ -327,10 +327,13 @@ handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected =
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info tcp closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
-handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket} = State) ->
+handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type = server} = State) ->
 	Timer_Ref = keep_alive_timer((State#connection_state.config)#connect.keep_alive, State#connection_state.timer_ref),
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State#connection_state{timer_ref = Timer_Ref}};
+handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type = client} = State) ->
+	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
+	{noreply, New_State};
 
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 0} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),

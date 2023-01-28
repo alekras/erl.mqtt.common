@@ -60,6 +60,9 @@ extract_variable_byte_integer() ->
 	?assertEqual({<<1, 1>>, 2049}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16:8, 1:8, 1:8>>)),
 	?assertEqual({<<1, 1>>, 47489}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 2:8, 1:8, 1:8>>)),
 	?assertEqual({<<1, 1>>, 32110977}, mqtt_data:extract_variable_byte_integer(<<16#81:8, 16#f3:8, 16#A7, 15:8, 1:8, 1:8>>)),
+	?assertEqual({error, 0}, mqtt_data:extract_variable_byte_integer(<<>>)),
+	?assertEqual({error, 7}, mqtt_data:extract_variable_byte_integer(<<16#87:8, 16#f3:8>>)),
+	?assertEqual({error, 0}, mqtt_data:extract_variable_byte_integer(<<16#81:8>>)),
 	?passed.
 
 encode_variable_byte_integer() ->

@@ -145,11 +145,14 @@ end};
 connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
-	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+%%	conn_server ! {tcp, undefined, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, undefined, <<16>>},
+	conn_server ! {tcp, undefined, <<38>>},
+	conn_server ! {tcp, undefined, <<4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
-	mock_tcp:set_expectation(<<16#D0:8, 0:8>>), %% PingResp packet
-	conn_server ! {tcp, undefined, <<192,0>>}, %% PingReq
+	mock_tcp:set_expectation([<<16#D0:8,0:8>>,<<16#D0:8,0:8>>]), %% PingResp packet
+	conn_server ! {tcp, undefined, <<192,0,192,0>>}, %% PingReq
 	wait_mock_tcp("pingresp"),
 
 	Conn_State2 = sys:get_state(conn_server),
@@ -433,15 +436,15 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	wait_mock_tcp("(pubrec sent -> client)"),
 
 	mock_tcp:set_expectation([<<112,2,0,100>>,<<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>]), %% expect pubcomp packet from server -> client
-	conn_server ! {tcp, undefined, <<98,5,0,100,0,0>>}, %% Pubrel packet from client -> server
+	conn_server ! {tcp, undefined, <<98,3,0,100,0>>}, %% Pubrel packet from client -> server
 	wait_mock_tcp("(pubcomp sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
 	mock_tcp:set_expectation(<<98,2,0,100>>), % pubrel packet from server -> subscriber
-	conn_server ! {tcp, undefined, <<80,5,0,100,0,0>>}, %% pubrec packet from subscriber -> server
+	conn_server ! {tcp, undefined, <<80,3,0,100,0>>}, %% pubrec packet from subscriber -> server
 	wait_mock_tcp("(pubrel sent -> subscriber)"),
 
-	conn_server ! {tcp, undefined, <<112,5,0,100,0,0>>}, %% pubcomp packet from subscriber -> server
+	conn_server ! {tcp, undefined, <<112,3,0,100,0>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
 	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),

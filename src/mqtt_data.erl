@@ -58,6 +58,7 @@ encode_rl(L, Result) ->
 	EncodedByte = (L rem 128) bor (if Rem > 0 -> 16#80; true -> 0 end), 
 	encode_rl(Rem, <<Result/binary, EncodedByte:8>>).
 
+extract_variable_byte_integer(<<>>) -> {error, 0};
 extract_variable_byte_integer(Binary) ->
 	decode_rl(Binary, 1, 0).
 
@@ -65,6 +66,7 @@ decode_rl(_, MP, L) when MP > (128 * 128 * 128) -> {error, L};
 decode_rl(<<0:1, EncodedByte:7, Binary/binary>>, MP, L) ->
 	NewL = L + EncodedByte * MP,
 	{Binary, NewL};
+decode_rl(<<1:1, _:7>>, _, L) -> {error, L};
 decode_rl(<<1:1, EncodedByte:7, Binary/binary>>, MP, L) ->
 	NewL = L + EncodedByte * MP,
 	decode_rl(Binary, MP * 128, NewL).
