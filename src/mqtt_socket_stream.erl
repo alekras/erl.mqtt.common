@@ -43,18 +43,14 @@
 -import(mqtt_input, [input_parser/2]).
 
 process(State, <<>>) -> 
-	lager:info([{endtype, State#connection_state.end_type}], "0. Binary arrived: ~p~n", [<<>>]),
 	State#connection_state{tail = <<>>};
 process(State, <<_PacketType:8, 0:8>> = Binary) ->
-	lager:info([{endtype, State#connection_state.end_type}], "1. Binary arrived: ~p~n", [Binary]),
 	process_internal(State, Binary);
 process(State, <<_PacketType:8, 2:8, Bin/binary>> = Binary) ->
-	lager:info([{endtype, State#connection_state.end_type}], "2. Binary arrived: ~p~n", [Binary]),
 	if size(Bin) < 2 -> State#connection_state{tail = Binary};
 		 true -> process_internal(State, Binary)
 	end;
 process(State, <<_PacketType:8, Bin/binary>> = Binary) ->
-	lager:info([{endtype, State#connection_state.end_type}], "3. Binary arrived: ~p~n", [Binary]),
 	case mqtt_data:extract_variable_byte_integer(Bin) of
 		{error, _} -> State#connection_state{tail = Binary};
 		{RestBin, Length} ->
