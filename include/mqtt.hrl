@@ -46,9 +46,11 @@
 %% }).
 -record(connect,
 	{
-		client_id :: string(),
+		client_id :: atom(),
 		user_name :: string(),
 		password :: binary(),
+		host = [] :: string(),
+		port = 0 ::integer(),
 		will_publish = undefined :: #publish{},
 		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
