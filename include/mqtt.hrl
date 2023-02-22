@@ -31,11 +31,8 @@
 %% @type connect() = #connect{} The record represents connection parameters.<br/> 
 %% -record(<strong>mqtt_client_error</strong>, {
 %% <dl>
-%%   <dt>client_id :: string()</dt><dd>- The Client Identifier (ClientID) identifies the Client to the Server.
-%%       Each Client connecting to the Server has a unique ClientID.</dd>
 %%   <dt>user_name :: string()</dt><dd>- User name can be used by the Server for authentication and authorization.</dd>
 %%   <dt>password :: binary()</dt><dd>- Password can be used to carry credential information.</dd>
-%%   <dt>will = 0 :: 0 | 1</dt><dd>- If the Will Flag is set to 1 this indicates that a Will Message MUST be stored on the Server and associated with the Session.</dd>
 %%   <dt>will_publish = undefined :: #publish{}</dt><dd>- Publish record for Will message that contains all message's attributes: will_qos, will_retain, will_topic, will_properties and will_payload.</dd>
 %%   <dt>clean_session = 1 :: 0 | 1</dt><dd>- This flag specifies whether the Connection starts a new Session or is a continuation of an existing Session.</dd>
 %%   <dt>keep_alive :: integer()</dt>
@@ -44,6 +41,7 @@
 %%           and the point it starts sending the next.</dd>
 %%   <dt>properties = [] :: list()</dt><dd>- Connect packet properties.</dd>
 %%   <dt>version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'</dt><dd>- Version of MQTT protocol for the connection.</dd>
+%%   <dt>conn_type = clear :: clear | ssl | tls | web_socket | web_sec_socket</dt><dd>- Type of connection socket.</dd>
 %% </dl>
 %% }).
 -record(connect,
@@ -51,17 +49,12 @@
 		client_id :: string(),
 		user_name :: string(),
 		password :: binary(),
-		will = 0 :: 0 | 1,
-%% 		will_qos = 0 :: 0 | 1 | 2,
-%% 		will_retain = 0 :: 0 | 1,
-%% 		will_topic = "" :: string(),
-%% 		will_properties = [] :: list(),
-%% 		will_message = <<>> :: binary(),
 		will_publish = undefined :: #publish{},
 		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
 		properties = [] :: list(),
-		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0'
+		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0',
+		conn_type = clear :: clear | ssl | tls | web_socket | web_sec_socket
 	}
 ).
 

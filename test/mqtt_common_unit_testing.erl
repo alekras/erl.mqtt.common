@@ -134,23 +134,18 @@ connect_validate() ->
 
 	?assertNotException(throw, true, 
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
-																									will= 1,
 																									will_publish = #publish{topic= "Topic", payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
 	?assertException(throw, #mqtt_client_error{type= topic, message="Will Topic"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
-																									will= 1,
 																									will_publish = #publish{topic= "Topic/#/a", payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
 	?assertException(throw, #mqtt_client_error{type= utf8, message="Will Topic"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
-																									will= 1,
 																									will_publish = #publish{topic= ["Topic",16#d801,"/#/a"], payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
 	?assertException(throw, #mqtt_client_error{type= utf8, message="Will Payload"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
-																									will= 1,
 																									will_publish = #publish{topic= "Topic", payload= <<"Will ", 16#d801:16,"Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
 	?assertException(throw, #mqtt_client_error{type= will_property, message="Will Properties"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
-																									will= 1,
 																									will_publish = #publish{topic= "Topic", payload= <<"Will Message">>, properties= [{?Subscription_Identifier_Available, 1}]}})),
 
 	?passed.

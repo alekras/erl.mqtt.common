@@ -136,8 +136,7 @@ is_match(Topic, TopicFilter) ->
 		_E ->		false
 	end.
 
-validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
-												 will_publish = WillPubRec,
+validate_config(#connect{client_id= ClientId, user_name= User, will_publish = WillPubRec,
 												 properties= Props, version= '5.0'}) ->
 	true = validate_string_field(ClientId, "Client Id"),
 	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
@@ -150,7 +149,7 @@ validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
 	if not P -> throw(#mqtt_client_error{type= property, message= "Connect Properties"});
 		 ?ELSE -> ok
 	end,
-	if (WillFlag == 1) and is_record(WillPubRec, publish) ->
+	if is_record(WillPubRec, publish) ->
 			#publish{topic= WillTopic, payload= WillPayload, properties= WillProps} = WillPubRec,
 			true = validate_string_field(WillTopic, "Will Topic"),
 			case is_topicFilter_valid(WillTopic) of
@@ -168,8 +167,7 @@ validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
 		?ELSE -> ok
 	end,
 	true;
-validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
-												 will_publish = WillPubRec}) ->
+validate_config(#connect{client_id= ClientId, user_name= User, will_publish = WillPubRec}) ->
 	true = validate_string_field(ClientId, "Client Id"),
 	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
 		nomatch ->
@@ -177,7 +175,7 @@ validate_config(#connect{client_id= ClientId, user_name= User, will= WillFlag,
 		_ -> ok
 	end,
 	true = validate_string_field(User, "User name"),
-	if (WillFlag == 1) and is_record(WillPubRec, publish) ->
+	if is_record(WillPubRec, publish) ->
 			#publish{topic= WillTopic} = WillPubRec,
 			true = validate_string_field(WillTopic, "Will Topic"),
 			case is_topicFilter_valid(WillTopic) of

@@ -372,7 +372,7 @@ terminate(Reason, #connection_state{socket = Socket, transport = Transport, proc
 	end;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
 	lager:notice([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
-	if (Config#connect.will =:= 1) and (Reason =:= shutdown) ->
+	if is_record(Config#connect.will_publish, publish) and (Reason =:= shutdown) ->
 			will_publish_handle(Storage, Config);
 		 ?ELSE -> ok
 	end,
