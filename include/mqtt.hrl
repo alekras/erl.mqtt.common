@@ -33,6 +33,8 @@
 %% <dl>
 %%   <dt>user_name :: string()</dt><dd>- User name can be used by the Server for authentication and authorization.</dd>
 %%   <dt>password :: binary()</dt><dd>- Password can be used to carry credential information.</dd>
+%%   <dt>host :: string()</dt><dd>- IP or host name of MQTT server.<.</dd>
+%%   <dt>port :: integer()</dt><dd>- port number of MQTT server.</dd>
 %%   <dt>will_publish = undefined :: #publish{}</dt><dd>- Publish record for Will message that contains all message's attributes: will_qos, will_retain, will_topic, will_properties and will_payload.</dd>
 %%   <dt>clean_session = 1 :: 0 | 1</dt><dd>- This flag specifies whether the Connection starts a new Session or is a continuation of an existing Session.</dd>
 %%   <dt>keep_alive :: integer()</dt>
@@ -50,7 +52,7 @@
 		user_name :: string(),
 		password :: binary(),
 		host = [] :: string(),
-		port = 0 ::integer(),
+		port = 0 :: integer(),
 		will_publish = undefined :: #publish{},
 		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),

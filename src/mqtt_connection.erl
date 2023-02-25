@@ -89,18 +89,40 @@ init(#mqtt_client_error{} = Error) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
-handle_call({connect, Conn_config}, From, #connection_state{end_type = client} = State) ->
-	handle_call({connect, Conn_config, undefined}, From, State);
 
-handle_call({connect, Conn_config, Callback},
+%% Client only site.
+handle_call({connect, Conn_config, Callback, Socket_options},
 						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = client} = State) ->
+						#connection_state{storage = Storage, end_type = client} = State) ->
+	Transport =
+	case Conn_config#connect.conn_type of 
+		ssl -> ssl;
+		tls -> ssl;
+		clear -> gen_tcp;
+		web_socket -> mqtt_ws_client_handler;
+		web_sec_socket -> mqtt_ws_client_handler;
+		T -> T
+	end,
+	
+	Socket = open_socket(
+			Transport,
+			Conn_config#connect.host,
+			Conn_config#connect.port,
+			Socket_options),
+
 	try 
 		mqtt_data:validate_config(Conn_config),
 		case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 			ok -> 
 				New_processes = (State#connection_state.processes)#{connect => From},
-				New_State = State#connection_state{config = Conn_config, default_callback = Callback, processes = New_processes, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
+				New_State = State#connection_state{
+					config = Conn_config,
+					transport = Transport,
+					socket = Socket,
+					default_callback = Callback,
+					processes = New_processes,
+					topic_alias_in_map = #{},
+					topic_alias_out_map = #{}},
 				New_State_2 =
 				case Conn_config#connect.clean_session of
 					1 -> 
@@ -390,6 +412,41 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+open_socket(mqtt_ws_client_handler, Host, Port, Options) ->
+  case 
+    try
+			mqtt_ws_client_handler:start_link(Host, Port, Options)
+    catch
+      _:_Err -> {error, _Err}
+    end
+  of
+    {ok, WS_handler_Pid} -> WS_handler_Pid;
+    {error, Reason} -> #mqtt_client_error{type = mqtt_ws_client_handler, source="mqtt_connection:open_socket/4:" , message = Reason}
+  end;
+open_socket(Transport, Host, Port, Options) ->
+  case 
+    try
+      Transport:connect(
+        Host, 
+        Port, 
+        [
+          binary, %% @todo check and add options from Argument _Options
+          {active, true}, 
+          {packet, 0}, 
+          {recbuf, ?SOC_BUFFER_SIZE}, 
+          {sndbuf, ?SOC_BUFFER_SIZE}, 
+          {send_timeout, ?SOC_SEND_TIMEOUT} | Options
+        ], 
+        ?SOC_CONN_TIMEOUT
+      )
+    catch
+      _:_Err -> {error, _Err}
+    end
+  of
+    {ok, Socket} -> Socket;
+    {error, Reason} -> #mqtt_client_error{type = tcp, source="mqtt_connection:open_socket/4:", message = Reason}
+  end.  
 
 next(Packet_Id, #connection_state{storage = Storage} = State) ->
 	PI =

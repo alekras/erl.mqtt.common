@@ -8,7 +8,7 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([start/0, stop/0, set_expectation/1, send/2, close/1, loop/1]).
+-export([start/0, stop/0, set_expectation/1, connect/4, send/2, close/1, loop/1]).
 
 start() ->
 	Pid = spawn_link(?MODULE, loop, [{self(), [undefined]}]),
@@ -23,6 +23,10 @@ set_expectation(Expect) when is_list(Expect)->
 	mock_tcp_srv ! {expect, self(), Expect};
 set_expectation(Expect) ->
 	mock_tcp_srv ! {expect, self(), [Expect]}.
+
+connect(Host, Port, Options, Timeout) ->
+	io:format(user, "~n >>> mock_tcp:connect(~p, ~p, ~p, ~p)~n", [Host, Port, Options, Timeout]),
+	{ok, undefined}.
 
 send(_Socket, Binary) ->
 %	io:format(user, "~n >>> mock_tcp:send(~p, ~p)~n", [_Socket, Binary]),
