@@ -239,7 +239,9 @@ payload(connect, Config) ->
 %%			mqtt_data:encode_utf8_string(Config#connect.password)
 			mqtt_data:encode_binary_field(Config#connect.password)
 	end,
-	<<(mqtt_data:encode_utf8_string(Config#connect.client_id))/binary, 
+	ClientId = Config#connect.client_id,
+	ClientIdAsString = if is_atom(ClientId) -> atom_to_list(ClientId); ?ELSE -> ClientId end,
+	<<(mqtt_data:encode_utf8_string(ClientIdAsString))/binary, 
 		Will_bin/binary, 
 		Username_bin/binary,
 		Password_bin/binary>>;
