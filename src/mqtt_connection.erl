@@ -93,7 +93,7 @@ init(#mqtt_client_error{} = Error) ->
 %% Client only site.
 handle_call({connect, Conn_config, Callback, Socket_options},
 						{_, Ref} = From,
-						#connection_state{storage = Storage, end_type = client} = State) ->
+						#connection_state{storage = Storage, end_type = client, config = #connect{client_id = Client_id}} = State) ->
 	Transport =
 	case Conn_config#connect.conn_type of 
 		ssl -> ssl;
@@ -103,7 +103,7 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 		web_sec_socket -> mqtt_ws_client_handler;
 		T -> T
 	end,
-	
+
 	Socket = open_socket(
 			Transport,
 			Conn_config#connect.host,
@@ -112,7 +112,7 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 
 	New_processes = (State#connection_state.processes)#{connect => From},
 	New_State = State#connection_state{
-		config = Conn_config,
+		config = Conn_config#connect{client_id = Client_id},
 		transport = Transport,
 		socket = Socket,
 		default_callback = Callback,

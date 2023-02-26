@@ -139,7 +139,8 @@ is_match(Topic, TopicFilter) ->
 validate_config(#connect{client_id= ClientId, user_name= User, will_publish = WillPubRec,
 												 properties= Props, version= '5.0'}) ->
 	true = validate_string_field(ClientId, "Client Id"),
-	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
+	ClientIdAsString = if is_atom(ClientId) -> atom_to_list(ClientId); ?ELSE -> ClientId end,
+	case re:run(ClientIdAsString, "^[0-9a-zA-Z]*$") of
 		nomatch ->
 			throw(#mqtt_client_error{type= name, message= "Client Id"});
 		_ -> ok
@@ -169,7 +170,8 @@ validate_config(#connect{client_id= ClientId, user_name= User, will_publish = Wi
 	true;
 validate_config(#connect{client_id= ClientId, user_name= User, will_publish = WillPubRec}) ->
 	true = validate_string_field(ClientId, "Client Id"),
-	case re:run(ClientId,"^[0-9a-zA-Z]*$") of
+	ClientIdAsString = if is_atom(ClientId) -> atom_to_list(ClientId); ?ELSE -> ClientId end,
+	case re:run(ClientIdAsString, "^[0-9a-zA-Z]*$") of
 		nomatch ->
 			throw(#mqtt_client_error{type= name, message= "Client Id"});
 		_ -> ok
@@ -245,6 +247,8 @@ hex_digit_to_dec(S) when $a =< S, S =< $f -> S - 87.
 %% Internal functions
 %% ====================================================================
 
+validate_string_field(String, Name) when is_atom(String)->
+	validate_string_field(atom_to_list(String), Name);
 validate_string_field(String, Name) ->
 	case unicode:characters_to_list(String, utf8) of
 		{error, _, _} -> throw(#mqtt_client_error{type= utf8, message= Name});
