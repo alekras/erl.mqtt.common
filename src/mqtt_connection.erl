@@ -141,7 +141,12 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 ?test_fragment_set_test_flag
 
 handle_call(status, _From, #connection_state{storage = Storage} = State) ->	
-	{reply, [{session_present, State#connection_state.session_present}, {subscriptions, Storage:get_all(State#connection_state.end_type, topic)}], State};
+	{reply,
+		[
+			{connected, State#connection_state.connected},
+			{session_present, State#connection_state.session_present},
+			{subscriptions, Storage:get_all(State#connection_state.end_type, topic)}
+		], State};
 
 ?test_fragment_break_connection
 
@@ -327,10 +332,7 @@ handle_cast({disconnect, ReasonCode, Properties}, %% TODO add Reason code !!!
 					),
 			close_socket(State),
 			{stop, shutdown, State#connection_state{connected = 0}};
-		{error, closed} -> 
-			close_socket(State),
-			{stop, shutdown, State#connection_state{connected = 0}};
-		{error, Reason} ->
+		{error, _Reason} -> 
 			close_socket(State),
 			{stop, shutdown, State#connection_state{connected = 0}}
 	end;
@@ -382,10 +384,10 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 handle_info(disconnect, #connection_state{end_type = client} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "Client handle_info DISCONNECT message, state:~p~n", [State]),
 	close_socket(State),
-	{noreply, State};
+	{noreply, State#connection_state{connected = 0}};
 handle_info(disconnect, State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "Server handle_info DISCONNECT message, state:~p~n", [State]),
-	{stop, normal, State};
+	{stop, normal, State#connection_state{connected = 0}};
 handle_info({timeout, _TimerRef, _Msg} = Info, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
 	{stop, normal, State};
@@ -402,7 +404,7 @@ handle_info(Info, State) ->
 			| {shutdown, term()}
 			| term().
 %% ====================================================================
-terminate(Reason, #connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
+terminate(Reason, #connection_state{end_type = client} = State) ->
 	lager:notice([{endtype, client}], "TERMINATED, reason:~p, state:~p~n", [Reason, State]),
 	ok;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
@@ -461,7 +463,7 @@ open_socket(Transport, Host, Port, Options) ->
     {error, Reason} -> #mqtt_client_error{type = tcp, source="mqtt_connection:open_socket/4:", message = Reason}
   end.  
 
-close_socket(#connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
+close_socket(#connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client}) ->
 	Transport:close(Socket), %% we do not need if stop after tcp closed
 	case maps:get(disconnect, Processes, undefined) of
 		{Pid, Ref} ->
