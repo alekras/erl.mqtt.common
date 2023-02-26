@@ -135,7 +135,7 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 				{reply, {ok, Ref}, New_State_2};
 			{error, Reason} -> {reply, {error, Reason}, New_State}
 		end
-	catch throw:E -> {reply, {error, E}, New_State}
+	catch _:E -> {reply, {error, E}, New_State}
 	end;
 
 ?test_fragment_set_test_flag
@@ -279,11 +279,18 @@ handle_call({disconnect, ReasonCode, Properties},
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
-			lager:info([{endtype, State#connection_state.end_type}], "<handle_call> Client ~p sent disconnect request with reason code:~p, and properties:~p.",
-								 [Config#connect.client_id, ReasonCode, Properties]),
-			{reply, {ok, Ref}, State#connection_state{connected = 0, processes = New_processes, packet_id = 100}};
-		{error, closed} -> {stop, shutdown, State};
-		{error, Reason} -> {stop, {shutdown, Reason}, State}
+			lager:info([{endtype, State#connection_state.end_type}], 
+								"<handle_call> Process ~p sent disconnect request with reason code:~p, and properties:~p.",
+								[Config#connect.client_id, ReasonCode, Properties]
+						),
+			{reply, {ok, Ref}, State#connection_state{processes = New_processes, packet_id = 100}};
+		{error, Reason} -> 
+			close_socket(State),
+			if State#connection_state.end_type =:= client ->
+					{reply, {error, Reason}, State#connection_state{connected = 0}};
+				?ELSE ->
+					{stop, normal, State#connection_state{connected = 0}}
+			end
 	end;
 
 handle_call({pingreq, Callback},
@@ -314,11 +321,18 @@ handle_cast({disconnect, ReasonCode, Properties}, %% TODO add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
-			lager:info([{endtype, State#connection_state.end_type}], "<handle_cast> Client ~p sent disconnect request with reason code:~p, and properties:~p.",
-								 [Config#connect.client_id, ReasonCode, Properties]),
+			lager:info([{endtype, State#connection_state.end_type}],
+						"<handle_cast> Process ~p sent disconnect request with reason code:~p, and properties:~p.",
+						[Config#connect.client_id, ReasonCode, Properties]
+					),
+			close_socket(State),
 			{stop, shutdown, State#connection_state{connected = 0}};
-		{error, closed} -> {stop, shutdown, State};
-		{error, Reason} -> {stop, {shutdown, Reason}, State}
+		{error, closed} -> 
+			close_socket(State),
+			{stop, shutdown, State#connection_state{connected = 0}};
+		{error, Reason} ->
+			close_socket(State),
+			{stop, shutdown, State#connection_state{connected = 0}}
 	end;
 
 handle_cast(_Msg, State) ->
@@ -365,8 +379,12 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
+handle_info(disconnect, #connection_state{end_type = client} = State) ->
+	lager:notice([{endtype, State#connection_state.end_type}], "Client handle_info DISCONNECT message, state:~p~n", [State]),
+	close_socket(State),
+	{noreply, State};
 handle_info(disconnect, State) ->
-	lager:notice([{endtype, State#connection_state.end_type}], "handle_info DISCONNECT message, state:~p~n", [State]),
+	lager:notice([{endtype, State#connection_state.end_type}], "Server handle_info DISCONNECT message, state:~p~n", [State]),
 	{stop, normal, State};
 handle_info({timeout, _TimerRef, _Msg} = Info, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], "handle_info timeout message: ~p state:~p~n", [Info, State]),
@@ -385,16 +403,10 @@ handle_info(Info, State) ->
 			| term().
 %% ====================================================================
 terminate(Reason, #connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
-	lager:notice([{endtype, client}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
-	Transport:close(Socket), %% we do not need if stop after tcp closed
-	case maps:get(disconnect, Processes, undefined) of
-		{Pid, Ref} ->
-			Pid ! {disconnected, Ref};
-		undefined ->
-			ok
-	end;
+	lager:notice([{endtype, client}], "TERMINATED, reason:~p, state:~p~n", [Reason, State]),
+	ok;
 terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
-	lager:notice([{endtype, server}], "TERMINATE, reason:~p, state:~p~n", [Reason, State]),
+	lager:notice([{endtype, server}], "TERMINATED, reason:~p, state:~p~n", [Reason, State]),
 	if is_record(Config#connect.will_publish, publish) and (Reason =:= shutdown) ->
 			will_publish_handle(Storage, Config);
 		 ?ELSE -> ok
@@ -448,6 +460,15 @@ open_socket(Transport, Host, Port, Options) ->
     {ok, Socket} -> Socket;
     {error, Reason} -> #mqtt_client_error{type = tcp, source="mqtt_connection:open_socket/4:", message = Reason}
   end.  
+
+close_socket(#connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client} = State) ->
+	Transport:close(Socket), %% we do not need if stop after tcp closed
+	case maps:get(disconnect, Processes, undefined) of
+		{Pid, Ref} ->
+			Pid ! {disconnected, Ref};
+		undefined ->
+			ok
+	end.	
 
 next(Packet_Id, #connection_state{storage = Storage} = State) ->
 	PI =
