@@ -110,19 +110,20 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 			Conn_config#connect.port,
 			Socket_options),
 
+	New_processes = (State#connection_state.processes)#{connect => From},
+	New_State = State#connection_state{
+		config = Conn_config,
+		transport = Transport,
+		socket = Socket,
+		default_callback = Callback,
+		processes = New_processes,
+		topic_alias_in_map = #{},
+		topic_alias_out_map = #{}},
+	
 	try 
 		mqtt_data:validate_config(Conn_config),
 		case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 			ok -> 
-				New_processes = (State#connection_state.processes)#{connect => From},
-				New_State = State#connection_state{
-					config = Conn_config,
-					transport = Transport,
-					socket = Socket,
-					default_callback = Callback,
-					processes = New_processes,
-					topic_alias_in_map = #{},
-					topic_alias_out_map = #{}},
 				New_State_2 =
 				case Conn_config#connect.clean_session of
 					1 -> 
@@ -132,9 +133,9 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 						restore_session(New_State) 
 				end,
 				{reply, {ok, Ref}, New_State_2};
-			{error, Reason} -> {reply, {error, Reason}, State}
+			{error, Reason} -> {reply, {error, Reason}, New_State}
 		end
-	catch throw:E -> {reply, {error, E}, State}
+	catch throw:E -> {reply, {error, E}, New_State}
 	end;
 
 ?test_fragment_set_test_flag
