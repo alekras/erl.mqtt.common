@@ -280,7 +280,7 @@ handle_call({unsubscribe, Topics, Properties},
 
 handle_call({disconnect, ReasonCode, Properties},
 						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) when is_pid(Socket) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
@@ -297,6 +297,8 @@ handle_call({disconnect, ReasonCode, Properties},
 					{stop, normal, State#connection_state{connected = 0}}
 			end
 	end;
+handle_call({disconnect, _, _}, {_, Ref}, State) ->
+	{reply, {ok, Ref}, State};
 
 handle_call({pingreq, Callback},
 						_From,

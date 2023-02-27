@@ -83,10 +83,10 @@ do_start() ->
 
 	mqtt_dets_dao:start(client),
 	mqtt_dets_dao:cleanup(client),
-	Transport = mock_tcp,
+%	Transport = mock_tcp,
 	mock_tcp:start(),
 	Storage = mqtt_dets_dao,
-	Socket = undefined,
+%	Socket = undefined,
 	State = #connection_state{storage = Storage, end_type = client},
 	{ok, Pid} = gen_server:start_link({local, client_gensrv}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
 	Pid.
@@ -234,7 +234,7 @@ subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	{ok, Ref1} = gen_server:call(client_gensrv, {subscribe, [{<<"Topic">>, 2, callback}]}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,3,0,100,2>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,3,0,100,2>>}, %% Suback packet
 	receive
 		{suback, Ref1, Return_codes, _} ->
 			?debug_Fmt("::test:: return  codes = ~p ~n", [Return_codes]);
@@ -260,7 +260,7 @@ subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	{ok, Ref1} = gen_server:call(client_gensrv, {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}]}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,4, 0,100, 0, 2>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,4, 0,100, 0, 2>>}, %% Suback packet
 	receive
 		{suback, Ref1, Return_codes, _} ->
 			?debug_Fmt("::test:: return  codes = ~p ~n", [Return_codes]);
@@ -288,7 +288,7 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 																}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,37, 0,100, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,37, 0,100, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0>>}, %% Suback packet
 	receive
 		{suback, Ref, Return_codes, Props} ->
 			?debug_Fmt("::test:: return  codes = ~p Props = ~128p~n", [Return_codes, Props]);
@@ -312,7 +312,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	{ok, Ref1} = gen_server:call(client_gensrv, {subscribe, [{<<"Topic">>, 2, callback}]}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,3,0,100,2>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,3,0,100,2>>}, %% Suback packet
 	receive
 		{suback, Ref1, Return_codes, _} ->
 			?debug_Fmt("::test:: return  codes = ~p ~n", [Return_codes]);
@@ -325,7 +325,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	{ok, Ref2} = gen_server:call(client_gensrv, {unsubscribe, [<<"Topic">>]}),
 	wait_mock_tcp("unsubscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<176,2,0,101>>}, %% Unsuback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<176,2,0,101>>}, %% Unsuback packet
 	receive
 		{unsuback, Ref2, [], _} ->
 			?debug_Fmt("::test:: unsuback! ~n", []);
@@ -348,7 +348,7 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	{ok, Ref1} = gen_server:call(client_gensrv, {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}]}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,4, 0,100, 0, 2>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,4, 0,100, 0, 2>>}, %% Suback packet
 	receive
 		{suback, Ref1, Return_codes, _} ->
 			?debug_Fmt("::test:: return  codes = ~p ~n", [Return_codes]);
@@ -361,7 +361,7 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	{ok, Ref2} = gen_server:call(client_gensrv, {unsubscribe, [<<"Topic">>]}),
 	wait_mock_tcp("unsibscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<176,5,0,101, 0, 0, 17>>}, %% Unsuback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<176,5,0,101, 0, 0, 17>>}, %% Unsuback packet
 	receive
 		{unsuback, Ref2, Return_codes1, _} ->
 			?debug_Fmt("::test:: unsuback with return codes: ~p ~n", [Return_codes1]);
@@ -385,7 +385,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	{ok, Ref1} = gen_server:call(client_gensrv, {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}]}),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<144,4, 0,100, 0, 2>>}, %% Suback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<144,4, 0,100, 0, 2>>}, %% Suback packet
 	receive
 		{suback, Ref1, Return_codes, _} ->
 			?debug_Fmt("::test:: suback with return codes = ~p ~n", [Return_codes]);
@@ -398,7 +398,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	{ok, Ref2} = gen_server:call(client_gensrv, {unsubscribe, [<<"Topic">>], [{?User_Property, {"Key", "Value"}}]}),
 	wait_mock_tcp("unsubscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, undefined, <<176,38,101:16, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31, 17:16,"Unspecified error"/utf8, 0,17>>}, %% Unsuback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<176,38,101:16, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31, 17:16,"Unspecified error"/utf8, 0,17>>}, %% Unsuback packet
 	receive
 		{unsuback, Ref2, Return_codes1, Properties} ->
 			?debug_Fmt("::test:: unsuback with return codes: ~p props: ~128p~n", [Return_codes1, Properties]);
@@ -469,7 +469,7 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:
-	client_gensrv ! {tcp, undefined, <<64,2,0,100>>}, %% Puback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<64,2,0,100>>}, %% Puback packet
 	receive
 		{puback, Ref, 0, _} ->
 			?debug_Fmt("::test:: Message to caller process= puback! ~n", []),
@@ -496,7 +496,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:
-	client_gensrv ! {tcp, undefined, <<64,3,100:16,10>>}, %% Puback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<64,3,100:16,10>>}, %% Puback packet
 	receive
 		{puback, Ref, RespCode, _} ->
 			?debug_Fmt("::test:: Puback message to caller process, response code = ~p ~n", [RespCode]),
@@ -524,7 +524,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:
-	client_gensrv ! {tcp, undefined, <<64,57,100:16,10, 53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>}, %% Puback packet
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<64,57,100:16,10, 53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>}, %% Puback packet
 	receive
 		{puback, Ref, RespCode, Properties} ->
 			?debug_Fmt("::test:: Puback message to caller process, response code = ~p~n      props=~128p~n", [RespCode, Properties]),
@@ -552,10 +552,10 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 
 %% from server:
 	mock_tcp:set_expectation(<<98,2,0,100>>), %% expect pubrel packet from client -> server
-	client_gensrv ! {tcp, undefined, <<80,2,0,100>>}, %% Pubrec packet from server -> client
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<80,2,0,100>>}, %% Pubrec packet from server -> client
 	wait_mock_tcp("pubrel packet"),
 
-	client_gensrv ! {tcp, undefined, <<112,2,0,100>>}, %% Pubcomp packet from server -> client
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<112,2,0,100>>}, %% Pubcomp packet from server -> client
 	receive
 		{pubcomp, Ref, 0, _} ->
 			?debug_Fmt("::test:: Message to caller process= pubcomp! ~n", []),
@@ -581,10 +581,10 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 
 %% from server:
 	mock_tcp:set_expectation(<<98,2,0,100>>), %% expect pubrel packet from client -> server
-	client_gensrv ! {tcp, undefined, <<80,2,0,100>>}, %% Pubrec packet from server -> client
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<80,2,0,100>>}, %% Pubrec packet from server -> client
 	wait_mock_tcp("pubrel packet"),
 
-	client_gensrv ! {tcp, undefined, <<112,3,0,100,1>>}, %% Pubcomp packet from server -> client
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<112,3,0,100,1>>}, %% Pubcomp packet from server -> client
 	receive
 		{pubcomp, Ref, 1, _} ->
 			?debug_Fmt("::test:: Message to caller process= pubcomp! ~n", []),
@@ -613,12 +613,12 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 
 %% from server:
 	mock_tcp:set_expectation(<<98,3,0,100,16>>), %% expect pubrel packet from client -> server
-	client_gensrv ! {tcp, undefined, <<80,57,0,100,16,
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<80,57,0,100,16,
 																	 53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
 																			 31,23:16,"No matching subscribers"/utf8>>}, %% Pubrec packet from server -> client
 	wait_mock_tcp("pabrel packet"),
 
-	client_gensrv ! {tcp, undefined, <<112,61,0,100,1,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
+	client_gensrv ! {tcp, (sys:get_state(client_gensrv))#connection_state.socket, <<112,61,0,100,1,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 
 																	 31, 27:16,"Packet Identifier not found"/utf8>>}, %% Pubcomp packet from server -> client
 	receive
 		{pubcomp, Ref, 1, Props} ->

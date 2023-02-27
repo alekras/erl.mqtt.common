@@ -26,7 +26,7 @@ set_expectation(Expect) ->
 
 connect(Host, Port, Options, Timeout) ->
 	io:format(user, "~n >>> mock_tcp:connect(~p, ~p, ~p, ~p)~n", [Host, Port, Options, Timeout]),
-	{ok, undefined}.
+	{ok, list_to_pid("<0.7.7>")}.
 
 send(_Socket, Binary) ->
 %	io:format(user, "~n >>> mock_tcp:send(~p, ~p)~n", [_Socket, Binary]),
@@ -39,6 +39,7 @@ close(_Socket) -> ok.
 %% Internal functions
 %% ====================================================================
 
+%% Implementation of mock server
 loop({Pid, []} = _State) ->
 %	io:format(user, "~n >>> mock_tcp:loop() = ~256p~n", [_State]),
 	loop({Pid, [undefined]});
