@@ -297,8 +297,10 @@ handle_call({disconnect, ReasonCode, Properties},
 					{stop, normal, State#connection_state{connected = 0}}
 			end
 	end;
-handle_call({disconnect, _, _}, {_, Ref}, State) ->
-	{reply, {ok, Ref}, State};
+handle_call({disconnect, _, _}, {_, Ref} = From, State) ->
+	New_processes = (State#connection_state.processes)#{disconnect => From},
+	self() ! disconnect,
+	{reply, {ok, Ref}, State#connection_state{processes = New_processes, packet_id = 100}};
 
 handle_call({pingreq, Callback},
 						_From,
@@ -383,9 +385,15 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
-handle_info(disconnect, #connection_state{end_type = client} = State) ->
-	lager:notice([{endtype, State#connection_state.end_type}], "Client handle_info DISCONNECT message, state:~p~n", [State]),
+handle_info(disconnect, #connection_state{end_type = client, processes = Processes} = State) ->
+	lager:notice([{endtype, client}], "Client handle_info DISCONNECT message, state:~p~n", [State]),
 	close_socket(State),
+	case maps:get(disconnect, Processes, undefined) of
+		{Pid, Ref} ->
+			Pid ! {disconnected, Ref};
+		undefined ->
+			ok
+	end,
 	{noreply, State#connection_state{connected = 0}};
 handle_info(disconnect, State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "Server handle_info DISCONNECT message, state:~p~n", [State]),
