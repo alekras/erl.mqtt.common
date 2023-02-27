@@ -473,14 +473,10 @@ open_socket(Transport, Host, Port, Options) ->
     {error, Reason} -> #mqtt_client_error{type = tcp, source="mqtt_connection:open_socket/4:", message = Reason}
   end.  
 
-close_socket(#connection_state{socket = Socket, transport = Transport, processes = Processes, end_type = client}) ->
-	Transport:close(Socket), %% we do not need if stop after tcp closed
-	case maps:get(disconnect, Processes, undefined) of
-		{Pid, Ref} ->
-			Pid ! {disconnected, Ref};
-		undefined ->
-			ok
-	end.	
+close_socket(#connection_state{socket = Socket, transport = Transport, end_type = client}) when is_pid(Socket) ->
+	Transport:close(Socket);
+close_socket(#connection_state{end_type = client}) ->
+	ok.	
 
 next(Packet_Id, #connection_state{storage = Storage} = State) ->
 	PI =
