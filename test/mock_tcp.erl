@@ -8,7 +8,7 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([start/0, stop/0, set_expectation/1, connect/4, send/2, close/1, loop/1]).
+-export([start/0, stop/0, set_expectation/1, connect/4, send/2, controlling_process/2, close/1, loop/1]).
 
 start() ->
 	Pid = spawn_link(?MODULE, loop, [{self(), [undefined]}]),
@@ -24,13 +24,16 @@ set_expectation(Expect) when is_list(Expect)->
 set_expectation(Expect) ->
 	mock_tcp_srv ! {expect, self(), [Expect]}.
 
-connect(Host, Port, Options, Timeout) ->
-	io:format(user, "~n >>> mock_tcp:connect(~p, ~p, ~p, ~p)~n", [Host, Port, Options, Timeout]),
-	{ok, list_to_pid("<0.7.7>")}.
+connect(_Host, _Port, _Options, _Timeout) ->
+%%	io:format(user, "~n >>> mock_tcp:connect(~p, ~p, ~p, ~p)~n", [_Host, _Port, _Options, _Timeout]),
+	{ok, list_to_port("#Port<0.7>")}.
 
 send(_Socket, Binary) ->
 %	io:format(user, "~n >>> mock_tcp:send(~p, ~p)~n", [_Socket, Binary]),
 	mock_tcp_srv ! Binary,
+	ok.
+
+controlling_process(_Socket, _Pid) ->
 	ok.
 
 close(_Socket) -> ok.

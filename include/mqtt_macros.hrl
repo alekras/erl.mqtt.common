@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2022 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2023 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ handle_call({set_test_flag, Flag}, _From, State) ->
 ).
 
 -define(test_fragment_break_connection, 
-handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = State) ->
-%	Transport:close(State#connection_state.socket),
-	{stop, shutdown, State};
+handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = State) -> 
+	close_socket(State),
+	{reply, ok, State};
 ).
 
 -define(test_fragment_skip_rcv_publish, 

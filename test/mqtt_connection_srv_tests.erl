@@ -88,7 +88,7 @@ do_start() ->
 	Storage = mqtt_dets_dao,
 	Storage:save(server, #user{user_id = <<"guest">>, password = <<"guest">>}),
 
-	Socket = list_to_pid("<0.7.7>"),
+	Socket = list_to_port("#Port<0.7>"),
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},
 %	{ok, Pid} = gen_server:start_link({local, conn_server}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
 	Pid = proc_lib:spawn_link(fun() -> mqtt_connection:init(State) end),
