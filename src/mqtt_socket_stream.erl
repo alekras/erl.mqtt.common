@@ -774,12 +774,12 @@ get_peername(gen_tcp, Socket) ->
 		_ -> {undefined, ""}
 	end;
 get_peername(mqtt_ws_client_handler, Socket) ->
-	case inet:peername(Socket) of
+	case mqtt_ws_client_handler:peername(Socket) of
 		{ok, {Host, Port}} -> {Host, Port};
 		_ -> {undefined, ""}
 	end;
 get_peername(mqtt_ws_handler, Socket) ->
-	case inet:peername(Socket) of
+	case mqtt_ws_handler:peername(Socket) of
 		{ok, {Host, Port}} -> {Host, Port};
 		_ -> {undefined, ""}
 	end;

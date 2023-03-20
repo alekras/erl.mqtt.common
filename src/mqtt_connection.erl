@@ -29,6 +29,7 @@
 -include("mqtt.hrl").
 -include("mqtt_property.hrl").
 -include("mqtt_macros.hrl").
+-record(sslsocket, {fd = nil, pid = nil}).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -94,21 +95,24 @@ init(#mqtt_client_error{} = Error) ->
 handle_call({connect, Conn_config, Callback, Socket_options},
 						{_, Ref} = From,
 						#connection_state{storage = Storage, end_type = client} = State) ->
-	Transport =
+	{Transport, Sock_Opts} =
 	case Conn_config#connect.conn_type of 
-		ssl -> ssl;
-		tls -> ssl;
-		clear -> gen_tcp;
-		web_socket -> mqtt_ws_client_handler;
-		web_sec_socket -> mqtt_ws_client_handler;
-		T -> T
+		CT when CT == ssl; CT == tls -> {ssl, [
+				{verify, verify_none},
+				{depth, 2},
+				{server_name_indication, disable} | Socket_options]
+			};
+		clear -> {gen_tcp, Socket_options};
+		web_socket -> {mqtt_ws_client_handler, [{conn_type, web_socket} | Socket_options]};
+		web_sec_socket -> {mqtt_ws_client_handler, [{conn_type, web_sec_socket} | Socket_options]};
+		T -> {T, Socket_options}
 	end,
 
 	Socket = open_socket(
 			Transport,
 			Conn_config#connect.host,
 			Conn_config#connect.port,
-			Socket_options),
+			Sock_Opts),
 
 	New_processes = (State#connection_state.processes)#{connect => From},
 	New_State = State#connection_state{
@@ -122,21 +126,22 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 
 	try 
 		mqtt_data:validate_config(Conn_config),
-		if is_port(Socket) ->
-		case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
-			ok -> 
-				New_State_2 =
-				case Conn_config#connect.clean_session of
-					1 -> 
-						Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
-						New_State;
-					0 ->	 
-						restore_session(New_State) 
-				end,
-				{reply, {ok, Ref}, New_State_2};
-			{error, Reason} -> {reply, {error, Reason}, New_State};
+		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
+			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
+				ok -> 
+					New_State_2 =
+					case Conn_config#connect.clean_session of
+						1 -> 
+							Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
+							New_State;
+						0 ->	 
+							restore_session(New_State) 
+					end,
+					{reply, {ok, Ref}, New_State_2};
+				{error, Reason} -> {reply, {error, Reason}, New_State};
 			Exit -> 
-				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit])
+				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+				{reply, {error, Exit}, New_State}
 		end;
 			?ELSE ->
 				{reply, Socket, New_State}
@@ -287,7 +292,7 @@ handle_call({unsubscribe, Topics, Properties},
 
 handle_call({disconnect, ReasonCode, Properties},
 						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) when is_port(Socket) ->
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			New_processes = (State#connection_state.processes)#{disconnect => From},
@@ -398,11 +403,11 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type =
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 0, end_type = client} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
 	self() ! disconnect,
-	{stop, normal, State};
+	{noreply, State};
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 1, end_type = client} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	self() ! disconnect,
-	{stop, shutdown, State};
+	{noreply, State#connection_state{connected = 0}};
 handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 0, end_type = server} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
 	{stop, normal, State};
@@ -463,7 +468,7 @@ terminate(Reason, #connection_state{config = Config, socket = Socket, transport 
 %% Internal functions
 %% ====================================================================
 
-open_socket(mqtt_ws_client_handler, Host, Port, Options) ->
+open_socket(mqtt_ws_client_handler = Transport, Host, Port, Options) ->
 	case 
 		try
 			mqtt_ws_client_handler:start_link(Host, Port, Options)
@@ -471,8 +476,11 @@ open_socket(mqtt_ws_client_handler, Host, Port, Options) ->
 			_:_Err -> {error, _Err}
 		end
 	of
-		{ok, WS_handler_Pid} -> WS_handler_Pid;
-		{error, Reason} -> #mqtt_client_error{type = mqtt_ws_client_handler, source="mqtt_connection:open_socket/4:" , message = Reason}
+		{ok, WS_handler_Pid} -> 
+			ok = Transport:controlling_process(WS_handler_Pid, self()),
+			WS_handler_Pid;
+		{error, Reason} -> 
+			#mqtt_client_error{type = mqtt_ws_client_handler, source="mqtt_connection:open_socket/4:" , message = Reason}
 	end;
 open_socket(Transport, Host, Port, Options) ->
 	case 
@@ -501,7 +509,7 @@ open_socket(Transport, Host, Port, Options) ->
 			#mqtt_client_error{type = Transport, source="mqtt_connection:open_socket/4:(line 473)", message = Reason}
 	end.	
 
-close_socket(#connection_state{socket = Socket, transport = Transport, end_type = client}) when is_port(Socket) ->
+close_socket(#connection_state{socket = Socket, transport = Transport, end_type = client}) when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 	Transport:close(Socket);
 close_socket(#connection_state{end_type = client}) ->
 	ok.	
