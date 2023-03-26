@@ -29,7 +29,6 @@
 -include("mqtt.hrl").
 -include("mqtt_property.hrl").
 -include("mqtt_macros.hrl").
--record(sslsocket, {fd = nil, pid = nil}).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -126,6 +125,62 @@ handle_call({connect, Conn_config, Callback, Socket_options},
 
 	try 
 		mqtt_data:validate_config(Conn_config),
+		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
+			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
+				ok -> 
+					New_State_2 =
+					case Conn_config#connect.clean_session of
+						1 -> 
+							Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
+							New_State;
+						0 ->	 
+							restore_session(New_State) 
+					end,
+					{reply, {ok, Ref}, New_State_2};
+				{error, Reason} -> {reply, {error, Reason}, New_State};
+			Exit -> 
+				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+				{reply, {error, Exit}, New_State}
+		end;
+			?ELSE ->
+				{reply, Socket, New_State}
+		end
+	catch _:E -> {reply, {error, E}, New_State}
+	end;
+
+handle_call({reconnect, _},
+						_,
+						#connection_state{config = #connect{client_id = undefined}, end_type = client} = State) ->
+	{reply, #mqtt_client_error{type = reconnect, message = "Try reconnect while connect config not defined"}, State};
+handle_call({reconnect, Socket_options},
+						{_, Ref} = From,
+						#connection_state{storage = Storage, transport = Transport, config = Conn_config, end_type = client} = State) ->
+	Sock_Opts =
+	case Conn_config#connect.conn_type of 
+		CT when CT == ssl; CT == tls ->
+			[
+				{verify, verify_none},
+				{depth, 2},
+				{server_name_indication, disable} | Socket_options];
+		clear -> Socket_options;
+		web_socket -> [{conn_type, web_socket} | Socket_options];
+		web_sec_socket -> [{conn_type, web_sec_socket} | Socket_options];
+		_ -> Socket_options
+	end,
+
+	Socket = open_socket(
+			Transport,
+			Conn_config#connect.host,
+			Conn_config#connect.port,
+			Sock_Opts),
+
+	New_processes = (State#connection_state.processes)#{connect => From},
+	New_State = State#connection_state{
+		socket = Socket,
+		processes = New_processes
+	},
+
+	try 
 		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 				ok -> 

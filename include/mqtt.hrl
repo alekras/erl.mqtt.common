@@ -31,6 +31,7 @@
 %% @type connect() = #connect{} The record represents connection parameters.<br/> 
 %% -record(<strong>mqtt_client_error</strong>, {
 %% <dl>
+%%   <dt>client_id :: atom()</dt><dd>- Client id in MQTT server that is using for session processing.</dd>
 %%   <dt>user_name :: string()</dt><dd>- User name can be used by the Server for authentication and authorization.</dd>
 %%   <dt>password :: binary()</dt><dd>- Password can be used to carry credential information.</dd>
 %%   <dt>host :: string()</dt><dd>- IP or host name of MQTT server.<.</dd>
@@ -48,7 +49,7 @@
 %% }).
 -record(connect,
 	{
-		client_id :: atom(),
+		client_id = undefined :: atom(),
 		user_name :: string(),
 		password :: binary(),
 		host = [] :: string(),
@@ -57,7 +58,7 @@
 		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
 		properties = [] :: list(),
-		version = '3.1.1' :: '3.1' | '3.1.1' | '5.0',
+		version :: '3.1' | '3.1.1' | '5.0',
 		conn_type = clear :: clear | ssl | tls | web_socket | web_sec_socket
 	}
 ).
@@ -132,15 +133,16 @@
 		will_publish = undefined :: #publish{}
 	}).
 
+-record(sslsocket, {fd = nil, pid = nil}).
 -record(connection_state, 
-  { socket :: port(),
+  { socket :: port() | #sslsocket{},
 		transport :: atom(),
 		config = #connect{} :: #connect{},
 		storage = mqtt_dets_dao :: atom(),
 		end_type = client :: client | server,
 		default_callback :: tuple(),
 		session_present = 0 :: 0 | 1,
-		connected = 0 :: 0 | 1, %% is used ?
+		connected = 0 :: 0 | 1, %% @todo convert to boolean()
 		receive_max = 10 :: integer(),
 		send_quota = 10 :: integer(),
 		packet_id = 100 :: integer(),
