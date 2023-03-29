@@ -161,14 +161,16 @@ process_internal(State, Binary) ->
 					process(State, Tail)
 			end;
 
+%% Server side only
 		{pingreq, Tail} ->
 			lager:info([{endtype, State#connection_state.end_type}], "Ping received from client ~p~n", [Client_Id]),
 			Packet = packet(pingresp, Version, undefined, []),
 			Transport:send(Socket, Packet),
 			process(State, Tail);
 
+%% Client side only
 		{pingresp, Tail} -> 
-			lager:info([{endtype, State#connection_state.end_type}], "Pong received to client ~p~n", [Client_Id]),
+			lager:info([{endtype, State#connection_state.end_type}], "Pong received from server ~p~n", [Client_Id]),
 			case maps:get(pingreq, Processes, undefined) of
 				{M, F} ->
 					spawn(M, F, [pong]);
@@ -216,7 +218,7 @@ process_internal(State, Binary) ->
 					lager:error([{endtype, server}], "Cannot send Suback packet with reason: ~p for client: ~p~n", [Reason, Client_Id])
 			end,
 			process(State, Tail);
-%% Client side::
+%% Client side only::
 		{suback, Packet_Id, Return_codes, Properties, Tail} ->
 			lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p Processes:~100p~n", [Client_Id, Packet_Id, Return_codes, Processes]),
 			case maps:get(Packet_Id, Processes, undefined) of
@@ -269,6 +271,7 @@ process_internal(State, Binary) ->
 				undefined ->
 					process(State, Tail)
 			end;
+
 		?test_fragment_skip_rcv_publish
 		{publish, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = PubRec, Packet_Id, Tail} ->
 			Record = msg_experation_handle(Version, PubRec),
@@ -530,7 +533,7 @@ server_send_publish(Pid, Params) ->
 				1 ->
 					receive
 						{puback, Ref, _ReasonCode, _Properties} ->  %% TODO just get properties for now
-lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
+%lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_socket_stream:server_send_publish/2", message = "puback timeout"}
@@ -538,7 +541,7 @@ lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n
 				2 ->
 					receive
 						{pubcomp, Ref, _ReasonCode,_Properties} -> 
-lager:debug([{endtype, server}], "Received pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
+%lager:debug([{endtype, server}], "Received pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
 							ok
 					after ?MQTT_GEN_SERVER_TIMEOUT ->
 						#mqtt_client_error{type = publish, source = "mqtt_socket_stream:server_send_publish/2", message = "pubcomp timeout"}

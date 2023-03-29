@@ -65,7 +65,7 @@ init(#connection_state{end_type = server} = State) ->
 	lager:debug([{endtype, server}], "init mqtt connection with state: ~120p~n", [State]),
 	gen_server:enter_loop(?MODULE, [], State, ?MQTT_GEN_SERVER_TIMEOUT);
 init(#connection_state{end_type = client} = State) ->
-	lager:debug([{endtype, client}], "init mqtt connection with state: ~120p~n", [State]),
+	lager:debug([{endtype, client}], "init mqtt client process.~n", []),
 	{ok, State};
 init(#mqtt_client_error{} = Error) ->
 	lager:error("init mqtt connection stops with error: ~120p~n", [Error]),
@@ -184,14 +184,7 @@ handle_call({reconnect, Socket_options},
 		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 				ok -> 
-					New_State_2 =
-					case Conn_config#connect.clean_session of
-						1 -> 
-							Storage:cleanup(State#connection_state.end_type, Conn_config#connect.client_id),
-							New_State;
-						0 ->	 
-							restore_session(New_State) 
-					end,
+					New_State_2 = restore_session(New_State),
 					{reply, {ok, Ref}, New_State_2};
 				{error, Reason} -> {reply, {error, Reason}, New_State};
 			Exit -> 
@@ -199,7 +192,7 @@ handle_call({reconnect, Socket_options},
 				{reply, {error, Exit}, New_State}
 		end;
 			?ELSE ->
-				{reply, Socket, New_State}
+				{reply, Socket, New_State} %% Socket = #mqtt_client_error{}
 		end
 	catch _:E -> {reply, {error, E}, New_State}
 	end;
@@ -214,8 +207,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 			{subscriptions, Storage:get_all(State#connection_state.end_type, topic)}
 		], State};
 
-%%?test_fragment_break_connection
-handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = State) -> close_socket(State), {reply, ok, State};
+?test_fragment_break_connection
 
 handle_call({publish, #publish{qos = 0} = PubRec}, 
 						{_, Ref}, 
@@ -227,11 +219,12 @@ handle_call({publish, #publish{qos = 0} = PubRec},
 				{reply, {error, Response, Ref}, NewState};
 			{Params, NewState} ->
 				Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-				lager:info([{endtype, NewState#connection_state.end_type}], "Client ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
+				lager:info([{endtype, NewState#connection_state.end_type}], "Process with ClientId= ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
 				{reply, {ok, Ref}, NewState}
 		end
 	catch throw:E -> {reply, {error, E, Ref}, State}
 	end;
+
 %%?test_fragment_skip_send_publish
 
 handle_call({publish, #publish{qos = QoS} = PubRec}, 
