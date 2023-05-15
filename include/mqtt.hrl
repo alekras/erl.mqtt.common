@@ -138,9 +138,9 @@
   { socket :: port() | #sslsocket{},
 		transport :: atom(),
 		config = #connect{} :: #connect{},
-		storage = mqtt_dets_dao :: atom(),
+		storage = mqtt_dets_storage :: atom(),
 		end_type = client :: client | server,
-		default_callback :: tuple(),
+		event_callback :: fun() | tuple() | pid(),
 		session_present = 0 :: 0 | 1,
 		connected = 0 :: 0 | 1, %% @todo convert to boolean()
 		receive_max = 10 :: integer(),
@@ -159,20 +159,20 @@
 ).
 
 %% @type mqtt_client_error() = #mqtt_client_error{} The record represents an exception that is thrown by a client's module.<br/> 
-%% -record(<strong>mqtt_client_error</strong>, {
+%% -record(<strong>mqtt_error</strong>, {
 %% <dl>
-%%   <dt>type:: tcp | connection</dt><dd>- .</dd>
-%%   <dt>errno = none:: none | integer()</dt><dd>- .</dd>
-%%   <dt>source = []::string()</dt><dd>- .</dd>
-%%   <dt>message = []::string()</dt><dd>- .</dd>
+%%   <dt>oper:: atom() | string()</dt><dd>- Operation that catches the exception.</dd>
+%%   <dt>errno = none:: none | integer()</dt><dd>- Error number if possible.</dd>
+%%   <dt>source = []::string()</dt><dd>- source coge location: module, function, line.</dd>
+%%   <dt>error_msg = []::string()</dt><dd>- explanation.</dd>
 %% </dl>
 %% }).
--record(mqtt_client_error, 
+-record(mqtt_error, 
   {
-    type:: tcp | connection, 
-    errno = none:: none | integer(),
-    source = []::string(), 
-    message = []::string()
+    oper :: atom() | string(),
+    source = {?MODULE, fun_name, ?LINE} :: tuple(), %% {module, function, line}
+    errno = none :: none | integer(),
+    error_msg = [] :: string()
   }
 ).
 

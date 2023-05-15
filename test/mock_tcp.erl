@@ -13,6 +13,7 @@
 start() ->
 	Pid = spawn_link(?MODULE, loop, [{self(), [undefined]}]),
 	register(mock_tcp_srv, Pid),
+	io:format(user, "~n >>> MOCK_TCP_SRV process is started. (PID: ~p, registered under mock_tcp_srv). Parent process:~p *****~n", [Pid, self()]),
 	ok.
 
 stop() -> 

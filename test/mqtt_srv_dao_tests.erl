@@ -76,143 +76,144 @@ dets_dao_test_() ->
 
 do_start() ->
 	lager:start(),
-	mqtt_mysql_dao:start(server),
-	mqtt_mysql_dao:cleanup(server),
-	mqtt_mysql_dao:cleanup_users(),
+	mqtt_mysql_storage:start(server),
+	mqtt_mysql_storage:cleanup(server),
+	mqtt_mysql_storage:user(clean, undefined),
 
-	mqtt_dets_dao:start(server),
-	mqtt_dets_dao:cleanup(server),
-	mqtt_dets_dao:cleanup_users().
+	mqtt_dets_storage:start(server),
+	mqtt_dets_storage:cleanup(server),
+	mqtt_mysql_storage:user(clean, undefined).
 
 do_stop(_X) ->
-%	mqtt_mysql_dao:cleanup(server),
-	mqtt_mysql_dao:close(server),
+%	mqtt_mysql_storage:cleanup(server),
+	mqtt_mysql_storage:close(server),
 
-%	mqtt_dets_dao:cleanup(server),	
-	mqtt_dets_dao:close(server).	
+%	mqtt_dets_storage:cleanup(server),	
+	mqtt_dets_storage:close(server).	
 
 setup(dets) ->
-	mqtt_dets_dao;
+	mqtt_dets_storage;
 setup(mysql) ->
-	mqtt_mysql_dao.
+	mqtt_mysql_storage.
 
 cleanup(_, _) ->
 	ok.
 
 create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload lemon 1">>}}),
- 	Storage:save(server, #storage_publish{key = #primary_key{client_id = "orange", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload orange 1">>}}),
- 	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 10101}, document = #publish{topic = "AK", payload = <<"Payload 2">>}}),
- 	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = #publish{topic = "AK", payload = <<"Payload 3">>}}),
- 
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}, callback = {mqtt_client_test, callback}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/#", client_id = "pear"}, options = #subscription_options{max_qos=1}, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+/2", client_id = "plum"}, options = #subscription_options{max_qos=2}, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "/+/December/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {length}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {size}}),
- 	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload lemon 1">>}}, server),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "orange", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload orange 1">>}}, server),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 10101}, document = #publish{topic = "AK", payload = <<"Payload 2">>}}, server),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = #publish{topic = "AK", payload = <<"Payload 3">>}}, server),
 
-	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}),
-	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {length}}),
-	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "B", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {length}}),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}, callback = {mqtt_client_test, callback}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/#", client_id = "pear"}, options = #subscription_options{max_qos=1}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+/2", client_id = "plum"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "/+/December/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {size}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
 
- 	Storage:save(server, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}),
- 	Storage:save(server, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}),
- 	Storage:save(server, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "B", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
 
-	Storage:save(server, #user{user_id = "guest", password = <<"guest">>, roles = ["USER", "ADMIN"]}),
-	Storage:save(server, #user{user_id = "alex", password = <<"aaaaaaa">>, roles = ["USER", "ADMIN", "OWNER"]}),
-	Storage:save(server, #user{user_id = "fedor", password = <<"fffffff">>, roles = []}),
+ 	Storage:connect_pid(save, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}, server),
+ 	Storage:connect_pid(save, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}, server),
+ 	Storage:connect_pid(save, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}, server),
 
-	Storage:save(server, #publish{topic = "AK", payload = <<"Payload A">>}),
-	Storage:save(server, #publish{topic = "AK/Test", payload = <<"Payload B">>}),
-	Storage:save(server, #publish{topic = "AK/Do", payload = <<"Payload C">>}),
-	Storage:save(server, #publish{topic = "/Season/December", payload = <<"Payload D">>}),
-	Storage:save(server, #publish{topic = "/Season/December", payload = <<"Payload DD">>}),
-	Storage:save(server, #publish{topic = "Season/December/01", payload = <<"Payload E">>}),
-	Storage:save(server, #publish{topic = "Season/December/02", payload = <<"Payload F">>}),
-	Storage:save(server, #publish{topic = "Season/May/21", payload = <<"Payload G">>}),
+	Storage:user(save, #user{user_id = "guest", password = <<"guest">>, roles = ["USER", "ADMIN"]}),
+	Storage:user(save, #user{user_id = "alex", password = <<"aaaaaaa">>, roles = ["USER", "ADMIN", "OWNER"]}),
+	Storage:user(save, #user{user_id = "fedor", password = <<"fffffff">>, roles = []}),
+
+	Storage:retain(save, #publish{topic = "AK", payload = <<"Payload A">>}),
+	Storage:retain(save, #publish{topic = "AK/Test", payload = <<"Payload B">>}),
+	Storage:retain(save, #publish{topic = "AK/Do", payload = <<"Payload C">>}),
+	Storage:retain(save, #publish{topic = "/Season/December", payload = <<"Payload D">>}),
+	Storage:retain(save, #publish{topic = "/Season/December", payload = <<"Payload DD">>}),
+	Storage:retain(save, #publish{topic = "Season/December/01", payload = <<"Payload E">>}),
+	Storage:retain(save, #publish{topic = "Season/December/02", payload = <<"Payload F">>}),
+	Storage:retain(save, #publish{topic = "Season/May/21", payload = <<"Payload G">>}),
 	
-	Storage:save(server, #session_state{client_id = "lemon", end_time = 10, will_publish = #publish{}}),
-	Storage:save(server, #session_state{client_id = "orange", end_time = 20, will_publish = #publish{}}),
-	Storage:save(server, #session_state{client_id = "apple", end_time = 30, will_publish = #publish{}}),
+	Storage:session_state(save, #session_state{client_id = "lemon", end_time = 10, will_publish = #publish{}}),
+	Storage:session_state(save, #session_state{client_id = "orange", end_time = 20, will_publish = #publish{}}),
+	Storage:session_state(save, #session_state{client_id = "apple", end_time = 30, will_publish = #publish{}}),
 
-	R = Storage:get_all(server, {session, "lemon"}),
+	R = Storage:session(get_all, "lemon", server),
 %	?debug_Fmt("::test:: after create session ~p", [R]),	
 	?assertEqual(3, length(R)),
-	R1 = Storage:get_all(server, {session, "orange"}),
+	R1 = Storage:session(get_all, "orange", server),
 %	?debug_Fmt("::test:: after create session ~p", [R1]),	
 	?assertEqual(1, length(R1)),
-	R2 = Storage:get_all(server, topic),
+	R2 = Storage:subscription(get_all, topic, server),
 %	?debug_Fmt("::test:: after create topic ~p", [R2]),	
 	?assertEqual(11, length(R2)),
-	R3 = Storage:get_all(server, session_state),
+	R3 = Storage:session_state(get_all, server),
 %	?debug_Fmt("::test:: after create topic ~p", [R3]),	
 	?assertEqual(3, length(R3)),
 
-%% 	R2 = dets:match_object(connectpid_db, #storage_connectpid{_ = '_'}),
-%% %	?debug_Fmt("::test:: after create ~p", [R2]),	
-%% 	?assertEqual(3, length(R2)),
+	R4 = Storage:connect_pid(get_all, undefined, server),
+%% %	?debug_Fmt("::test:: after create ~p", [R4]),	
+	?assertEqual(3, length(R4)),
+
 	?passed
 end}.
 
 read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 101}),
+	R = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 101}, server),
 %	?debug_Fmt("::test:: read returns R ~120p", [R]),	
  	?assertEqual(#publish{topic = "AK",payload = <<"Payload lemon 1">>}, R#storage_publish.document),
-	Ra = Storage:get(server, #primary_key{client_id = "plum", packet_id = 101}),
+	Ra = Storage:session(get, #primary_key{client_id = "plum", packet_id = 101}, server),
 %	?debug_Fmt("::test:: read returns Ra ~120p", [Ra]),	
  	?assertEqual(undefined, Ra),
- 	R1 = Storage:get(server, #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}),
+ 	R1 = Storage:subscription(get, #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, server),
 %	?debug_Fmt("::test:: read returns R1 ~120p", [R1]),	
  	?assertEqual([#storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}], R1),
- 	R1a = Storage:get(server, #subs_primary_key{topicFilter = "AK_Test", client_id = "lemon"}),
+ 	R1a = Storage:subscription(get, #subs_primary_key{topicFilter = "AK_Test", client_id = "lemon"}, server),
 %	?debug_Fmt("::test:: read returns R1a ~120p", [R1a]),	
  	?assertEqual(undefined, R1a),
- 	R2 = Storage:get(server, {client_id, "apple"}),
+ 	R2 = Storage:connect_pid(get, "apple", server),
 %	?debug_Fmt("::test:: read returns R2 ~120p", [R2]),	
  	?assertEqual(list_to_pid("<0.4.3>"), R2),
- 	R2a = Storage:get(server, {client_id, <<"apple">>}),
+ 	R2a = Storage:connect_pid(get, <<"apple">>, server),
 %	?debug_Fmt("::test:: read returns R2 ~120p", [R2a]),	
  	?assertEqual(list_to_pid("<0.4.3>"), R2a),
- 	R2b = Storage:get(server, {client_id, "plum"}),
+ 	R2b = Storage:connect_pid(get, "plum", server),
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2b]),	
  	?assertEqual(undefined, R2b),
-	R3 = Storage:get(server, {user_id, "alex"}),
+	R3 = Storage:user(get, "alex"),
 	?debug_Fmt("::test:: read get User Info returns R3 ~120p", [R3]),	
 	?assertEqual(#{password => list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, <<"aaaaaaa">>))), roles => ["USER", "ADMIN", "OWNER"]}, R3),
-	R3a = Storage:get(server, {user_id, <<"alex">>}),
+	R3a = Storage:user(get, <<"alex">>),
 	?debug_Fmt("::test:: read get User Info returns R3a ~120p", [R3a]),	
 	?assertEqual(#{password => list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, <<"aaaaaaa">>))), roles => ["USER", "ADMIN", "OWNER"]}, R3a),
-	R4a = Storage:get(server, {topic, "AK"}),
+	R4a = Storage:retain(get, "AK"),
 %	?debug_Fmt("::test:: read returns R4a ~120p", [R4a]),	
 	?assertEqual([#publish{topic = "AK", payload = <<"Payload A">>}], R4a),
-	R4b = Storage:get(server, {topic, "AK/#"}),
+	R4b = Storage:retain(get, "AK/#"),
 	?debug_Fmt("::test:: read returns R4b ~120p", [R4b]),	
 	?assertEqual(2, length(R4b)),
 	?assert(lists:member(#publish{topic="AK/Test",payload= <<"Payload B">>}, R4b)),
 	?assert(lists:member(#publish{topic="AK/Do",payload= <<"Payload C">>}, R4b)),
-	R4c = Storage:get(server, {topic, "Season/+/#"}),
+	R4c = Storage:retain(get, "Season/+/#"),
 %	?debug_Fmt("::test:: read returns R4c ~120p", [R4c]),	
 	?assertEqual(3, length(R4c)),
 	?assert(lists:member(#publish{topic = "Season/December/01", payload = <<"Payload E">>}, R4c)),
 	?assert(lists:member(#publish{topic = "Season/December/02", payload = <<"Payload F">>}, R4c)),
 	?assert(lists:member(#publish{topic = "Season/May/21", payload = <<"Payload G">>}, R4c)),
-	R4d = Storage:get(server, {topic, "/Season/December"}),
+	R4d = Storage:retain(get, "/Season/December"),
 %	?debug_Fmt("::test:: read returns R4d ~120p", [R4d]),	
 	?assertEqual(2, length(R4d)),
 	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload D">>}, R4d)),
 	?assert(lists:member(#publish{topic = "/Season/December", payload = <<"Payload DD">>}, R4d)),
 	
-	R4f = Storage:get(server, {session_client_id, "lemon"}),
+	R4f = Storage:session_state(get, "lemon"),
 	?assertMatch(#session_state{client_id="lemon", end_time=10}, R4f),
 	?passed
 end}.
 
 extract_topic(X, Storage) -> {"extract topic [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:get_client_topics(server, "orange"),
+	R = Storage:subscription(get_client_topics, "orange", server),
 	?debug_Fmt("::test:: extract_topic returns ~120p", [R]),
 	?assertEqual(4, length(R)),
 	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0},callback={size}}, R)),
@@ -223,14 +224,14 @@ extract_topic(X, Storage) -> {"extract topic [" ++ atom_to_list(X) ++ "]", timeo
 end}.
 
 extract_matched_topic(X, Storage) -> {"extract matched topic [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:get_matched_topics(server, #subs_primary_key{topicFilter = "Winter/December", client_id = "orange"}),
+	R = Storage:subscription(get_matched_topics, #subs_primary_key{topicFilter = "Winter/December", client_id = "orange"}, server),
 	?debug_Fmt("::test:: read returns ~120p", [R]),	
 	?assertEqual(2, length(R)),
 	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0},callback={size}}, R)),
 	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="Winter/+",client_id="orange"},options=#subscription_options{max_qos=1},callback={mqtt_client_test, callback}}, R)),
 
-	R1 = Storage:get_matched_topics(server, "Winter/December"),
-%	?debug_Fmt("::test:: read returns ~120p", [R1]),	
+	R1 = Storage:subscription(get_matched_topics, "Winter/December", server),
+%	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(4, length(R1)),
 	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"apple"},#subscription_options{max_qos=2},{length}}, R1)),
 	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"orange"},#subscription_options{max_qos=0},{size}}, R1)),
@@ -240,7 +241,7 @@ extract_matched_topic(X, Storage) -> {"extract matched topic [" ++ atom_to_list(
 end}.
 
 extract_matched_shared_topic(X, Storage) -> {"extract matched shared topic [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:get_matched_shared_topics(server, "Year/December/12"),
+	R = Storage:subscription(get_matched_shared_topics, "Year/December/12", server),
 %	?debug_Fmt("::test:: extract_matched_shared_topic returns ~120p", [R]),	
 	?assertEqual(3, length(R)),
 	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","B","lemon"},#subscription_options{max_qos=0},{length}}, R)),
@@ -250,55 +251,55 @@ extract_matched_shared_topic(X, Storage) -> {"extract matched shared topic [" ++
 end}.
 
 read_all(X, Storage) -> {"read all [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:get_all(server, {session, "lemon"}),
+	R = Storage:session(get_all, "lemon", server),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),	
 	?assertEqual(3, length(R)),
-	R1 = Storage:get_all(server, session_state),
+	R1 = Storage:session_state(get_all, server),
 	?assertEqual(3, length(R1)),
 	?passed
 end}.
 	
 update(X, Storage) -> {"update [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 101}, document = #publish{topic = "", payload = <<>>}}),
-	R = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 101}),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 101}, document = #publish{topic = "", payload = <<>>}}, server),
+	R = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 101}, server),
 %	?debug_Fmt("::test:: read returns ~120p", [R]),
 	?assertEqual(#publish{topic = "",payload = <<>>}, R#storage_publish.document),
 	
-	Storage:save(server, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = undefined}),
-	R1 = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 201}),
+	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = undefined}, server),
+	R1 = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 201}, server),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(undefined, R1#storage_publish.document),
 	
-	Storage:save(server, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {erlang, binary_to_list}}),
-	[R2] = Storage:get(server, #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {erlang, binary_to_list}}, server),
+	[R2] = Storage:subscription(get, #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, server),
 %	?debug_Fmt("::test:: read returns ~120p", [R2]),
 	?assertEqual(2, R2#storage_subscription.options#subscription_options.max_qos),
 	?assertEqual({erlang, binary_to_list}, R2#storage_subscription.callback),
 	
-	Storage:save(server, #session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}),
-	R3 = Storage:get(server, {session_client_id, "apple"}),
+	Storage:session_state(save, #session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}),
+	R3 = Storage:session_state(get, "apple"),
 	?assertMatch(#session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}, R3),
 	?passed
 end}.
 	
 delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	Storage:remove(server, #primary_key{client_id = "lemon", packet_id = 101}),
-	R = Storage:get(server, #primary_key{client_id = "lemon", packet_id = 101}),
+	Storage:session(remove, #primary_key{client_id = "lemon", packet_id = 101}, server),
+	R = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 101}, server),
 %	?debug_Fmt("::test:: after delete ~p", [R]),	
 	?assertEqual(undefined, R),
 
-	Storage:remove(server, {user_id, "fedor"}),
-	R1 = Storage:get(server, {user_id, "fedor"}),
+	Storage:user(remove, "fedor"),
+	R1 = Storage:user(get, "fedor"),
 %	?debug_Fmt("::test:: after delete ~p", [R1]),	
 	?assertEqual(undefined, R1),
 	
-	Storage:remove(server, {topic,"/Season/December"}),
-	R2 = Storage:get(server, {topic,"/Season/December"}),
+	Storage:retain(remove, "/Season/December"),
+	R2 = Storage:retain(get, "/Season/December"),
 %	?debug_Fmt("::test:: after delete ~p", [R2]),	
 	?assertEqual([], R2),
 
-	Storage:remove(server, {session_client_id,"lemon"}),
-	R3 = Storage:get(server, {session_client_id,"lemon"}),
+	Storage:session_state(remove, "lemon"),
+	R3 = Storage:session_state(get, "lemon"),
 %	?debug_Fmt("::test:: after delete ~p", [R3]),	
 	?assertEqual(undefined, R3),
 

@@ -123,28 +123,28 @@ is_match() ->
 
 connect_validate() ->
 	?assertNotException(throw, true, mqtt_data:validate_config(#connect{client_id= "testClient1", version= '5.0'})),
-	?assertException(throw, #mqtt_client_error{type= utf8, message="Client Id"}, mqtt_data:validate_config(#connect{client_id= ["testClient1",16#d801], version= '5.0'})),
-	?assertException(throw, #mqtt_client_error{type= name, message="Client Id"}, mqtt_data:validate_config(#connect{client_id= "testClient-1", version= '5.0'})),
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Client Id"}, mqtt_data:validate_config(#connect{client_id= ["testClient1",16#d801], version= '5.0'})),
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Client Id"}, mqtt_data:validate_config(#connect{client_id= "testClient-1", version= '5.0'})),
 
 	?assertNotException(throw, true, mqtt_data:validate_config(#connect{client_id= "testClient1", user_name= "alexei", version= '5.0'})),
-	?assertException(throw, #mqtt_client_error{type= utf8, message="User name"}, mqtt_data:validate_config(#connect{client_id= "testClient1", user_name= ["alex",16#d801,"ei"], version= '5.0'})),
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="User name"}, mqtt_data:validate_config(#connect{client_id= "testClient1", user_name= ["alex",16#d801,"ei"], version= '5.0'})),
 
 	?assertNotException(throw, true, mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0'})),
-	?assertException(throw, #mqtt_client_error{type= property, message="Connect Properties"}, mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias, 7}], version= '5.0'})),
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Connect Properties"}, mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias, 7}], version= '5.0'})),
 
 	?assertNotException(throw, true, 
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
 																									will_publish = #publish{topic= "Topic", payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
-	?assertException(throw, #mqtt_client_error{type= topic, message="Will Topic"},
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Will Topic"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
 																									will_publish = #publish{topic= "Topic/#/a", payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
-	?assertException(throw, #mqtt_client_error{type= utf8, message="Will Topic"},
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Will Topic"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
 																									will_publish = #publish{topic= ["Topic",16#d801,"/#/a"], payload= <<"Will Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
-	?assertException(throw, #mqtt_client_error{type= utf8, message="Will Payload"},
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Will Payload"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
 																									will_publish = #publish{topic= "Topic", payload= <<"Will ", 16#d801:16,"Message">>, properties= [{?Payload_Format_Indicator, 1}]}})),
-	?assertException(throw, #mqtt_client_error{type= will_property, message="Will Properties"},
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Will Properties"},
 											mqtt_data:validate_config(#connect{client_id= "c", user_name= "u", properties= [{?Topic_Alias_Maximum, 7}], version= '5.0',
 																									will_publish = #publish{topic= "Topic", payload= <<"Will Message">>, properties= [{?Subscription_Identifier_Available, 1}]}})),
 
@@ -153,7 +153,7 @@ connect_validate() ->
 publish_validate() ->
 	?assertNotException(throw, true, mqtt_data:validate_publish('3.1.1',#publish{topic= "Topic/a"})),
 	?assertNotException(throw, true, mqtt_data:validate_publish('5.0',#publish{topic= "Topic/a"})),
-	?assertException(throw, #mqtt_client_error{type= utf8, message="Publish Topic"}, mqtt_data:validate_publish('3.1.1',#publish{topic= <<"Topic/",16#d801:16,"a">>})),
+	?assertException(throw, #mqtt_error{oper= validation, error_msg="Publish Topic"}, mqtt_data:validate_publish('3.1.1',#publish{topic= <<"Topic/",16#d801:16,"a">>})),
 	
 	?passed.
 

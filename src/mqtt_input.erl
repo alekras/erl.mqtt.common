@@ -94,7 +94,7 @@ input_parser('5.0', <<?PUBREC_PACK_TYPE, Bin/binary>>) ->
 	parse_pub_response(pubrec, Bin);
 input_parser(_, <<?PUBREC_PACK_TYPE, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrec, {Packet_Id, 0}, [], Tail};
 
-input_parser(_, <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, {Packet_Id, 0}, [], Tail}; %% @todo issue with websocket client from HiveMQ
+input_parser(_, <<16#60:8, 2:8, Packet_Id:16, Tail/binary>>) -> {pubrel, {Packet_Id, 0}, [], Tail};
 
 input_parser('5.0', <<?PUBREL_PACK_TYPE, Bin/binary>>) -> 
 	parse_pub_response(pubrel, Bin);
@@ -266,41 +266,43 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			{_, Password_bin} = mqtt_data:extract_binary_field(RestBin4)
 	end,
 	
-	Config1 = #connect{
+	Will_publish =
+	if Will == 0 ->
+			undefined;
+		 ?ELSE ->
+			#publish{
+				qos = Will_QoS,
+				retain = Will_retain,
+				topic = binary_to_list(WillTopic),
+				payload = WillMessage,
+				properties = WillProperties
+			}
+	end,
+	Config = #connect{
 		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Client_id, utf8),???
 		user_name = binary_to_list(UserName), %% @todo do we need a list?
 		password = Password_bin,
 		clean_session = Clean_Session,
-		will_publish = undefined,
+		will_publish = Will_publish,
 		keep_alive = Keep_Alive,
 		version = MQTT_Version,
 		properties = Properties
 	},
-	Config =
-	if Will == 0 ->
-			 Config1;
-		 Will == 1 ->
-			 Config1#connect{
-				will_publish = #publish{
-					qos = Will_QoS,
-					retain = Will_retain,
-					topic = binary_to_list(WillTopic),
-					payload = WillMessage,
-					properties = WillProperties
-			}}
-	end,
 	{connect, Config, Tail}.
 
 parse_subscription(_, <<>>, Subscriptions) -> lists:reverse(Subscriptions);
 parse_subscription('5.0', InputBinary, Subscriptions) ->
 	{<<0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
-	parse_subscription('5.0', BinaryRest,
-										 [{Topic, 
-											 #subscription_options{max_qos = MaxQos,
-																						 nolocal = NoLocal,
-																						 retain_as_published = RetainAsPub,
-																						 retain_handling = RetainHandling}
-											} | Subscriptions]);
+	Subscription = {
+		Topic, 
+		#subscription_options{
+			max_qos = MaxQos,
+			nolocal = NoLocal,
+			retain_as_published = RetainAsPub,
+			retain_handling = RetainHandling
+		}
+	},
+	parse_subscription('5.0', BinaryRest, [Subscription | Subscriptions]);
 parse_subscription(Vrs, InputBinary, Subscriptions) ->
 	{<<QoS:8, BinaryRest/binary>>, Topic} = mqtt_data:extract_utf8_binary(InputBinary),
 	parse_subscription(Vrs, BinaryRest, [{Topic, QoS} | Subscriptions]).
@@ -318,7 +320,7 @@ parse_pub_response(PacketCode, Bin) ->
 		 Length == 3 ->
 				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
 				{PacketCode, {Packet_Id, Reason_Code}, [], Tail};
-		 true -> 
+		 ?ELSE ->
 				<<Packet_Id:16, Reason_Code:8, Tail/binary>> = RestBin,
 				{Properties, New_Tail} = mqtt_property:parse(Tail),
 				{PacketCode, {Packet_Id, Reason_Code}, Properties, New_Tail}

@@ -14,14 +14,14 @@
 %% limitations under the License. 
 %%
 
-%% @since 2016-09-08
+%% @since 2023-04-24
 %% @copyright 2015-2023 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
 %% @doc @todo Add description to dets_dao.
 
 
--module(mqtt_mysql_dao).
+-module(mqtt_mysql_storage).
 %%
 %% Include files
 %%
@@ -35,17 +35,15 @@
 -export([
 	start/1,
 	close/1,
-	save/2,
-	remove/2,
-	get/2,
-	get_client_topics/2,
-	get_matched_topics/2,
-	get_matched_shared_topics/2,
-	get_all/2,
 	cleanup/2,
 	cleanup/1,
-	cleanup_users/0,
-	exist/2
+	
+	session/3,
+	session_state/2,
+	subscription/3,
+	connect_pid/3,
+	user/2,
+	retain/2
 ]).
 
 db_id(client) ->
@@ -162,20 +160,88 @@ start(End_Type) ->
 		#mysql_error{} -> ok
 	end.
 
-save(End_Type, #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = Document}) ->
+session(save, #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = Document}, End_Type) ->
 	Query = ["REPLACE INTO session VALUES ('",
 		Client_Id, "',",
 		integer_to_list(Packet_Id), ",x'",
 		mqtt_data:binary_to_hex(term_to_binary(Document)), "')"],
 	execute_query(End_Type, Query);
-save(server, #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = WillPubRec}) ->
+session(exist, #primary_key{client_id = Client_Id, packet_id = Packet_Id}, End_Type) ->
+	Query = [
+		"SELECT packet_id FROM session WHERE client_id='",
+		Client_Id, "' and packet_id=",
+		integer_to_list(Packet_Id)],
+	case execute_query(End_Type, Query) of
+		[[_]] -> true;
+		[] -> false
+	end;
+session(get, #primary_key{client_id = Client_Id, packet_id = Packet_Id}, End_Type) ->
+	Query = ["SELECT publish_rec FROM session WHERE client_id='",
+		Client_Id, "' and packet_id=",
+		integer_to_list(Packet_Id)],
+	case execute_query(End_Type, Query) of
+		[] -> undefined;
+		[[R2]] -> #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = binary_to_term(R2)}
+	end;
+session(get_all, all, End_Type) ->
+	Query = [
+		"SELECT client_id, packet_id, publish_rec FROM session"],
+	R = execute_query(End_Type, Query),
+	[#storage_publish{key = #primary_key{client_id = CI, packet_id = PI}, document = binary_to_term(Publish_Rec)}
+		|| [CI, PI, Publish_Rec] <- R];
+session(get_all, Client_Id, End_Type) ->
+	Query = [
+		"SELECT client_id, packet_id, publish_rec FROM session WHERE client_id='",
+		Client_Id, "'"],
+	R = execute_query(End_Type, Query),
+	[#storage_publish{key = #primary_key{client_id = CI, packet_id = PI}, document = binary_to_term(Publish_Rec)}
+		|| [CI, PI, Publish_Rec] <- R];
+session(remove, #primary_key{client_id = Client_Id, packet_id = Packet_Id}, End_Type) ->
+	Query = ["DELETE FROM session WHERE client_id='",
+		Client_Id, "' and packet_id=",
+		integer_to_list(Packet_Id)],
+	execute_query(End_Type, Query);
+session(clean, ClientId, End_Type) ->
+	Conn = datasource:get_connection(mqtt_storage),
+  R1 = connection:execute_query(Conn, ["DELETE FROM session WHERE client_id='", ClientId, "'"]),
+	lager:debug([{endtype, End_Type}], "session delete: ~p", [R1]),
+	datasource:return_connection(mqtt_storage, Conn);
+session(close, _, _) ->
+	ok.
+
+session_state(save, #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = WillPubRec}) ->
 	Query = ["REPLACE INTO session_state VALUES (",
 		"'", Client_Id, "',",
 		integer_to_list(SessExp), ",",
 		integer_to_list(End), ",",
 		"x'", mqtt_data:binary_to_hex(term_to_binary(WillPubRec)), "')"],
 	execute_query(server, Query);
-save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = Topic}, options = Options, callback = CB}) ->
+session_state(exist, _Client_Id) -> false;
+session_state(get, Client_Id) ->
+	Query = ["SELECT session_expiry_interval, end_time, will_publish_rec FROM session_state WHERE client_id='",
+		Client_Id, "'"],
+	case execute_query(server, Query) of
+		[] -> undefined;
+		[[SessExp, End, WillPubRec]] -> #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = binary_to_term(WillPubRec)}
+	end;
+session_state(get_all, _) ->
+	Query = ["SELECT client_id, session_expiry_interval, end_time, will_publish_rec FROM session_state"],
+	R = execute_query(server, Query),
+	[#session_state{client_id = CI, session_expiry_interval = SE, end_time = End, will_publish = binary_to_term(WillPubRec)}
+		|| [CI, SE, End, WillPubRec] <- R];
+session_state(remove, Client_Id) ->
+	Query = ["DELETE FROM session_state WHERE client_id='",
+		Client_Id, "'"],
+	execute_query(server, Query);
+session_state(clean, _) ->
+	Conn = datasource:get_connection(mqtt_storage),
+	R5 = connection:execute_query(Conn, "DELETE FROM session_state"),
+	lager:debug([{endtype, server}], "session_state delete: ~p", [R5]),
+	datasource:return_connection(mqtt_storage, Conn);
+session_state(close, _) ->
+	ok.
+
+subscription(save, #storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = Topic}, options = Options, callback = CB}, End_Type) ->
 	CBin = term_to_binary(CB),
 	OptionsBin = term_to_binary(Options),
 	Query = ["REPLACE INTO subscription VALUES ('",
@@ -187,68 +253,8 @@ save(End_Type, #storage_subscription{key = #subs_primary_key{client_id = Client_
 		",x'", mqtt_data:binary_to_hex(OptionsBin), "'",
 		",x'", mqtt_data:binary_to_hex(CBin), "')"],
 	execute_query(End_Type, Query);
-save(End_Type, #storage_connectpid{client_id = Client_Id, pid = Pid}) ->
-	Query = ["REPLACE INTO connectpid VALUES ('",
-		Client_Id, "',x'",
-		mqtt_data:binary_to_hex(term_to_binary(Pid)), "')"],
-	execute_query(End_Type, Query);
-save(server, #user{user_id = User_Id, password = Pswd, roles = Roles}) ->
-	Query = ["REPLACE INTO users VALUES ('",
-		User_Id, 
-		"',x'", mqtt_data:binary_to_hex(crypto:hash(md5, Pswd)),
-		"',x'", mqtt_data:binary_to_hex(term_to_binary(Roles)),
-		"')"],
-	execute_query(server, Query);
-save(server, #publish{topic = Topic} = Document) ->
-	Query = ["REPLACE INTO retain VALUES ('",
-		Topic, "',x'",
-		mqtt_data:binary_to_hex(term_to_binary(Document)), "')"],
-	execute_query(server, Query).
-
-remove(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
-	Query = ["DELETE FROM session WHERE client_id='",
-		Client_Id, "' and packet_id=",
-		integer_to_list(Packet_Id)],
-	execute_query(End_Type, Query);
-remove(server, {session_client_id, Client_Id}) ->
-	Query = ["DELETE FROM session_state WHERE client_id='",
-		Client_Id, "'"],
-	execute_query(server, Query);
-remove(End_Type, #subs_primary_key{client_id = Client_Id, _ = '_'}) ->
-	Query = ["DELETE FROM subscription WHERE client_id='",
-		Client_Id, "'"],
-	execute_query(End_Type, Query);
-remove(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) ->
-	Query = ["DELETE FROM subscription WHERE client_id='",
-		Client_Id, "' and topic='",
-		Topic, "'"],
-	execute_query(End_Type, Query);
-remove(End_Type, {client_id, Client_Id}) ->
-	Query = ["DELETE FROM connectpid WHERE client_id='", Client_Id, "'"],
-	execute_query(End_Type, Query);
-remove(server, {user_id, User_Id}) ->
-	Query = ["DELETE FROM users WHERE user_id='", User_Id, "'"],
-	execute_query(server, Query);
-remove(server, {topic, Topic}) ->
-	Query = ["DELETE FROM retain WHERE topic='", Topic, "'"],
-	execute_query(server, Query).
-
-get(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
-	Query = ["SELECT publish_rec FROM session WHERE client_id='",
-		Client_Id, "' and packet_id=",
-		integer_to_list(Packet_Id)],
-	case execute_query(End_Type, Query) of
-		[] -> undefined;
-		[[R2]] -> #storage_publish{key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, document = binary_to_term(R2)}
-	end;
-get(server, {session_client_id, Client_Id}) ->
-	Query = ["SELECT session_expiry_interval, end_time, will_publish_rec FROM session_state WHERE client_id='",
-		Client_Id, "'"],
-	case execute_query(server, Query) of
-		[] -> undefined;
-		[[SessExp, End, WillPubRec]] -> #session_state{client_id = Client_Id, session_expiry_interval = SessExp, end_time = End, will_publish = binary_to_term(WillPubRec)}
-	end;
-get(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) -> %% @todo delete it
+subscription(exist, _Key, _End_Type) -> false;
+subscription(get, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}, End_Type) -> %% @todo delete it
 	Query = ["SELECT share_name, options, callback FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",
 		Topic, "'"],
@@ -264,7 +270,64 @@ get(End_Type, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}) -> 
 															callback = binary_to_term(CB)} || [ShareName, Options, CB] <- List];
 		_ -> undefined
 	end;
-get(End_Type, {client_id, Client_Id}) ->
+subscription(get_all, _, End_Type) ->
+	Query = <<"SELECT topic FROM subscription">>,
+%%	execute_query(End_Type, Query),
+	[T || [T] <- execute_query(End_Type, Query)];
+subscription(get_client_topics, Client_Id, End_Type) -> %% I do not use it @todo delete ???
+	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='", Client_Id, "'"],
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(Callback)} || [ShareName, TopicFilter, Options, Callback] <- execute_query(End_Type, Query)];
+subscription(get_matched_topics, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, End_Type) -> %% only client side
+	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='",Client_Id,
+					 "' and '",Topic,"' REGEXP topic_re"],
+	L = execute_query(End_Type, Query),
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)} || [ShareName, TopicFilter, Options, CB] <- L];
+subscription(get_matched_topics, Topic, End_Type) -> %% only server side
+	Query = ["SELECT client_id,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name = ''"],
+	L = execute_query(End_Type, Query),
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)}
+		|| [Client_Id, TopicFilter, Options, CB] <- L];
+subscription(get_matched_shared_topics, Topic, End_Type) -> %% only server side
+	Query = ["SELECT client_id,share_name,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name != ''"],
+	L = execute_query(End_Type, Query),
+	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = TopicFilter},
+												 options = binary_to_term(Options),
+												 callback = binary_to_term(CB)}
+		|| [Client_Id, ShareName, TopicFilter, Options, CB] <- L];
+subscription(remove, #subs_primary_key{client_id = Client_Id, _ = '_'}, End_Type) ->
+	Query = ["DELETE FROM subscription WHERE client_id='",
+		Client_Id, "'"],
+	execute_query(End_Type, Query);
+subscription(remove, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}, End_Type) ->
+	Query = ["DELETE FROM subscription WHERE client_id='",
+		Client_Id, "' and topic='",
+		Topic, "'"],
+	execute_query(End_Type, Query);
+subscription(clean, Client_Id, End_Type) ->
+	Conn = datasource:get_connection(mqtt_storage),
+	R2 = connection:execute_query(Conn, [
+		"DELETE FROM subscription WHERE client_id='",
+		Client_Id, "'"]),
+	lager:debug([{endtype, End_Type}], "subscription delete: ~p", [R2]),
+	datasource:return_connection(mqtt_storage, Conn);
+subscription(close, _, _) ->
+	ok.
+
+connect_pid(save, #storage_connectpid{client_id = Client_Id, pid = Pid}, End_Type) ->
+	Query = ["REPLACE INTO connectpid VALUES ('",
+		Client_Id, "',x'",
+		mqtt_data:binary_to_hex(term_to_binary(Pid)), "')"],
+	execute_query(End_Type, Query);
+connect_pid(exist, _Key, _End_Type) -> false;
+connect_pid(get, Client_Id, End_Type) when is_binary(Client_Id)->
+	connect_pid(get, binary_to_list(Client_Id), End_Type);
+connect_pid(get, Client_Id, End_Type) when is_list(Client_Id) ->
 	Query = [
 		"SELECT pid FROM connectpid WHERE client_id='",
 		Client_Id, "'"],
@@ -272,7 +335,26 @@ get(End_Type, {client_id, Client_Id}) ->
 		[] -> undefined;
 		[[Pid]] -> binary_to_term(Pid)
 	end;
-get(server, {user_id, User_Id}) ->
+connect_pid(get_all, _, End_Type) ->
+	Query = ["SELECT pid FROM connectpid"],
+	[Pid || [Pid] <- execute_query(End_Type, Query)];
+connect_pid(remove, Client_Id, End_Type) ->
+	Query = ["DELETE FROM connectpid WHERE client_id='", Client_Id, "'"],
+	execute_query(End_Type, Query);
+connect_pid(clean, Client_id, End_Type) ->
+	connect_pid(remove, Client_id, End_Type);
+connect_pid(close, _, _) ->
+	ok.
+
+user(save, #user{user_id = User_Id, password = Pswd, roles = Roles}) ->
+	Query = ["REPLACE INTO users VALUES ('",
+		User_Id, 
+		"',x'", mqtt_data:binary_to_hex(crypto:hash(md5, Pswd)),
+		"',x'", mqtt_data:binary_to_hex(term_to_binary(Roles)),
+		"')"],
+	execute_query(server, Query);
+user(exist, _Key) -> false;
+user(get, User_Id) ->
 	Query = [
 		"SELECT password, roles FROM users WHERE user_id='",
 		User_Id, "'"],
@@ -280,73 +362,47 @@ get(server, {user_id, User_Id}) ->
 		[] -> undefined;
 		[[Password, Roles]] -> #{password => list_to_binary(mqtt_data:binary_to_hex(Password)), roles => binary_to_term(Roles)}
 	end;
-get(server, {topic, TopicFilter}) ->
-	Query = ["SELECT * FROM retain"],
-	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_data:is_match(Topic, TopicFilter)].
-
-get_client_topics(End_Type, Client_Id) ->
-	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='", Client_Id, "'"],
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
-												 options = binary_to_term(Options),
-												 callback = binary_to_term(Callback)} || [ShareName, TopicFilter, Options, Callback] <- execute_query(End_Type, Query)].
-
-get_matched_topics(End_Type, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}) ->
-	Query = ["SELECT share_name,topic,options,callback FROM subscription WHERE client_id='",Client_Id,
-					 "' and '",Topic,"' REGEXP topic_re"],
-	L = execute_query(End_Type, Query),
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = if ShareName  == "" -> undefined; true -> ShareName end, topicFilter = TopicFilter},
-												 options = binary_to_term(Options),
-												 callback = binary_to_term(CB)} || [ShareName, TopicFilter, Options, CB] <- L];
-get_matched_topics(End_Type, Topic) ->
-	Query = ["SELECT client_id,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name = ''"],
-	L = execute_query(End_Type, Query),
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, topicFilter = TopicFilter},
-												 options = binary_to_term(Options),
-												 callback = binary_to_term(CB)}
-		|| [Client_Id, TopicFilter, Options, CB] <- L].
-	
-get_matched_shared_topics(End_Type, Topic) ->
-	Query = ["SELECT client_id,share_name,topic,options,callback FROM subscription WHERE '",Topic,"' REGEXP topic_re and share_name != ''"],
-	L = execute_query(End_Type, Query),
-	[#storage_subscription{key = #subs_primary_key{client_id = Client_Id, shareName = ShareName, topicFilter = TopicFilter},
-												 options = binary_to_term(Options),
-												 callback = binary_to_term(CB)}
-		|| [Client_Id, ShareName, TopicFilter, Options, CB] <- L].
-
-get_all(End_Type, {session, Client_Id}) ->
-	Query = [
-		"SELECT client_id, packet_id, publish_rec FROM session WHERE client_id='",
-		Client_Id, "'"],
-	R = execute_query(End_Type, Query),
-	[#storage_publish{key = #primary_key{client_id = CI, packet_id = PI}, document = binary_to_term(Publish_Rec)}
-		|| [CI, PI, Publish_Rec] <- R];
-get_all(server, session_state) ->
-	Query = ["SELECT client_id, session_expiry_interval, end_time, will_publish_rec FROM session_state"],
+user(get_all, _) ->
+	Query = ["SELECT password, roles FROM users"],
 	R = execute_query(server, Query),
-	[#session_state{client_id = CI, session_expiry_interval = SE, end_time = End, will_publish = binary_to_term(WillPubRec)}
-		|| [CI, SE, End, WillPubRec] <- R];
-get_all(End_Type, topic) ->
-	Query = <<"SELECT topic FROM subscription">>,
-	execute_query(End_Type, Query),
-	[T || [T] <- execute_query(End_Type, Query)].
+	[#{password => list_to_binary(mqtt_data:binary_to_hex(Password)), roles => binary_to_term(Roles)} || [Password, Roles] <- R];
+user(remove, User_Id) ->
+	Query = ["DELETE FROM users WHERE user_id='", User_Id, "'"],
+	execute_query(server, Query);
+user(clean, _) ->
+	Query = ["DELETE FROM users"],
+	execute_query(server, Query);
+user(close, _) ->
+	ok.
 
-cleanup(End_Type, Client_Id) ->
+retain(save, #publish{topic = Topic} = Document) ->
+	Query = ["REPLACE INTO retain VALUES ('",
+		Topic, "',x'",
+		mqtt_data:binary_to_hex(term_to_binary(Document)), "')"],
+	execute_query(server, Query);
+retain(exist, _Key) -> false;
+retain(get, TopicFilter) ->
+	Query = ["SELECT * FROM retain"],
+	[binary_to_term(Publish_Rec) || [Topic, Publish_Rec] <- execute_query(server, Query), mqtt_data:is_match(Topic, TopicFilter)];
+retain(get_all, _) ->
+	Query = ["SELECT * FROM retain"],
+	[binary_to_term(Publish_Rec) || [_, Publish_Rec] <- execute_query(server, Query)];
+retain(remove, Topic) ->
+	Query = ["DELETE FROM retain WHERE topic='", Topic, "'"],
+	execute_query(server, Query);
+retain(clean, _) ->
 	Conn = datasource:get_connection(mqtt_storage),
-  R1 = connection:execute_query(Conn, [
-		"DELETE FROM session WHERE client_id='",
-		Client_Id, "'"]),
-	lager:debug([{endtype, End_Type}], "session delete: ~p", [R1]),
-	R2 = connection:execute_query(Conn, [
-		"DELETE FROM subscription WHERE client_id='",
-		Client_Id, "'"]),
-	lager:debug([{endtype, End_Type}], "subscription delete: ~p", [R2]),
-  R3 = connection:execute_query(Conn, [
-		"DELETE FROM connectpid WHERE client_id='",
-		Client_Id, "'"]),
-	lager:debug([{endtype, End_Type}], "connectpid delete: ~p", [R3]),
-	datasource:return_connection(mqtt_storage, Conn),
+	R4 = connection:execute_query(Conn, "DELETE FROM retain"),
+	lager:debug([{endtype, server}], "retain delete: ~p", [R4]),
+	datasource:return_connection(mqtt_storage, Conn);
+retain(close, _) ->
+	ok.
+
+cleanup(ClientId, End_Type) ->
+	session(clean, ClientId, End_Type),
+	subscription(clean, ClientId, End_Type),
 	if End_Type =:= server ->
-			remove(server, {session_client_id, Client_Id});
+				session_state(remove, ClientId);
 		true -> ok
 	end.
 
@@ -367,24 +423,9 @@ cleanup(End_Type) ->
 	end,
 	datasource:return_connection(mqtt_storage, Conn).
 
-cleanup_users() ->
-	Conn = datasource:get_connection(mqtt_storage),
-	R0 = connection:execute_query(Conn, "DELETE FROM users"),
-	lager:debug([{endtype, server}], "users delete: ~p", [R0]),
-	datasource:return_connection(mqtt_storage, Conn).
-
-exist(End_Type, #primary_key{client_id = Client_Id, packet_id = Packet_Id}) ->
-	Query = [
-		"SELECT packet_id FROM session WHERE client_id='",
-		Client_Id, "' and packet_id=",
-		integer_to_list(Packet_Id)],
-	case execute_query(End_Type, Query) of
-		[[_]] -> true;
-		[] -> false
-	end.
-
 close(_) -> 
 	datasource:close(mqtt_storage).
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================

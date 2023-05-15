@@ -142,23 +142,23 @@ validate_config(#connect{client_id= ClientId, user_name= User, will_publish = Wi
 	ClientIdAsString = if is_atom(ClientId) -> atom_to_list(ClientId); ?ELSE -> ClientId end,
 	case re:run(ClientIdAsString, "^[0-9a-zA-Z]*$") of
 		nomatch ->
-			throw(#mqtt_client_error{type= name, message= "Client Id"});
+			throw(#mqtt_error{oper = validation, error_msg = "Client Id"});
 		_ -> ok
 	end,
 	true = validate_string_field(User, "User name"),
 	P = mqtt_property:validate(connect, Props),
-	if not P -> throw(#mqtt_client_error{type= property, message= "Connect Properties"});
+	if not P -> throw(#mqtt_error{oper = validation, error_msg = "Connect Properties"});
 		 ?ELSE -> ok
 	end,
 	if is_record(WillPubRec, publish) ->
 			#publish{topic= WillTopic, payload= WillPayload, properties= WillProps} = WillPubRec,
 			true = validate_string_field(WillTopic, "Will Topic"),
 			case is_topicFilter_valid(WillTopic) of
-				false -> throw(#mqtt_client_error{type= topic, message= "Will Topic"});
+				false -> throw(#mqtt_error{oper = validation, error_msg = "Will Topic"});
 				_ -> ok
 			end,
 			WP = mqtt_property:validate(will, WillProps),
-			if not WP -> throw(#mqtt_client_error{type= will_property, message= "Will Properties"});
+			if not WP -> throw(#mqtt_error{oper = validation, error_msg = "Will Properties"});
 				?ELSE -> ok
 			end,
 			case proplists:get_value(?Payload_Format_Indicator, WillProps, 0) of
@@ -173,7 +173,7 @@ validate_config(#connect{client_id= ClientId, user_name= User, will_publish = Wi
 	ClientIdAsString = if is_atom(ClientId) -> atom_to_list(ClientId); ?ELSE -> ClientId end,
 	case re:run(ClientIdAsString, "^[0-9a-zA-Z]*$") of
 		nomatch ->
-			throw(#mqtt_client_error{type= name, message= "Client Id"});
+			throw(#mqtt_error{oper = validation, error_msg = "Client Id"});
 		_ -> ok
 	end,
 	true = validate_string_field(User, "User name"),
@@ -181,7 +181,7 @@ validate_config(#connect{client_id= ClientId, user_name= User, will_publish = Wi
 			#publish{topic= WillTopic} = WillPubRec,
 			true = validate_string_field(WillTopic, "Will Topic"),
 			case is_topicFilter_valid(WillTopic) of
-				false -> throw(#mqtt_client_error{type= topic, message= "Will Topic"});
+				false -> throw(#mqtt_error{oper = validation, error_msg = "Will Topic"});
 				_ -> ok
 			end;
 		?ELSE -> ok
@@ -191,11 +191,11 @@ validate_config(#connect{client_id= ClientId, user_name= User, will_publish = Wi
 validate_publish('5.0', #publish{topic= Topic, payload= Payload, properties= Props}) ->
 	true = validate_string_field(Topic, "Publish Topic"),
 	case is_topicFilter_valid(Topic) of
-		false -> throw(#mqtt_client_error{type= topic, message= "Publish Topic"});
+		false -> throw(#mqtt_error{oper = validation, error_msg = "Publish Topic"});
 		_ -> ok
 	end,
 	WP = mqtt_property:validate(publish, Props),
-	if not WP -> throw(#mqtt_client_error{type= will_property, message= "Publish Properties"});
+	if not WP -> throw(#mqtt_error{oper = validation, error_msg = "Publish Properties"});
 		?ELSE -> ok
 	end,
 	case proplists:get_value(?Payload_Format_Indicator, Props, 0) of
@@ -206,7 +206,7 @@ validate_publish('5.0', #publish{topic= Topic, payload= Payload, properties= Pro
 validate_publish(_, #publish{topic= Topic}) ->
 	true = validate_string_field(Topic, "Publish Topic"),
 	case is_topicFilter_valid(Topic) of
-		false -> throw(#mqtt_client_error{type= topic, message= "Publish Topic"});
+		false -> throw(#mqtt_error{oper = validation, error_msg = "Publish Topic"});
 		_ -> ok
 	end,
 	true.
@@ -251,12 +251,11 @@ validate_string_field(String, Name) when is_atom(String)->
 	validate_string_field(atom_to_list(String), Name);
 validate_string_field(String, Name) ->
 	case unicode:characters_to_list(String, utf8) of
-		{error, _, _} -> throw(#mqtt_client_error{type= utf8, message= Name});
-		{incomplete, _, _} -> throw(#mqtt_client_error{type= utf8, message= Name});
+		{error, _, _} -> throw(#mqtt_error{oper = validation, error_msg = Name});
+		{incomplete, _, _} -> throw(#mqtt_error{oper = validation, error_msg = Name});
 		_ -> true
 	end.
-	
-	
+
 topic_regexp(TopicFilter) ->
 	R1 = re:replace(TopicFilter, "\\+", "([^\\/]*)", [global, {return, list}]),
 	R2 = re:replace(R1, "#", "(.*)", [global, {return, list}]),

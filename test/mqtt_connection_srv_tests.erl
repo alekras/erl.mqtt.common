@@ -81,54 +81,63 @@ do_start() ->
 	?debug_Fmt("::test:: >>> do_start() ~n", []),
 	lager:start(),
 
-	mqtt_dets_dao:start(server),
-	mqtt_dets_dao:cleanup(server),
+	mqtt_dets_storage:start(server),
+	mqtt_dets_storage:cleanup(server),
+
+	Storage = mqtt_dets_storage,
+	Storage:user(save, #user{user_id = <<"guest">>, password = <<"guest">>}),
+
+	self().
+
+create_server_process() ->
 	Transport = mock_tcp,
-
-	Storage = mqtt_dets_dao,
-	Storage:save(server, #user{user_id = <<"guest">>, password = <<"guest">>}),
-
+	Storage = mqtt_dets_storage,
 	Socket = list_to_port("#Port<0.7>"),
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},
-%	{ok, Pid} = gen_server:start_link({local, conn_server}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
-	Pid = proc_lib:spawn_link(fun() -> mqtt_connection:init(State) end),
-	?debug_Fmt("::test:: >>> do_start() Pid=~p~n", [Pid]),
+	Pid = proc_lib:spawn(fun() -> mqtt_connection:init(State) end),
 	register(conn_server, Pid),
+	?debug_Fmt("::test:: Create Server process (conn_server) with Pid=~p~n", [Pid]),
 	Pid.
-
-
-do_stop(_Pid) ->
-	?debug_Fmt("::test:: >>> do_stop(~p) ~n", [_Pid]),
-% Close connection - stop the conn_server process.
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<224,0>>}, %% Disconnect packet
-	unregister(conn_server),
-	mqtt_dets_dao:cleanup(server),	
-	mqtt_dets_dao:close(server).	
+	
+do_stop(Pid) ->
+	?debug_Fmt("::test:: >>> do_stop(~p) ~n", [Pid]),
+	mqtt_dets_storage:cleanup(server),	
+	mqtt_dets_storage:close(server).	
 
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1')~n", []),
 	mock_tcp:start(),
+	create_server_process(),
 	#connect{client_id = "test0Client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '3.1.1'};
 setup('5.0') ->
 	?debug_Fmt("::test:: >>> setup('5.0')~n", []),
 	mock_tcp:start(),
+	create_server_process(),
 	#connect{client_id = "test0Client", user_name = ?TEST_USER, password = ?TEST_PASSWORD, keep_alive = 60000, version = '5.0'}.
 
 cleanup(X, Y) ->
 	?debug_Fmt("::test:: >>> cleanup(~p,~p) ~n", [X,Y#connect.client_id]),
-	mqtt_dets_dao:remove(server, {client_id, Y#connect.client_id}),
+% Close connection - stop the conn_server process.
+	case whereis(conn_server) of
+		undefined -> ok;
+		_ -> unregister(conn_server)
+	end,
+	mqtt_dets_storage:connect_pid(remove, Y#connect.client_id, server),
 
 	mock_tcp:stop().
 
+step(Name, Expectation, Packet) ->
+	mock_tcp:set_expectation(Expectation),
+	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, Packet},
+	wait_mock_tcp(Name).
+	
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
-	mock_tcp:set_expectation(<<16#D0:8, 0:8>>), %% PingResp packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<192,0>>}, %% PingReq
-	wait_mock_tcp("pingresp"),
+	step("pingresp", <<16#D0:8, 0:8>>, <<192,0>>),
 
 	Conn_State2 = sys:get_state(conn_server),
 	?debug_Fmt("::test:: ping_count = ~p ~n", [Conn_State2#connection_state.ping_count]),
@@ -137,7 +146,7 @@ connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to
 % Close connection - stop the conn_server process.
 %	conn_server ! {tcp, undefined, <<224,0>>}, %% Disconnect packet
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -151,9 +160,7 @@ connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
-	mock_tcp:set_expectation([<<16#D0:8,0:8>>,<<16#D0:8,0:8>>]), %% PingResp packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<192,0,192,0>>}, %% PingReq
-	wait_mock_tcp("pingresp"),
+	step("pingresp", [<<16#D0:8,0:8>>,<<16#D0:8,0:8>>], <<192,0,192,0>>),
 
 	Conn_State2 = sys:get_state(conn_server),
 	?debug_Fmt("::test:: ping_count = ~p ~n", [Conn_State2#connection_state.ping_count]),
@@ -162,7 +169,7 @@ connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to
 % Close connection - stop the conn_server process.
 %	conn_server ! {tcp, undefined, <<224,0>>}, %% Disconnect packet
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -187,7 +194,7 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ a
 	?assertEqual([{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}], Conn_State#connection_state.config#connect.properties),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -202,7 +209,7 @@ subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	wait_mock_tcp("suback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -216,7 +223,7 @@ subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	wait_mock_tcp("suback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -232,7 +239,7 @@ subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ ato
 	wait_mock_tcp("suback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -251,7 +258,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	wait_mock_tcp("unsuback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -269,7 +276,7 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 	wait_mock_tcp("unsuback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -290,7 +297,7 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 	wait_mock_tcp("unsuback"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -306,7 +313,7 @@ publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	wait_mock_tcp("publish<0>"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -321,7 +328,7 @@ publish_0_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	wait_mock_tcp("publish<0>"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -337,7 +344,7 @@ publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ ato
 	wait_mock_tcp("publish<0>"),
 
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -353,14 +360,26 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	wait_mock_tcp("(puback sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
+	conn_server ! {puback, testRef, 0, []},
+
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<64,2,0,101>>}, %% Puback packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
 end};
+%% 	mock_tcp:set_expectation([<<64,2,0,100>>,<<50,16,0,5,84,111,112,105,99,0,100,80,97,121,108,111,97,100>>]), % puback packet, publish packet server -> subscriber
+%% 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<50,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>}, %% Publish packet from client -> server
+%% 	wait_mock_tcp("(puback sent -> client)"),
+%% 	wait_mock_tcp("(publish sent -> subscriber)"),
+%% 
+%% 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<64,2,0,101>>}, %% Puback packet from subscriber -> server
+%% 	timer:sleep(1000),
+%% 	mock_tcp:set_expectation(<<224,0>>),
+%% 	gen_server:cast(conn_server, {disconnect,0,[]}),
+%% 	wait_mock_tcp("disconnect"),
 publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
 	connect_v5(),
@@ -374,7 +393,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<64,3,101:16,10>>}, %% Puback packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -394,7 +413,7 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<64,57,101:16,10, 53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>}, %% Puback packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -421,7 +440,7 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<112,2,0,100>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -447,7 +466,7 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<112,3,0,100,0>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -480,7 +499,7 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 																	 31, 27:16,"Packet Identifier not found"/utf8>>}, %% pubcomp packet from subscriber -> server
 	timer:sleep(1000),
 	mock_tcp:set_expectation(<<224,0>>),
-	{ok, _} = gen_server:call(conn_server, {disconnect,0,[]}),
+	gen_server:cast(conn_server, {disconnect,0,[]}),
 	wait_mock_tcp("disconnect"),
 
 	?passed
@@ -492,11 +511,15 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 wait_mock_tcp(R) ->
 	receive
 		{mock_tcp, true} ->
-			?debug_Fmt("::test:: mock_tcp ~p acknowledge ~n", [R]);
+			?debug_Fmt("::test:: mock_tcp ~p acknowledge ~n", [R]),
+			?assert(true);
 		{mock_tcp, false} ->
 			?assert(false);
 		M ->
 			?debug_Fmt("::test:: while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
+			?assert(false)
+	after 2000 ->
+			?debug_Fmt("::test:: Timeout while waiting ~p from mock_tcp~n", [R]),
 			?assert(false)
 	end.
 

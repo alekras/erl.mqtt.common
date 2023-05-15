@@ -18,7 +18,7 @@
 -define(TEST_USER, "guest").
 -define(TEST_PASSWORD, <<"guest">>).
 %-define(TEST_SERVER_PORT, 1883). %% RabbitMQ
--define(TEST_SERVER_PORT, 2883). %% Mosquitto
+%-define(TEST_SERVER_PORT, 2883). %% Mosquitto
 
 -define(debug_Msg(S),
 	(begin
