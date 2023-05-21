@@ -23,9 +23,9 @@ handle_call({set_test_flag, Flag}, _From, State) ->
 ).
 
 -define(test_fragment_break_connection, 
-handle_call({publish, _}, _, #connection_state{test_flag = break_connection} = State) -> 
+handle_cast({publish, _}, #connection_state{test_flag = break_connection} = State) -> 
 	close_socket(State),
-	{reply, ok, State};
+	{noreply, State};
 ).
 
 -define(test_fragment_skip_rcv_publish, 

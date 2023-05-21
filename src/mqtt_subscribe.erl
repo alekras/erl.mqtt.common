@@ -71,8 +71,7 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 			Storage:subscription(
 				save,
 				#storage_subscription{key = Key,
-															options = Sub_Options, 
-															callback = not_defined_yet},
+															options = Sub_Options},
 				State#connection_state.end_type
 			),
 			Sub_Options#subscription_options.max_qos
@@ -88,31 +87,33 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 
 %% client side only
 suback(State, Packet_Id, Return_codes, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p Processes:~100p~n", [Client_Id, Packet_Id, Return_codes, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
-		{{_Pid, _Ref}, Subscriptions} when is_list(Subscriptions) ->
+		undefined -> State;
+		Subscriptions when is_list(Subscriptions) ->
 %% store session subscriptions
-			[ begin 
-					Storage:subscription(
-						save,
-						#storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id},
-																	options = Options,
-																	callback = Callback},
-						client)
-				end || {Topic, Options, Callback} <- Subscriptions], %% TODO check clean_session flag
-%			Pid ! {suback, Ref, Return_codes, Properties},
+			[Storage:subscription(
+					save,
+					#storage_subscription{key = #subs_primary_key{topicFilter = Topic, client_id = Client_Id},
+																options = Options},
+					client)
+				|| {Topic, Options} <- Subscriptions], %% TODO check clean_session flag
 			do_callback(State#connection_state.event_callback, [onSubscribe, {Return_codes, Properties}]),
 			lager:info([{endtype, client}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 			State#connection_state{
-				processes = maps:remove(Packet_Id, Processes)
-			};
-		undefined ->
-			State
+				processes = maps:remove(Packet_Id, Processes),
+				timeout_ref = undefined
+			}
 	end.
 
+%% server side only
 unsubscribe(State, Packet_Id, Topics, _Properties) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
@@ -130,13 +131,18 @@ unsubscribe(State, Packet_Id, Topics, _Properties) ->
 	lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
 	State.
 
+%% client side only
 unsuback(State, {Packet_Id, Return_codes}, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
-		{{_Pid, _Ref}, Topics} ->
-%			Pid ! {unsuback, Ref, ReturnCodes, Properties},
+		undefined -> State;
+		Topics ->
 %% discard session subscriptions
 			[ begin 
 					Storage:subscription(remove, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, State#connection_state.end_type)
@@ -144,10 +150,9 @@ unsuback(State, {Packet_Id, Return_codes}, Properties) ->
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is unsubscribed from topics ~p~n", [Client_Id, Topics]),
 			do_callback(State#connection_state.event_callback, [onUnsubscribe, {Return_codes, Properties}]),
 			State#connection_state{
-				processes = maps:remove(Packet_Id, Processes)
-			};
-		undefined ->
-			State
+				processes = maps:remove(Packet_Id, Processes),
+				timeout_ref = undefined
+			}
 	end.
 
 %% ====================================================================

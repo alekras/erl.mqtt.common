@@ -114,40 +114,33 @@ connect(State, Config) ->
 
 %% client side only
 connack(State, SP, CRC, Msg, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
-%%	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
-%%	case maps:get(connect, Processes, undefined) of
-%%		{_Pid, _Ref} ->
-			{Host, Port} = get_peername(Transport, Socket),
-			lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
-			if SP == 0 -> Storage:cleanup(Client_Id, client);
-				 true -> ok
-			end,
-			IsConnected =
-			if CRC == 0 -> %% TODO process all codes for v5.0
-					lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
-					1;
-				true ->
-					lager:info([{endtype, client}], "Client ~p is failed to connect to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
-					0
-			end,
-			do_callback(State#connection_state.event_callback, [onConnect, {CRC, Msg, Properties}]),
-			NewState = handle_conack_properties(Version, State, Properties),
-			NewState#connection_state{%%processes = maps:remove(connect, Processes), 
-															session_present = SP,
-															connected = IsConnected}
-%% 		undefined ->
-%% 			do_callback(State#connection_state.event_callback, [onConnect, {CRC, "Unknown internal failure", Properties}]),
-%% 			State#connection_state{%%processes = maps:remove(connect, Processes), 
-%% 														session_present = 0,
-%% 														connected = 0}
-%%	end
-.
+	{Host, Port} = get_peername(Transport, Socket),
+	lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
+	if SP == 0 -> Storage:cleanup(Client_Id, client);
+		 ?ELSE -> ok
+	end,
+	IsConnected = if CRC == 0 -> %% TODO process all codes for v5.0
+			lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
+			1;
+		?ELSE ->
+			lager:info([{endtype, client}], "Client ~p is failed to connect to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
+			0
+		end,
+	do_callback(State#connection_state.event_callback, [onConnect, {CRC, Msg, Properties}]),
+	NewState = handle_conack_properties(Version, State, Properties),
+	NewState#connection_state{session_present = SP,
+														connected = IsConnected,
+														timeout_ref = undefined}.
 
 disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, Properties) ->
 % Common values:

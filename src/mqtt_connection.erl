@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2022 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2023 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 %%
 
 %% @since 2015-12-25
-%% @copyright 2015-2022 Alexei Krasnopolski
+%% @copyright 2015-2023 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
 %% @doc @todo Add description to mqtt_connection.
@@ -44,6 +44,7 @@
 ]).
 
 -import(mqtt_output, [packet/4]).
+-import(mqtt_publish, [do_callback/2]).
 
 %% ====================================================================
 %% Behavioural functions
@@ -98,106 +99,7 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 			{connected, State#connection_state.connected},
 			{session_present, State#connection_state.session_present},
 			{subscriptions, Storage:subscription(get_all, topic, State#connection_state.end_type)} %% only client side?
-		], State};
-
-?test_fragment_break_connection
-
-handle_call({publish, #publish{qos = 0} = PubRec}, 
-						{_, Ref}, 
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
-	try 
-		mqtt_data:validate_publish(Config#connect.version, PubRec),
-		case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
-			{#mqtt_error{} = Response, NewState} ->
-				{reply, {error, Response, Ref}, NewState};
-			{Params, NewState} ->
-				Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-				lager:info([{endtype, NewState#connection_state.end_type}], "Process with ClientId= ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
-				{reply, {ok, Ref}, NewState}
-		end
-	catch throw:E -> {reply, {error, E, Ref}, State}
-	end;
-
-%%?test_fragment_skip_send_publish
-
-handle_call({publish, #publish{qos = QoS} = PubRec}, 
-						{_, Ref} = From, 
-						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
-	try
-		mqtt_data:validate_publish(Config#connect.version, PubRec),
-		case mqtt_publish:decr_send_quote_handle(Config#connect.version, State) of
-			{error, NewState} ->
-				gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
-				{reply, {error, #mqtt_error{oper = publish, errno= 16#93, error_msg = "Receive Maximum exceeded"}, Ref}, NewState};
-			{ok, NewState} ->
-				case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, NewState) of
-					{#mqtt_error{} = Response, VeryNewState} ->
-						{reply, {error, Response, Ref}, VeryNewState};
-					{Params, VeryNewState} ->
-						Packet =
-							if VeryNewState#connection_state.test_flag =:= skip_send_publish -> <<>>;
-								 ?ELSE -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, [])
-							end,
-%% store message before sending
-						Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
-						Prim_key = #primary_key{client_id = (VeryNewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
-						Storage:session(save, #storage_publish{key = Prim_key, document = Params2Save}, VeryNewState#connection_state.end_type),
-						case Transport:send(Socket, Packet) of
-							ok -> 
-								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => {From, Params2Save}},
-								lager:info([{endtype, VeryNewState#connection_state.end_type}], "Client ~p published message to topic=~p:~p <PktId=~p>, s_q:~p~n",
-													 [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id, State#connection_state.send_quota]),
-								{reply, {ok, Ref}, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes}};
-							{error, Reason} -> {reply, {error, Reason, Ref}, NewState} %% do not update State!
-						end
-				end
-		end
-	catch throw:E -> {reply, {error, E, Ref}, State}
-	end;
-
-handle_call({republish, #publish{last_sent = pubrel}, Packet_Id},
-						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport} = State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrel, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrel, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
-	case Transport:send(Socket, Packet) of
-		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => {From, #publish{last_sent = pubrel}}},
-			{reply, {ok, Ref}, State#connection_state{processes = New_processes}};
-		{error, Reason} -> {reply, {error, Reason}, State}
-	end;
-handle_call({republish, #publish{last_sent = pubrec}, Packet_Id},
-						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport} = State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrec, PI: ~p.~n", [Packet_Id]),
-	Packet = packet(pubrec, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
-	case Transport:send(Socket, Packet) of
-		ok ->
-			New_processes = (State#connection_state.processes_ext)#{Packet_Id => {From, #publish{last_sent = pubrec}}},
-			{reply, {ok, Ref}, State#connection_state{processes_ext = New_processes}};
-		{error, Reason} -> {reply, {error, Reason}, State}
-	end;
-handle_call({republish, #publish{last_sent = publish, expiration_time= ExpT} = Params, Packet_Id},
-						{_, Ref} = From,
-						#connection_state{socket = Socket, transport = Transport} = State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
-	RemainedTime =
-	case ExpT of
-		infinity -> 1;
-		_ -> ExpT - erlang:system_time(millisecond)
-	end,
-	if RemainedTime > 0 ->
-			Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
-			case Transport:send(Socket, Packet) of
-				ok -> 
-					New_processes = (State#connection_state.processes)#{Packet_Id => {From, Params}},
-					{reply, {ok, Ref}, State#connection_state{processes = New_processes}};
-				{error, Reason} -> {reply, {error, Reason}, State}
-			end;
-		 ?ELSE -> 
-			lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish Message is expired ~p, PI: ~p.~n", [Params, Packet_Id]),
-			{reply, {ok, Ref}, State}
-	end.
+		], State}.
 
 %% ====================================================================
 %% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_cast-2">gen_server:handle_cast/2</a>
@@ -232,13 +134,11 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 			Conn_config#connect.port,
 			Sock_Opts),
 
-%%	New_processes = (State#connection_state.processes)#{connect => From},
 	New_State = State#connection_state{
 		config = Conn_config,
 		transport = Transport,
 		socket = Socket,
 		event_callback = Callback,
-%%		processes = New_processes,
 		topic_alias_in_map = #{},
 		topic_alias_out_map = #{}},
 
@@ -249,13 +149,14 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 				ok -> 
 					New_State_2 =
 					case Conn_config#connect.clean_session of
-						1 -> 
+						1 ->
 							Storage:cleanup(Conn_config#connect.client_id, State#connection_state.end_type),
 							New_State;
-						0 ->	 
+						0 ->
 							restore_session(New_State) 
 					end,
-					{noreply, New_State_2};
+					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, connect}),
+					{noreply, New_State_2#connection_state{timeout_ref = Timeout_ref}};
 				{error, _Reason} -> {noreply, New_State};
 			Exit -> 
 				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
@@ -270,7 +171,9 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 handle_cast({reconnect, _},
 						#connection_state{config = #connect{client_id = undefined}, end_type = client} = State) ->
 	{reply, #mqtt_error{oper = reconnect, error_msg = "Try reconnect while connect config not defined"}, State};
-handle_cast({reconnect, Socket_options},
+handle_cast({reconnect, Socket_options}, State) ->
+	handle_cast({reconnect, undefined, Socket_options}, State);
+handle_cast({reconnect, Callback, Socket_options},
 						#connection_state{transport = Transport, config = Conn_config, end_type = client} = State) ->
 	Sock_Opts =
 	case Conn_config#connect.conn_type of 
@@ -291,18 +194,25 @@ handle_cast({reconnect, Socket_options},
 			Conn_config#connect.port,
 			Sock_Opts),
 
-%%	New_processes = (State#connection_state.processes)#{connect => From},
-	New_State = State#connection_state{
-		socket = Socket
-%%		processes = New_processes
-	},
-
+	New_State = case Callback of
+		undefined -> 
+			State#connection_state{
+				socket = Socket
+			};
+		_ ->
+			State#connection_state{
+				socket = Socket,
+				event_callback = Callback
+			}
+	end,
+	
 	try 
 		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 				ok -> 
 					New_State_2 = restore_session(New_State),
-					{noreply, New_State_2};
+					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, reconnect}),
+					{noreply, New_State_2#connection_state{timeout_ref = Timeout_ref}};
 				{error, _Reason} -> {noreply, New_State};
 			Exit -> 
 				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
@@ -312,6 +222,109 @@ handle_cast({reconnect, Socket_options},
 				{noreply, New_State} %% Socket = #mqtt_error{}
 		end
 	catch _:_E -> {noreply, New_State}
+	end;
+
+?test_fragment_break_connection
+
+handle_cast({publish, #publish{qos = 0} = PubRec}, 
+						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+	try 
+		mqtt_data:validate_publish(Config#connect.version, PubRec),
+		case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
+			{#mqtt_error{} = Response, NewState} ->
+				do_callback(State#connection_state.event_callback, [onError, Response#mqtt_error{oper= publish}]),
+				{noreply, NewState};
+			{Params, NewState} ->
+				Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
+				lager:info([{endtype, NewState#connection_state.end_type}], "Process with ClientId= ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
+				{noreply, NewState}
+		end
+	catch throw:E ->
+		case E of
+			#mqtt_error{} = Mqtt_error ->
+				do_callback(State#connection_state.event_callback, [onError, Mqtt_error#mqtt_error{oper= publish}]);
+			_ ->
+				do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= publish, error_msg= E}])
+		end,
+		{noreply, State}
+	end;
+
+handle_cast({publish, #publish{qos = QoS} = PubRec}, 
+						#connection_state{socket = Socket, transport = Transport, packet_id = Packet_Id, storage = Storage, config = Config} = State) when (QoS =:= 1) orelse (QoS =:= 2) ->
+	try
+		mqtt_data:validate_publish(Config#connect.version, PubRec),
+		case mqtt_publish:decr_send_quote_handle(Config#connect.version, State) of
+			{error, NewState} ->
+				gen_server:cast(self(), {disconnect, 16#93, [{?Reason_String, "Receive Maximum exceeded"}]}),
+%%				{reply, {error, #mqtt_error{oper = publish, errno= 16#93, error_msg = "Receive Maximum exceeded"}, Ref}, NewState};
+				{noreply, NewState}; %% @todo process error
+			{ok, NewState} ->
+				case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, NewState) of
+					{#mqtt_error{} = _Response, VeryNewState} ->
+						{noreply, VeryNewState}; %% @todo process error
+					{Params, VeryNewState} ->
+						Packet =
+							if VeryNewState#connection_state.test_flag =:= skip_send_publish -> <<>>;
+								 ?ELSE -> packet(publish, Config#connect.version, {Params#publish{dup = 0}, Packet_Id}, [])
+							end,
+%% store message before sending
+						Params2Save = Params#publish{dir = out, last_sent = publish}, %% for sure
+						Prim_key = #primary_key{client_id = (VeryNewState#connection_state.config)#connect.client_id, packet_id = Packet_Id},
+						Storage:session(save, #storage_publish{key = Prim_key, document = Params2Save}, VeryNewState#connection_state.end_type),
+						case Transport:send(Socket, Packet) of
+							ok -> 
+								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => Params2Save},
+								lager:info([{endtype, VeryNewState#connection_state.end_type}], "process with client ~p published message to topic=~p:~p <PktId=~p>, s_q:~p~n",
+													 [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id, State#connection_state.send_quota]),
+								Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, publish}),
+								{noreply, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes, timeout_ref = Timeout_ref}};
+							{error, _Reason} -> {noreply, NewState} %% @todo: process error, do not update State!
+						end
+				end
+		end
+	catch throw:_E ->
+		{noreply, State} %% @todo process error
+	end;
+
+handle_cast({republish, #publish{last_sent = pubrel}, Packet_Id},
+						#connection_state{socket = Socket, transport = Transport} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrel, PI: ~p.~n", [Packet_Id]),
+	Packet = packet(pubrel, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
+	case Transport:send(Socket, Packet) of
+		ok ->
+			New_processes = (State#connection_state.processes)#{Packet_Id => #publish{last_sent = pubrel}},
+			{noreply, State#connection_state{processes = New_processes}};
+		{error, _Reason} -> {noreply, State} %% @todo error process
+	end;
+handle_cast({republish, #publish{last_sent = pubrec}, Packet_Id},
+						#connection_state{socket = Socket, transport = Transport} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request last_sent = pubrec, PI: ~p.~n", [Packet_Id]),
+	Packet = packet(pubrec, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
+	case Transport:send(Socket, Packet) of
+		ok ->
+			New_processes = (State#connection_state.processes_ext)#{Packet_Id => #publish{last_sent = pubrec}},
+			{noreply, State#connection_state{processes_ext = New_processes}};
+		{error, _Reason} -> {noreply, State} %% @todo process error
+	end;
+handle_cast({republish, #publish{last_sent = publish, expiration_time= ExpT} = Params, Packet_Id},
+						#connection_state{socket = Socket, transport = Transport} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish request ~p, PI: ~p.~n", [Params, Packet_Id]),
+	RemainedTime =
+	case ExpT of
+		infinity -> 1;
+		_ -> ExpT - erlang:system_time(millisecond)
+	end,
+	if RemainedTime > 0 ->
+			Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
+			case Transport:send(Socket, Packet) of
+				ok -> 
+					New_processes = (State#connection_state.processes)#{Packet_Id => Params},
+					{noreply, State#connection_state{processes = New_processes}};
+				{error, _Reason} -> {noreply, State} %% @todo process error
+			end;
+		?ELSE -> 
+			lager:debug([{endtype, State#connection_state.end_type}], " >>> re-publish Message is expired ~p, PI: ~p.~n", [Params, Packet_Id]),
+			{noreply, State} %% @todo process error
 	end;
 
 %% Client side:
@@ -325,10 +338,11 @@ handle_cast({subscribe, Subscriptions, Properties},
 			Subscriptions2 =
 			[case mqtt_data:is_topicFilter_valid(Topic) of
 				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
-				false -> {"", Options, Callback}		%% TODO process the error!
-			 end || {Topic, Options, Callback} <- Subscriptions], %% TODO check for proper record #subs_options for v5 (and v3.1.1 ?)
-			New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), 0}, Subscriptions2}}, %% @todo remove {self(),0} !
-			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
+				false -> {"", Options, Callback}		%% @todo process the error!
+			 end || {Topic, Options, Callback} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
+			New_processes = (State#connection_state.processes)#{Packet_Id => Subscriptions2},
+			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, subscribe}),
+			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes, timeout_ref = Timeout_ref}};
 		{error, _Reason} -> {noreply, State}
 	end;
 
@@ -340,8 +354,9 @@ handle_cast({unsubscribe, Topics, Properties},
 	Packet = packet(unsubscribe, State#connection_state.config#connect.version, {Topics, Packet_Id}, Properties),
 	case Transport:send(Socket, Packet) of
 		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => {{self(), 0}, Topics}}, %% @todo remove {self(),0} !
-			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
+			New_processes = (State#connection_state.processes)#{Packet_Id => Topics},
+			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, unsubscribe}),
+			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes, timeout_ref = Timeout_ref}};
 		{error, _Reason} -> {noreply, State}
 	end;
 
@@ -350,9 +365,10 @@ handle_cast(pingreq,
 						#connection_state{socket = Socket, transport = Transport} = State) ->
 	case Transport:send(Socket, packet(pingreq, any, undefined, [])) of
 		ok ->
+			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, ping}),
 			{noreply, 
 				State#connection_state{
-					ping_count = State#connection_state.ping_count + 1
+					ping_count = State#connection_state.ping_count + 1, timeout_ref = Timeout_ref
 				}
 			};
 		{error, _Reason} -> {noreply, State}
@@ -370,7 +386,7 @@ handle_cast({disconnect, ReasonCode, Properties},
 			{noreply, State#connection_state{packet_id = 100}};
 		{error, _Reason} -> 
 			close_socket(State),
-			{noreply, State#connection_state{connected = 0}}
+			{noreply, State#connection_state{connected = 0}} %% @todo process error
 	end;
 handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
@@ -380,7 +396,7 @@ handle_cast(disconnect, #connection_state{end_type = client} = State) ->
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
 
 %% Server side:
-handle_cast({disconnect, ReasonCode, Properties}, %% TODO add Reason code !!!
+handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config, end_type = server} = State) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
@@ -417,11 +433,7 @@ handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State};
 
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 0, end_type = client} = State) ->
-	lager:notice([{endtype, client}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
-	gen_server:cast(self(), {disconnect, 0, [{?Reason_String, "TCP socket closed event"}]}),
-	{noreply, State};
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 1, end_type = client} = State) ->
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client} = State) ->
 	lager:notice([{endtype, client}], "handle_info tcp closed while connected, state:~p~n", [State]),
 	gen_server:cast(self(), {disconnect, 0, [{?Reason_String, "TCP socket closed event"}]}),
 	{noreply, State#connection_state{connected = 0}};
@@ -430,7 +442,7 @@ handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected =
 	{stop, normal, State};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 1, end_type = server} = State) ->
 	lager:notice([{endtype, server}], "handle_info tcp closed while connected, state:~p~n", [State]),
-	{stop, shutdown, State#connection_state{connected = 0}};
+	{stop, shutdown, State};
 
 handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type = server} = State) ->
 	Timer_Ref = keep_alive_timer((State#connection_state.config)#connect.keep_alive, State#connection_state.timer_ref),
@@ -440,11 +452,7 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State};
 
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 0, end_type = client} = State) ->
-	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while disconnected, state:~p~n", [State]),
-	gen_server:cast(self(), {disconnect, 0, [{?Reason_String, "TLS socket closed event"}]}),
-	{noreply, State};
-handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected = 1, end_type = client} = State) ->
+handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, end_type = client} = State) ->
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	gen_server:cast(self(), {disconnect, 0, [{?Reason_String, "TLS socket closed event"}]}),
 	{noreply, State#connection_state{connected = 0}};
@@ -455,24 +463,15 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 	lager:notice([{endtype, State#connection_state.end_type}], "handle_info ssl closed while connected, state:~p~n", [State]),
 	{stop, shutdown, State};
 
-%% handle_info(disconnect, #connection_state{processes = Processes, end_type = client} = State) ->
-%% 	lager:notice([{endtype, client}], "Client handle_info DISCONNECT message, state:~p~n", [State]),
-%% 	close_socket(State),
-%% 	case maps:get(disconnect, Processes, undefined) of
-%% 		{Pid, Ref} ->
-%% 			Pid ! {disconnected, Ref};
-%% 		undefined ->
-%% 			ok
-%% 	end,
-%% 	{noreply, State#connection_state{connected = 0}};
-%% handle_info(disconnect, #connection_state{end_type = server} = State) ->
-%% 	lager:notice([{endtype, server}], "Server handle_info DISCONNECT message, state:~p~n", [State]),
-%% 	{stop, normal, State#connection_state{connected = 0}};
-handle_info({timeout, TimerRef, keep_alive_timeout} = Info, #connection_state{timer_ref = TimerRef} = State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], "handle_info keep alive timeout message: ~p state:~p~n", [Info, State]),
+handle_info({timeout, TimerRef, keep_alive_timeout} = Info, #connection_state{timer_ref = TimerRef, end_type = server} = State) ->
+	lager:debug([{endtype, server}], "handle_info KEEP_ALIVE timeout message: ~p state:~p~n", [Info, State]),
 	{stop, timeout, State};
+handle_info({timeout, TimerRef, {operation_timeout, Operation}} = Info, #connection_state{timeout_ref = TimerRef} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], "handle_info OPERATION timeout message: ~p state:~p~n", [Info, State]),
+	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= Operation, errno= 136, error_msg= "Server unavailable. Operation timeout"}]),
+	{noreply, State};
 handle_info(Info, State) ->
-	lager:warning([{endtype, State#connection_state.end_type}], "handle_info get unexpected message: ~p state:~p~n", [Info, State]),
+	lager:error([{endtype, State#connection_state.end_type}], "handle_info get unexpected message: ~p state:~p~n", [Info, State]),
 	{noreply, State}.
 
 %% ====================================================================
@@ -529,12 +528,12 @@ open_socket(Transport, Host, Port, Options) ->
 				Host, 
 				Port, 
 				[
-					binary, %% @todo check and add options from Argument _Options
+					binary,
 					{active, true}, 
 					{packet, 0}, 
 					{recbuf, ?SOC_BUFFER_SIZE}, 
 					{sndbuf, ?SOC_BUFFER_SIZE}, 
-					{send_timeout, ?SOC_SEND_TIMEOUT} | Options
+					{send_timeout, ?SOC_SEND_TIMEOUT} | Options %% @todo check and add options from Argument _Options
 				], 
 				?SOC_CONN_TIMEOUT
 			)
@@ -546,7 +545,7 @@ open_socket(Transport, Host, Port, Options) ->
 			ok = Transport:controlling_process(Socket, self()),
 			Socket;
 		{error, Reason} -> 
-			#mqtt_error{oper = Transport, source = {?MODULE, ?FUNCTION_NAME, ?LINE}, error_msg = Reason}
+			#mqtt_error{oper = Transport, source = {?MODULE, ?FUNCTION_NAME, ?LINE}, error_msg = Reason} %% @todo process error
 	end.	
 
 close_socket(#connection_state{socket = Socket, transport = Transport, end_type = client}) when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
@@ -590,8 +589,8 @@ restore_session(#connection_state{config = #connect{client_id = Client_Id}, stor
 
 restore_state({Packet_Id, Params}, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
-	Pid = spawn(gen_server, call, [self(), {republish, Params, Packet_Id}, ?MQTT_GEN_SERVER_TIMEOUT]),
-	New_processes = (State#connection_state.processes)#{Packet_Id => {{Pid, undefined}, Params}},
+	spawn(gen_server, cast, [self(), {republish, Params, Packet_Id}]),
+	New_processes = (State#connection_state.processes)#{Packet_Id => Params},
 	State#connection_state{processes = New_processes, packet_id= next(Packet_Id, State)}.
 
 keep_alive_timer(undefined, undefined) -> undefined;
@@ -608,23 +607,23 @@ topic_alias_handle('5.0',
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
 	SkipCheck = State#connection_state.test_flag =:= skip_alias_max_check,
-	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 	if ((Alias == 0) orelse (Alias > AliasMax)) and (not SkipCheck) ->
-			{#mqtt_error{oper = protocol, errno = 16#94, source = {?MODULE, ?FUNCTION_NAME, ?LINE}, error_msg = "Topic Alias invalid"}, State};
+			{#mqtt_error{errno = 16#94, source = {?MODULE, ?FUNCTION_NAME, ?LINE}, error_msg = "Topic Alias invalid"}, State};
 		 SkipCheck ->
 			{PubRec, State};
 		 true ->
 			case {Topic, Alias} of
-				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-				{"", -1} -> {#mqtt_error{oper = protocol, errno = 16#82, error_msg = "Protocol Error: topic alias invalid"}, State}; 
+				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				{"", -1} -> {#mqtt_error{errno = 16#82, error_msg = "Protocol Error: topic alias invalid"}, State}; 
 				{"", N} ->
 					if State#connection_state.end_type == client ->
 							case maps:get(N, TopicAliasOUTMap, undefined) of
-								undefined -> {#mqtt_error{oper = protocol, errno = 16#94, error_msg = "Topic Alias invalid"}, State}; 
+								undefined -> {#mqtt_error{errno = 16#94, error_msg = "Topic Alias invalid"}, State}; 
 								_ -> {PubRec, State}
 							end;
 						 true ->
-							 {#mqtt_error{oper = protocol, errno = 16#94, error_msg = "Topic Alias invalid"}, State}
+							 {#mqtt_error{errno = 16#94, error_msg = "Topic Alias invalid"}, State}
 					end;
 				{T, -1} -> %% if server publish msg to a client that already has topic alias map but server has no knowledge about this.
 					if State#connection_state.end_type == server ->
@@ -647,17 +646,17 @@ topic_alias_handle('5.0',
 									 #connection_state{topic_alias_in_map = TopicAliasINMap, config = #connect{properties = ConnectProps}} = State) ->
 	Alias = proplists:get_value(?Topic_Alias, Props, -1),
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
-	%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_error{oper = protocol, errno=16#94, error_msg = "Topic Alias invalid"}, State};
 		 true ->
-%% TODO client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
+%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 			case {Topic, Alias} of
 				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-				{"", -1} -> {#mqtt_error{oper = protocol, errno = 16#82, error_msg = "Protocol Error"}, State};
+				{"", -1} -> {#mqtt_error{errno = 16#82, error_msg = "Protocol Error"}, State};
 				{"", N} ->
 					case maps:get(N, TopicAliasINMap, undefined) of
-%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
-						undefined -> {#mqtt_error{oper = protocol, errno = 16#94, error_msg = "Topic Alias invalid"}, State};
+%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+						undefined -> {#mqtt_error{errno = 16#94, error_msg = "Topic Alias invalid"}, State};
 						AliasTopic -> {PubRec#publish{topic = AliasTopic, properties = proplists:delete(?Topic_Alias, Props)}, State}
 					end;
 				{_T, -1} -> {PubRec, State};
@@ -701,7 +700,7 @@ will_publish_handle(Storage, Config) ->
 	end,
 
 	if (PubRec#publish.retain =:= 1) ->
-			Storage:retain(save, Params); %% TODO avoid duplicates ???
+			Storage:retain(save, Params); %% @todo avoid duplicates ???
 		 true -> ok
 	end.
 

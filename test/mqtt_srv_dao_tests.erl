@@ -105,18 +105,18 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 10101}, document = #publish{topic = "AK", payload = <<"Payload 2">>}}, server),
 	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = #publish{topic = "AK", payload = <<"Payload 3">>}}, server),
 
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}, callback = {mqtt_client_test, callback}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/#", client_id = "pear"}, options = #subscription_options{max_qos=1}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+/2", client_id = "plum"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "/+/December/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {size}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/#", client_id = "pear"}, options = #subscription_options{max_qos=1}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+/2", client_id = "plum"}, options = #subscription_options{max_qos=2}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "/+/December/+", client_id = "orange"}, options = #subscription_options{max_qos=2}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", client_id = "apple"}, options = #subscription_options{max_qos=0}}, server),
 
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "orange"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "B", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {length}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, options = #subscription_options{max_qos=0}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "orange"}, options = #subscription_options{max_qos=0}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "B", client_id = "lemon"}, options = #subscription_options{max_qos=0}}, server),
 
  	Storage:connect_pid(save, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}, server),
  	Storage:connect_pid(save, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}, server),
@@ -168,7 +168,7 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	?assertEqual(undefined, Ra),
  	R1 = Storage:subscription(get, #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, server),
 %	?debug_Fmt("::test:: read returns R1 ~120p", [R1]),	
- 	?assertEqual([#storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}, callback = {erlang, timestamp}}], R1),
+ 	?assertEqual([#storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}}], R1),
  	R1a = Storage:subscription(get, #subs_primary_key{topicFilter = "AK_Test", client_id = "lemon"}, server),
 %	?debug_Fmt("::test:: read returns R1a ~120p", [R1a]),	
  	?assertEqual(undefined, R1a),
@@ -216,10 +216,10 @@ extract_topic(X, Storage) -> {"extract topic [" ++ atom_to_list(X) ++ "]", timeo
 	R = Storage:subscription(get_client_topics, "orange", server),
 	?debug_Fmt("::test:: extract_topic returns ~120p", [R]),
 	?assertEqual(4, length(R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0},callback={size}}, R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December/+",shareName="A",client_id="orange"},options=#subscription_options{max_qos=0},callback={length}}, R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="/+/December/+",client_id="orange"},options=#subscription_options{max_qos=2},callback={length}}, R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="Winter/+",client_id="orange"},options=#subscription_options{max_qos=1},callback={mqtt_client_test, callback}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December/+",shareName="A",client_id="orange"},options=#subscription_options{max_qos=0}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="/+/December/+",client_id="orange"},options=#subscription_options{max_qos=2}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="Winter/+",client_id="orange"},options=#subscription_options{max_qos=1}}, R)),
 	?passed
 end}.
 
@@ -227,16 +227,16 @@ extract_matched_topic(X, Storage) -> {"extract matched topic [" ++ atom_to_list(
 	R = Storage:subscription(get_matched_topics, #subs_primary_key{topicFilter = "Winter/December", client_id = "orange"}, server),
 	?debug_Fmt("::test:: read returns ~120p", [R]),	
 	?assertEqual(2, length(R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0},callback={size}}, R)),
-	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="Winter/+",client_id="orange"},options=#subscription_options{max_qos=1},callback={mqtt_client_test, callback}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="+/December",client_id="orange"},options=#subscription_options{max_qos=0}}, R)),
+	?assert(lists:member(#storage_subscription{key=#subs_primary_key{topicFilter="Winter/+",client_id="orange"},options=#subscription_options{max_qos=1}}, R)),
 
 	R1 = Storage:subscription(get_matched_topics, "Winter/December", server),
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(4, length(R1)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"apple"},#subscription_options{max_qos=2},{length}}, R1)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"orange"},#subscription_options{max_qos=0},{size}}, R1)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"Winter/#",undefined,"pear"},#subscription_options{max_qos=1},{length}}, R1)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"Winter/+",undefined,"orange"},#subscription_options{max_qos=1},{mqtt_client_test, callback}}, R1)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"apple"},#subscription_options{max_qos=2}}, R1)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December",undefined,"orange"},#subscription_options{max_qos=0}}, R1)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"Winter/#",undefined,"pear"},#subscription_options{max_qos=1}}, R1)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"Winter/+",undefined,"orange"},#subscription_options{max_qos=1}}, R1)),
 	?passed
 end}.
 
@@ -244,9 +244,9 @@ extract_matched_shared_topic(X, Storage) -> {"extract matched shared topic [" ++
 	R = Storage:subscription(get_matched_shared_topics, "Year/December/12", server),
 %	?debug_Fmt("::test:: extract_matched_shared_topic returns ~120p", [R]),	
 	?assertEqual(3, length(R)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","B","lemon"},#subscription_options{max_qos=0},{length}}, R)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","A","orange"},#subscription_options{max_qos=0},{length}}, R)),
-	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","A","apple"},#subscription_options{max_qos=0},{length}}, R)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","B","lemon"},#subscription_options{max_qos=0}}, R)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","A","orange"},#subscription_options{max_qos=0}}, R)),
+	?assert(lists:member({storage_subscription,{subs_primary_key,"+/December/+","A","apple"},#subscription_options{max_qos=0}}, R)),
 	?passed
 end}.
 
@@ -270,11 +270,10 @@ update(X, Storage) -> {"update [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 %	?debug_Fmt("::test:: read returns ~120p", [R1]),
 	?assertEqual(undefined, R1#storage_publish.document),
 	
-	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}, callback = {erlang, binary_to_list}}, server),
+	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=2}}, server),
 	[R2] = Storage:subscription(get, #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, server),
 %	?debug_Fmt("::test:: read returns ~120p", [R2]),
 	?assertEqual(2, R2#storage_subscription.options#subscription_options.max_qos),
-	?assertEqual({erlang, binary_to_list}, R2#storage_subscription.callback),
 	
 	Storage:session_state(save, #session_state{client_id = "apple", end_time = 300, will_publish = #publish{topic="Will Topic"}}),
 	R3 = Storage:session_state(get, "apple"),

@@ -81,6 +81,10 @@ process_internal(State, Binary) ->
 
 %% Client side only
 		{pingresp, Tail} -> 
+			Timeout_ref = State#connection_state.timeout_ref,
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 		?ELSE -> ok
+			end,
 			lager:info([{endtype, State#connection_state.end_type}], "Pong received from server ~p~n", [Client_Id]),
 			Ping_count = State#connection_state.ping_count - 1,
 			do_callback(State#connection_state.event_callback, [onPong, Ping_count]),

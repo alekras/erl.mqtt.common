@@ -105,8 +105,7 @@
 -record(storage_subscription,
 	{
 		key :: #subs_primary_key{},
-		options :: #subscription_options{}, %% qos = 0 :: 0 | 1 | 2,
-		callback :: tuple()
+		options :: #subscription_options{} %% qos = 0 :: 0 | 1 | 2,
 	}
 ).
 
@@ -135,7 +134,7 @@
 
 -record(sslsocket, {fd = nil, pid = nil}).
 -record(connection_state, 
-  { socket :: port() | #sslsocket{},
+  { socket :: pid() | port() | #sslsocket{},
 		transport :: atom(),
 		config = #connect{} :: #connect{},
 		storage = mqtt_dets_storage :: atom(),
@@ -146,7 +145,6 @@
 		receive_max = 10 :: integer(),
 		send_quota = 10 :: integer(),
 		packet_id = 100 :: integer(),
-%%		subscriptions = #{} :: map(), %% @todo keep in persistance storage
 		topic_alias_in_map = #{} :: map(), %% TopicAlias => TopicName
 		topic_alias_out_map = #{} :: map(), %% TopicAlias => TopicName
 		processes = #{} :: map(), 
@@ -154,6 +152,7 @@
 		tail = <<>> :: binary(),
 		ping_count = 0 :: integer(), %% is used ?
 		timer_ref :: reference(), %% for keep_alive
+		timeout_ref :: reference(), %% for operation timeout
 		test_flag :: atom() %% for testing only
   }
 ).
@@ -177,7 +176,6 @@
 ).
 
 -define(SOC_BUFFER_SIZE, 16#4000).
-%-define(SOC_RECV_TIMEOUT, 60000).
 -define(SOC_SEND_TIMEOUT, 60000).
 -define(SOC_CONN_TIMEOUT, 60000).
 -define(MQTT_GEN_SERVER_TIMEOUT, 1000).

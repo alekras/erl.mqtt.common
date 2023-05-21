@@ -75,7 +75,7 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 							delivery_to_application(VeryNewState, NewRecord),  %% TODO check for successful delivery
 							Packet = 
 								if VeryNewState#connection_state.test_flag =:= skip_send_puback -> <<>>; 
-									 true -> packet(puback, Version, {Packet_Id, 0}, [])  %% TODO properties?
+									 ?ELSE -> packet(puback, Version, {Packet_Id, 0}, [])  %% TODO properties?
 								end,
 							case Transport:send(Socket, Packet) of
 								ok -> ok;
@@ -122,21 +122,23 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	end.
 
 puback(State, {Packet_Id, ReasonCode}, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
-		{{_Pid, _Ref}, _Params} ->
+		undefined -> State;
+		_Params ->
 %% discard message<QoS=1> after pub ack
 			NewState = inc_send_quote_handle(Version, State),
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, 
 			Storage:session(remove, Prim_key, NewState#connection_state.end_type),
-%			Pid ! {puback, Ref, ReasonCode, Properties},
 			do_callback(State#connection_state.event_callback, [onPublish, {ReasonCode, Properties}]),
-			NewState#connection_state{processes = maps:remove(Packet_Id, Processes)};
-		undefined ->
-			State
+			NewState#connection_state{processes = maps:remove(Packet_Id, Processes)}
 	end.
 
 pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
@@ -147,7 +149,8 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
-		{From, Params} ->
+		undefined -> State;
+		Params ->
 %% TODO Check ResponseCode > 0x80 for NewState = inc_send_quote_handle(Version, State)
 %% store message before pubrel
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -159,13 +162,11 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 			New_State =
 			case Transport:send(Socket, Packet) of
 				ok -> 
-					New_processes = Processes#{Packet_Id => {From, Params#publish{last_sent = pubrel}}},
+					New_processes = Processes#{Packet_Id => Params#publish{last_sent = pubrel}},
 					State#connection_state{processes = New_processes}; 
 				{error, _Reason} -> State
 			end,
-			New_State;
-		undefined ->
-			State
+			New_State
 	end.
 
 pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
@@ -178,7 +179,8 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
 	case maps:get(Packet_Id, ProcessesExt, undefined) of
-		{_From, _Params} ->
+		undefined -> State;
+		_Params ->
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 			if
 				State#connection_state.end_type =:= server ->
@@ -203,32 +205,28 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 					inc_send_quote_handle(Version, VeryNewState);
 				{error, _Reason} -> State
 			end,
-			New_State;
-		undefined ->
-			State
+			New_State
 	end.
 
 pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 %	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
-		{{_Pid, _Ref}, _Params} ->
+		undefined -> State;
+		_Params ->
 			NewState = inc_send_quote_handle(Version, State),
-%			case Pid of
-%				undefined -> none;
-%				_ -> 
-%					Pid ! {pubcomp, Ref, ReasonCode, Properties}
-					do_callback(State#connection_state.event_callback, [onPublish, {ReasonCode, Properties}]),
-%			end,
+			do_callback(State#connection_state.event_callback, [onPublish, {ReasonCode, Properties}]),
 %% discard message after pub comp
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 			Storage:session(remove, Prim_key, NewState#connection_state.end_type),
-			NewState#connection_state{processes = maps:remove(Packet_Id, Processes)};
-		undefined ->
-			State
+			NewState#connection_state{processes = maps:remove(Packet_Id, Processes)}
 	end.
 
 %% ====================================================================
@@ -238,7 +236,7 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Topic_List = Storage:subscription(get_matched_topics, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, client),
-	[{Options, Callback} || #storage_subscription{options = Options, callback = Callback} <- Topic_List].
+	[Options || #storage_subscription{options = Options} <- Topic_List].
 
 delivery_to_application(#connection_state{end_type = client, event_callback = Callback} = State,
 												#publish{qos = QoS, dup = Dup, retain = Retain} = PubRecord) ->
@@ -247,13 +245,7 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 	case get_topic_attributes(State, Topic) of
 		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]);
 		List ->
-			[
-				case do_callback(Callback, [{SubsOption, PubRecord}]) of
-					false -> do_callback(Callback, [onReceive, {SubsOption, PubRecord}]);
-					_ -> ok
-				end
-				|| {SubsOption, _Callback} <- List
-			]
+			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || {SubsOption, _Callback} <- List]
 	end,
 	lager:info([{endtype, State#connection_state.end_type}], 
 						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
@@ -298,9 +290,11 @@ handle_retain_msg_during_publish(_,
 			true -> ok
 	end.
 
-handle_server_publish('5.0',
-												#connection_state{storage = Storage} = State,
-												#publish{qos = Params_QoS, payload = Payload, expiration_time = ExpT, retain = Retain, dup = Dup} = Param, PubTopic) ->
+handle_server_publish(
+		'5.0',
+		#connection_state{storage = Storage} = State,
+		#publish{qos = Params_QoS, payload = Payload, expiration_time = ExpT, retain = Retain, dup = Dup} = Param,
+		PubTopic) ->
 	RemainedTime =
 	case ExpT of
 		infinity -> 1;
@@ -322,7 +316,7 @@ handle_server_publish('5.0',
 								NoLocal = Options#subscription_options.nolocal,
 								ProcessCliD = State#connection_state.config#connect.client_id,
 								if (NoLocal =:= 1) and (ProcessCliD =:= Client_Id) -> ok;
-									 true ->
+									 ?ELSE ->
 										TopicQoS = Options#subscription_options.max_qos,
 										QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
 										Retain_as_published = Options#subscription_options.retain_as_published,
@@ -379,14 +373,15 @@ handle_server_publish('5.0',
 			lager:info([{endtype, server}], 
 								 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
 								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]);
-		true ->
+		?ELSE ->
 			lager:info([{endtype, server}], 
 								 "Message for client ~p is expired [topic ~p:~p, dup=~p, retain=~p]~n", 
 								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain])
 	end;
-handle_server_publish(_,
-												#connection_state{storage = Storage} = State,
-												#publish{qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Param, PubTopic) ->
+handle_server_publish(
+		_, %% versions 3.1 and 3.1.1
+		#connection_state{storage = Storage} = State,
+		#publish{qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Param, PubTopic) ->
 	case Storage:subscription(get_matched_topics, PubTopic, server) of
 		[] when Retain =:= 1 -> ok;
 		[] ->
@@ -412,39 +407,8 @@ handle_server_publish(_,
 server_send_publish(Pid, Params) -> 
 	lager:info([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
 %% TODO process look up topic alias for the Pid client/session and update #publish record
-	R =
-	case gen_server:call(Pid, {publish, Params#publish{dir=out}}, ?MQTT_GEN_SERVER_TIMEOUT) of
-		{ok, Ref} -> 
-	lager:info([{endtype, server}], "Response from gen_server Ref=~128p~n", [Ref]),
-			case Params#publish.qos of
-				0 -> ok;
-				1 ->
-					receive
-						{puback, Ref, _ReasonCode, _Properties} ->  %% TODO just get properties for now
-%lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
-							ok;
-						{puback, testRef, _ReasonCode, _Properties} ->  %% for testing purpose only
-%lager:debug([{endtype, server}], "Received puback. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
-							ok
-					after ?MQTT_GEN_SERVER_TIMEOUT ->
-						#mqtt_error{oper = publish, error_msg = "puback timeout"}
-					end;
-				2 ->
-					receive
-						{pubcomp, Ref, _ReasonCode,_Properties} -> 
-%lager:debug([{endtype, server}], "Received pubcomp. Reason code=~p, props=~128p~n", [_ReasonCode, _Properties]),
-							ok
-					after ?MQTT_GEN_SERVER_TIMEOUT ->
-						#mqtt_error{oper = publish, error_msg = "pubcomp timeout"}
-					end
-			end;
-		{error, Reason} ->
-				#mqtt_error{oper = publish, error_msg = Reason}
-	end,
-	case R of
-		ok -> lager:info([{endtype, server}], "Server has successfuly published message to subscriber.~n", []);
-		_	-> lager:error([{endtype, server}], "Server catched error: ~128p~n", [R])
-	end.
+	gen_server:cast(Pid, {publish, Params#publish{dir=out}}), %% @todo callback for timeout or error
+	lager:info([{endtype, server}], "Server has successfuly published message to subscriber.~n", []).
 
 msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->
 	Msg_Exp_Interval = proplists:get_value(?Message_Expiry_Interval, Props, infinity),
