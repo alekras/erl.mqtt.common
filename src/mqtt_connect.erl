@@ -131,12 +131,13 @@ connack(State, SP, CRC, Msg, Properties) ->
 	end,
 	IsConnected = if CRC == 0 -> %% TODO process all codes for v5.0
 			lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
+			do_callback(State#connection_state.event_callback, [onConnect, {CRC, Msg, Properties}]),
 			1;
 		?ELSE ->
 			lager:info([{endtype, client}], "Client ~p is failed to connect to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
+			do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, errno= CRC, error_msg= Msg}]),
 			0
 		end,
-	do_callback(State#connection_state.event_callback, [onConnect, {CRC, Msg, Properties}]),
 	NewState = handle_conack_properties(Version, State, Properties),
 	NewState#connection_state{session_present = SP,
 														connected = IsConnected,
