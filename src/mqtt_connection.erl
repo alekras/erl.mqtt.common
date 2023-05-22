@@ -157,15 +157,21 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 					end,
 					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, connect}),
 					{noreply, New_State_2#connection_state{timeout_ref = Timeout_ref}};
-				{error, _Reason} -> {noreply, New_State};
-			Exit -> 
-				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+				{error, Reason} ->
+					do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= Reason}]),
+					{noreply, New_State};
+				Exit -> 
+					do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= Exit}]),
+					lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
 				{noreply, New_State}
-		end;
+			end;
 			?ELSE ->
+				do_callback(State#connection_state.event_callback, [onError, Socket]),
 				{noreply, New_State}
 		end
-	catch _:_E -> {noreply, New_State}
+	catch _:E -> 
+		do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= E}]),
+		{noreply, New_State}
 	end;
 
 handle_cast({reconnect, _},

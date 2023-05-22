@@ -21,7 +21,7 @@
 %% @version {@version}
 %% @doc This module is running unit tests for some modules.
 
--module(mqtt_srv_dao_tests).
+-module(mqtt_srv_storage_tests).
 
 %%
 %% Include files

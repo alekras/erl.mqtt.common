@@ -55,8 +55,8 @@ end_type_2_name(client) -> mqtt_client;
 end_type_2_name(server) -> mqtt_server.
 
 start(End_Type) ->
-	MYSQL_SERVER_HOST_NAME = application:get_env(end_type_2_name(End_Type), mysql_host, "localhost"),
-	MYSQL_SERVER_PORT = application:get_env(end_type_2_name(End_Type), mysql_port, 3306),
+	MYSQL_SERVER_HOST_NAME = application:get_env(end_type_2_name(End_Type), mysql_host, "127.0.0.1"),
+	MYSQL_SERVER_PORT = application:get_env(end_type_2_name(End_Type), mysql_port, 3307),
 	MYSQL_USER = application:get_env(end_type_2_name(End_Type), mysql_user, "mqtt_user"),
 	MYSQL_PASSWORD = application:get_env(end_type_2_name(End_Type), mysql_user, "mqtt_password"),
 	R = my:start_client(),
