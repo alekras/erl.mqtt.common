@@ -144,6 +144,10 @@ connack(State, SP, CRC, Msg, Properties) ->
 														timeout_ref = undefined}.
 
 disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, Properties) ->
+	Timeout_ref = State#connection_state.timeout_ref,
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,
 %%			Storage:connection_state(remove, Client_Id),

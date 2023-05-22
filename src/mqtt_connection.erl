@@ -389,7 +389,8 @@ handle_cast({disconnect, ReasonCode, Properties},
 								"Process ~p sent disconnect request to server with reason code:~p, and properties:~p.",
 								[Config#connect.client_id, ReasonCode, Properties]
 						),
-			{noreply, State#connection_state{packet_id = 100}};
+			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, disconnect}),
+			{noreply, State#connection_state{packet_id = 100, timeout_ref = Timeout_ref}};
 		{error, _Reason} -> 
 			close_socket(State),
 			{noreply, State#connection_state{connected = 0}} %% @todo process error
