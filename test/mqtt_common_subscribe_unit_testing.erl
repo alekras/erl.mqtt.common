@@ -55,16 +55,16 @@ unit_test_() ->
 	].
 
 packet_output('3.1.1') ->
-	Value = mqtt_output:packet(subscribe, '3.1.1', {[{"Topic_1", 0, callback}, {"Topic_2", 1, callback}, {"Topic_3", 2, callback}], 101}, []),
+	Value = mqtt_output:packet(subscribe, '3.1.1', {[{"Topic_1", 0}, {"Topic_2", 1}, {"Topic_3", 2}], 101}, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
 	?assertEqual(<<130,32, 101:16, 7:16,"Topic_1"/utf8,0, 7:16,"Topic_2"/utf8,1, 7:16,"Topic_3"/utf8,2>>, Value),
 
 	?passed;
 packet_output('5.0') ->
 	Options = #subscription_options{nolocal = 1, retain_as_published = 1, retain_handling = 1},
-	Value = mqtt_output:packet(subscribe, '5.0', {[{"Topic_1", Options, callback}, 
-																									{"Topic_2", Options#subscription_options{max_qos = 1}, callback}, 
-																									{"Topic_3", Options#subscription_options{max_qos = 2}, callback}],
+	Value = mqtt_output:packet(subscribe, '5.0', {[{"Topic_1", Options}, 
+																									{"Topic_2", Options#subscription_options{max_qos = 1}}, 
+																									{"Topic_3", Options#subscription_options{max_qos = 2}}],
 																								101}, 
 															[]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
@@ -74,9 +74,9 @@ packet_output('5.0') ->
 
 packet_output_props() ->
 	Options = #subscription_options{nolocal = 1, retain_as_published = 1, retain_handling = 1},
-	Value = mqtt_output:packet(subscribe, '5.0', {[{"Topic_1", Options, callback}, 
-																									{"Topic_2", Options#subscription_options{max_qos = 1}, callback}, 
-																									{"Topic_3", Options#subscription_options{max_qos = 2}, callback}],
+	Value = mqtt_output:packet(subscribe, '5.0', {[{"Topic_1", Options}, 
+																									{"Topic_2", Options#subscription_options{max_qos = 1}}, 
+																									{"Topic_3", Options#subscription_options{max_qos = 2}}],
 																								101}, 
 															[{?User_Property, {"Key", "Value"}},{?Subscription_Identifier, 177001}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),

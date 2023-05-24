@@ -249,9 +249,9 @@ payload(publish, Payload) ->
 	Payload;
 
 payload(subscribe, []) -> <<>>;
-payload(subscribe, [{Topic, #subscription_options{max_qos = MaxQos, nolocal = NoLocal, retain_as_published = RetainAsPub, retain_handling = RetainHandling}, _Callback} | Subscriptions]) ->
+payload(subscribe, [{Topic, #subscription_options{max_qos = MaxQos, nolocal = NoLocal, retain_as_published = RetainAsPub, retain_handling = RetainHandling}} | Subscriptions]) ->
 	<<(mqtt_data:encode_utf8_string(Topic))/binary, 0:2, RetainHandling:2, RetainAsPub:1, NoLocal:1, MaxQos:2, (payload(subscribe, Subscriptions))/binary>>;
-payload(subscribe, [{Topic, QoS, _Callback} | Subscriptions]) ->
+payload(subscribe, [{Topic, QoS} | Subscriptions]) ->
 	<<(mqtt_data:encode_utf8_string(Topic))/binary, QoS:8, (payload(subscribe, Subscriptions))/binary>>;
 
 payload(suback, []) -> <<>>;

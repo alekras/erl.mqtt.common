@@ -247,7 +247,7 @@ subscribe_timeout_test('5.0' = Version, Conn_config) -> {"Subscribe Timeout test
 
 	Expected_packet = <<130,28,0,100,17,11,233,230,10,38,0,3,75,101,121,0,5,86,97,108,117,101,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, 
-										[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}],
+										[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}}],
 										[{?User_Property, {<<"Key">>, <<"Value">>}}, {?Subscription_Identifier, 177001}]
 									}, 
 	mock_tcp:set_expectation(Expected_packet),
@@ -972,20 +972,20 @@ ping_pong() ->
 
 subscribe_v3() ->
 	Expected_packet = <<130,10,0,100,0,5,84,111,112,105,99,2>>, 
-	Subscribe_tuple = {subscribe, [{<<"Topic">>, 2, callback}]}, 
+	Subscribe_tuple = {subscribe, [{<<"Topic">>, 2}]}, 
 	Suback_packet = <<144,3,0,100,2>>,
 	subscribe(Expected_packet, Subscribe_tuple, Suback_packet).
 
 subscribe_v5() ->
 	Expected_packet = <<130,11,0,100,0,0,5,84,111,112,105,99,2>>, 
-	Subscribe_tuple = {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}]}, 
+	Subscribe_tuple = {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}}]}, 
 	Suback_packet = <<144,4, 0,100, 0, 2>>,
 	subscribe(Expected_packet, Subscribe_tuple, Suback_packet).
 
 subscribe_v5_props() ->
 	Expected_packet = <<130,28,0,100,17,11,233,230,10,38,0,3,75,101,121,0,5,86,97,108,117,101,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, 
-										[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}, callback}],
+										[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}}],
 										[{?User_Property, {<<"Key">>, <<"Value">>}}, {?Subscription_Identifier, 177001}]
 									}, 
 	Suback_packet = <<144,37, 0,100, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0>>,

@@ -193,7 +193,7 @@ subscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Subscribe test [" ++
 	connect_v3(),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
-	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,84,111,112,105,99,2>>}, %% Subscription request
+	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
 	disconnect(),
@@ -205,7 +205,7 @@ subscribe_test('5.0' = Version, {Socket, Conn_config}) -> {"Subscribe test [" ++
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
-	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,84,111,112,105,99,2>>}, %% Subscription request
+	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
 	disconnect(),
