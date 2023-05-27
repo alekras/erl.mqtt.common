@@ -191,7 +191,7 @@ subscription(get, #subs_primary_key{} = Key, End_Type) -> %% @todo delete it
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Get failed: key=~p reason=~p~n", [Key, Reason]),
 			undefined;
-		[] -> undefined;
+%		[] -> undefined;
 		D when is_list(D) -> D;
 		_ -> undefined
 	end;

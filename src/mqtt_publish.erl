@@ -110,7 +110,7 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 									end,
 									case Transport:send(Socket, Packet) of
 										ok -> 
-											New_processes = ProcessesExt#{Packet_Id => {{undefined, undefined}, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
+											New_processes = ProcessesExt#{Packet_Id => {undefined, #publish{topic = Topic, qos = QoS, last_sent = pubrec}}},
 											VeryNewState#connection_state{processes_ext = New_processes};
 										{error, _Reason} -> VeryNewState
 									end
@@ -122,17 +122,16 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	end.
 
 puback(State, {Packet_Id, ReasonCode}, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
-	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
-		 ?ELSE -> ok
-	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
-		_Params ->
+		{Timeout_ref, _Params} ->
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+				 ?ELSE -> ok
+			end,
 %% discard message<QoS=1> after pub ack
 			NewState = inc_send_quote_handle(Version, State),
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id}, 
@@ -150,7 +149,7 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
-		Params ->
+		{Timeout_ref, Params} ->
 %% TODO Check ResponseCode > 0x80 for NewState = inc_send_quote_handle(Version, State)
 %% store message before pubrel
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
@@ -162,7 +161,7 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 			New_State =
 			case Transport:send(Socket, Packet) of
 				ok -> 
-					New_processes = Processes#{Packet_Id => Params#publish{last_sent = pubrel}},
+					New_processes = Processes#{Packet_Id => {Timeout_ref, Params#publish{last_sent = pubrel}}},
 					State#connection_state{processes = New_processes}; 
 				{error, _Reason} -> State
 			end,
@@ -180,16 +179,16 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
 	case maps:get(Packet_Id, ProcessesExt, undefined) of
 		undefined -> State;
-		_Params ->
+		{_, _Params} ->
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 			if
 				State#connection_state.end_type =:= server ->
 					case Storage:session(get, Prim_key, server) of
 						#storage_publish{document = Record} ->
 							delivery_to_application(State, Record);
-						_ -> none
+						_ -> ok
 					end;
-				true -> none
+				true -> ok
 			end,
 %% discard PI before pubcomp send
 			Storage:session(remove, Prim_key, State#connection_state.end_type),
@@ -209,10 +208,6 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	end.
 
 pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
-	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
-		 ?ELSE -> ok
-	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
@@ -220,7 +215,10 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 %	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
-		_Params ->
+		{Timeout_ref, _Params} ->
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+				 ?ELSE -> ok
+			end,
 			NewState = inc_send_quote_handle(Version, State),
 			do_callback(State#connection_state.event_callback, [onPublish, {ReasonCode, Properties}]),
 %% discard message after pub comp

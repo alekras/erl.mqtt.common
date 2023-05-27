@@ -232,11 +232,11 @@ unsubscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Unsubscribe test [
 	connect_v3(),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
-	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,84,111,112,105,99,2>>}, %% Subscription request
+	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
 	mock_tcp:set_expectation(<<176,2,0,101>>), %% Unsuback packet
-	conn_server ! {tcp, Socket, <<162,9,0,101,0,5,84,111,112,105,99>>}, %% Unsubscription request
+	conn_server ! {tcp, Socket, <<162,9,0,101,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
 
 	disconnect(),
@@ -248,11 +248,11 @@ unsubscribe_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe test [
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
-	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,84,111,112,105,99,2>>}, %% Subscription request
+	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
 	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
-	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,84,111,112,105,99>>}, %% Unsubscription request
+	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
 
 	disconnect(),
@@ -265,14 +265,20 @@ unsubscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe 
 	connect_v5(),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
-	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,84,111,112,105,99,2>>}, %% Subscription request
+	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
-
+	SubList = mqtt_dets_storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = "test0Client"}, server),
+	?debug_Fmt("Subscription from DB: ~128p ~n", [SubList]),
+	?assertEqual(length(SubList), 1),
+	
 	mock_tcp:set_expectation(<<176,4,101:16, 0,0>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,23,0,101,
 										13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,
-										0,5,84,111,112,105,99>>}, %% Unsubscription request
+										0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
+	UnList = mqtt_dets_storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = "test0Client"}, server),
+	?debug_Fmt("Subscription from DB: ~128p ~n", [UnList]),
+	?assertEqual(length(UnList), 0),
 
 	disconnect(),
 
@@ -330,7 +336,7 @@ publish_1_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++
 	wait_mock_tcp("(puback sent -> client)"),
 	wait_mock_tcp("(publish sent -> subscriber)"),
 
-	conn_server ! {puback, testRef, 0, []},
+%	conn_server ! {puback, testRef, 0, []},
 
 	conn_server ! {tcp, Socket, <<64,2,0,101>>}, %% Puback packet from subscriber -> server
 %	timer:sleep(1000),

@@ -62,6 +62,7 @@ process_internal(State, Binary) ->
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Version = State#connection_state.config#connect.version,
+	Processes = State#connection_state.processes,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	case input_parser(Version, Binary) of
@@ -81,15 +82,20 @@ process_internal(State, Binary) ->
 
 %% Client side only
 		{pingresp, Tail} -> 
-			Timeout_ref = State#connection_state.timeout_ref,
-			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
-		 		?ELSE -> ok
+			case maps:get(pingreq, Processes, undefined) of
+				undefined -> ok;
+				Timeout_ref ->
+				if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 			?ELSE -> ok
+				end
 			end,
 			lager:info([{endtype, State#connection_state.end_type}], "Pong received from server ~p~n", [Client_Id]),
 			Ping_count = State#connection_state.ping_count - 1,
 			do_callback(State#connection_state.event_callback, [onPong, Ping_count]),
 			process(
-				State#connection_state{ping_count = Ping_count},
+				State#connection_state{
+						processes = maps:remove(pingreq, Processes), 
+						ping_count = Ping_count},
 				Tail);
 
 %% Server side only

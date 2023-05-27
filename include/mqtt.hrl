@@ -152,12 +152,11 @@
 		tail = <<>> :: binary(),
 		ping_count = 0 :: integer(), %% is used ?
 		timer_ref :: reference(), %% for keep_alive
-		timeout_ref :: reference(), %% for operation timeout
 		test_flag :: atom() %% for testing only
   }
 ).
 
-%% @type mqtt_client_error() = #mqtt_client_error{} The record represents an exception that is thrown by a client's module.<br/> 
+%% @type mqtt_error() = #mqtt_error{} The record represents an exception that is thrown by a client's module.<br/> 
 %% -record(<strong>mqtt_error</strong>, {
 %% <dl>
 %%   <dt>oper:: atom() | string()</dt><dd>- Operation that catches the exception.</dd>

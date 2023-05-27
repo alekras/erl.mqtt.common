@@ -156,7 +156,8 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 							restore_session(New_State) 
 					end,
 					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, connect}),
-					{noreply, New_State_2#connection_state{timeout_ref = Timeout_ref}};
+					New_processes = (State#connection_state.processes)#{connect => Timeout_ref}, %% @todo check if 'connect' key exists; if yes - error
+					{noreply, New_State_2#connection_state{processes = New_processes}};
 				{error, Reason} ->
 					do_callback(New_State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= Reason}]),
 					{noreply, New_State};
@@ -218,7 +219,8 @@ handle_cast({reconnect, Callback, Socket_options},
 				ok -> 
 					New_State_2 = restore_session(New_State),
 					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, reconnect}),
-					{noreply, New_State_2#connection_state{timeout_ref = Timeout_ref}};
+					New_processes = (State#connection_state.processes)#{connect => Timeout_ref}, %% @todo check if 'connect' key exists; if yes - error
+					{noreply, New_State_2#connection_state{processes = New_processes}};
 				{error, _Reason} -> {noreply, New_State};
 			Exit -> 
 				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
@@ -279,11 +281,11 @@ handle_cast({publish, #publish{qos = QoS} = PubRec},
 						Storage:session(save, #storage_publish{key = Prim_key, document = Params2Save}, VeryNewState#connection_state.end_type),
 						case Transport:send(Socket, Packet) of
 							ok -> 
-								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => Params2Save},
+								Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, publish}),
+								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => {Timeout_ref, Params2Save}},
 								lager:info([{endtype, VeryNewState#connection_state.end_type}], "process with client ~p published message to topic=~p:~p <PktId=~p>, s_q:~p~n",
 													 [Config#connect.client_id, Params#publish.topic, QoS, Packet_Id, State#connection_state.send_quota]),
-								Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, publish}),
-								{noreply, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes, timeout_ref = Timeout_ref}};
+								{noreply, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes}};
 							{error, _Reason} -> {noreply, NewState} %% @todo: process error, do not update State!
 						end
 				end
@@ -346,9 +348,9 @@ handle_cast({subscribe, Subscriptions, Properties},
 				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
 				false -> {"", Options, Callback}		%% @todo process the error!
 			 end || {Topic, Options, Callback} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
-			New_processes = (State#connection_state.processes)#{Packet_Id => Subscriptions2},
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, subscribe}),
-			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes, timeout_ref = Timeout_ref}};
+			New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, Subscriptions2}},
+			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, _Reason} -> {noreply, State}
 	end;
 
@@ -360,9 +362,9 @@ handle_cast({unsubscribe, Topics, Properties},
 	Packet = packet(unsubscribe, State#connection_state.config#connect.version, {Topics, Packet_Id}, Properties),
 	case Transport:send(Socket, Packet) of
 		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => Topics},
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, unsubscribe}),
-			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes, timeout_ref = Timeout_ref}};
+			New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, Topics}},
+			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
 		{error, _Reason} -> {noreply, State}
 	end;
 
@@ -372,10 +374,11 @@ handle_cast(pingreq,
 	case Transport:send(Socket, packet(pingreq, any, undefined, [])) of
 		ok ->
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, ping}),
+			New_processes = (State#connection_state.processes)#{pingreq => Timeout_ref}, %% @todo check if pingreq already exists, if so then reject it
 			{noreply, 
 				State#connection_state{
-					ping_count = State#connection_state.ping_count + 1, timeout_ref = Timeout_ref
-				}
+					processes = New_processes,
+					ping_count = State#connection_state.ping_count + 1}
 			};
 		{error, _Reason} -> {noreply, State}
 	end;
@@ -390,7 +393,8 @@ handle_cast({disconnect, ReasonCode, Properties},
 								[Config#connect.client_id, ReasonCode, Properties]
 						),
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, disconnect}),
-			{noreply, State#connection_state{packet_id = 100, timeout_ref = Timeout_ref}};
+			New_processes = (State#connection_state.processes)#{disconnect => Timeout_ref}, %% @todo check if 'disconnect' key exists; if yes - error
+			{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
 		{error, _Reason} -> 
 			close_socket(State),
 			{noreply, State#connection_state{connected = 0}} %% @todo process error
@@ -473,7 +477,7 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 handle_info({timeout, TimerRef, keep_alive_timeout} = Info, #connection_state{timer_ref = TimerRef, end_type = server} = State) ->
 	lager:debug([{endtype, server}], "handle_info KEEP_ALIVE timeout message: ~p state:~p~n", [Info, State]),
 	{stop, timeout, State};
-handle_info({timeout, TimerRef, {operation_timeout, Operation}} = Info, #connection_state{timeout_ref = TimerRef} = State) ->
+handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], "handle_info OPERATION timeout message: ~p state:~p~n", [Info, State]),
 	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= Operation, errno= 136, error_msg= "Server unavailable. Operation timeout"}]),
 	{noreply, State};

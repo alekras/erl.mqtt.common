@@ -114,7 +114,8 @@ connect(State, Config) ->
 
 %% client side only
 connack(State, SP, CRC, Msg, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
+	Processes = State#connection_state.processes,
+	Timeout_ref = maps:get(connect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
@@ -141,10 +142,11 @@ connack(State, SP, CRC, Msg, Properties) ->
 	NewState = handle_conack_properties(Version, State, Properties),
 	NewState#connection_state{session_present = SP,
 														connected = IsConnected,
-														timeout_ref = undefined}.
+														processes = maps:remove(connect, Processes)}.
 
 disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
+	Processes = State#connection_state.processes,
+	Timeout_ref = maps:get(disconnect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
@@ -157,7 +159,7 @@ disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, P
 		"Client ~p is disconnecting with reason ~p and Props=~p~n",
 		[Client_Id, DisconnectReasonCode, Properties]
 	),
-	State#connection_state{connected = 0};
+	State#connection_state{connected = 0, processes = maps:remove(connect, Processes)};
 disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, Properties) ->
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,

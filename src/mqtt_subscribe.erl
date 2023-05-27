@@ -56,14 +56,14 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 			Sub_Options = 
 				if Version == '5.0' -> 
 							if SubId == 0 -> Options;
-								 true -> Options#subscription_options{identifier = SubId}
+								 ?ELSE -> Options#subscription_options{identifier = SubId}
 							end;
 					 true ->
 							#subscription_options{max_qos = Options}
 				end,
 			{ShareName, TopicFilter} =
 			case mqtt_data:is_topicFilter_valid(Topic) of
-				{true, [SN, TF]} -> {if SN == "" -> undefined; true -> SN end, TF};
+				{true, [SN, TF]} -> {if SN == "" -> undefined; ?ELSE -> SN end, TF};
 				false -> {undefined, ""}		%% TODO process the error!
 	 		end,
 			Key = #subs_primary_key{topicFilter = TopicFilter, shareName = ShareName, client_id = Client_Id},
@@ -87,17 +87,16 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 
 %% client side only
 suback(State, Packet_Id, Return_codes, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
-	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
-		 ?ELSE -> ok
-	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, client}], ">>> suback: Client ~p PcId:<~p> RetCodes:~p Processes:~100p~n", [Client_Id, Packet_Id, Return_codes, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
-		Subscriptions when is_list(Subscriptions) ->
+		{Timeout_ref, Subscriptions} when is_list(Subscriptions) ->
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+				 ?ELSE -> ok
+			end,
 %% store session subscriptions
 			[Storage:subscription(
 					save,
@@ -108,8 +107,7 @@ suback(State, Packet_Id, Return_codes, Properties) ->
 			do_callback(State#connection_state.event_callback, [onSubscribe, {Return_codes, Properties}]),
 			lager:info([{endtype, client}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
 			State#connection_state{
-				processes = maps:remove(Packet_Id, Processes),
-				timeout_ref = undefined
+				processes = maps:remove(Packet_Id, Processes)
 			}
 	end.
 
@@ -123,7 +121,11 @@ unsubscribe(State, Packet_Id, Topics, _Properties) ->
 %% discard session subscriptions
 	ReasonCodeList =
 	[ begin 
-			Storage:subscription(remove, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, State#connection_state.end_type),
+			Storage:subscription(
+				remove, 
+				#subs_primary_key{topicFilter = binary_to_list(Topic), shareName = '_', client_id = Client_Id}, 
+				State#connection_state.end_type
+			),
 			0 %% TODO add reason code list
 		end || Topic <- Topics],
 	Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, []), %% TODO now just return empty properties
@@ -133,25 +135,23 @@ unsubscribe(State, Packet_Id, Topics, _Properties) ->
 
 %% client side only
 unsuback(State, {Packet_Id, Return_codes}, Properties) ->
-	Timeout_ref = State#connection_state.timeout_ref,
-	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
-		 ?ELSE -> ok
-	end,
 	Client_Id = (State#connection_state.config)#connect.client_id,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
-		Topics ->
+		{Timeout_ref, Topics} when is_list(Topics) ->
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+				 ?ELSE -> ok
+			end,
 %% discard session subscriptions
-			[ begin 
+			[ begin
 					Storage:subscription(remove, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, State#connection_state.end_type)
 				end || Topic <- Topics], %% TODO check clean_session flag
 			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is unsubscribed from topics ~p~n", [Client_Id, Topics]),
 			do_callback(State#connection_state.event_callback, [onUnsubscribe, {Return_codes, Properties}]),
 			State#connection_state{
-				processes = maps:remove(Packet_Id, Processes),
-				timeout_ref = undefined
+				processes = maps:remove(Packet_Id, Processes)
 			}
 	end.
 

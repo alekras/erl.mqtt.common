@@ -254,7 +254,7 @@ subscribe_timeout_test('5.0' = Version, Conn_config) -> {"Subscribe Timeout test
 	gen_server:cast(client_gensrv, Subscribe_tuple),
 	wait_mock_tcp("subscribe packet"),
 %% from server:
-	client_gensrv ! {tcp, get_socket(), <<>>}, %% Suback packet
+	client_gensrv ! {tcp, get_socket(), <<>>}, %% Skip Suback packet
 	receive
 		[onSubscribe, {Return_codes, Properties}] ->
 			?debug_Fmt("::test:: return  codes = ~p Props = ~128p~n", [Return_codes, Properties]),

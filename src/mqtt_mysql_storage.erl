@@ -256,7 +256,7 @@ subscription(get, #subs_primary_key{client_id = Client_Id, topicFilter = Topic},
 		Client_Id, "' and topic='",
 		Topic, "'"],
 	case execute_query(End_Type, Query) of
-		[] -> undefined;
+%		[] -> undefined;
 		List when is_list(List) ->
 			[#storage_subscription{key = #subs_primary_key{
 																			shareName = if ShareName  == "" -> undefined; true -> ShareName end,
@@ -298,10 +298,11 @@ subscription(remove, #subs_primary_key{client_id = Client_Id, _ = '_'}, End_Type
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "'"],
 	execute_query(End_Type, Query);
-subscription(remove, #subs_primary_key{client_id = Client_Id, topicFilter = Topic}, End_Type) ->
+subscription(remove, #subs_primary_key{client_id = Client_Id, shareName = Share_name, topicFilter = Topic}, End_Type) ->
 	Query = ["DELETE FROM subscription WHERE client_id='",
 		Client_Id, "' and topic='",
-		Topic, "'"],
+		Topic, "' and share_name=",
+		if Share_name == undefined -> "''"; true -> "'" ++ Share_name ++ "'" end],
 	execute_query(End_Type, Query);
 subscription(clean, Client_Id, End_Type) ->
 	Conn = datasource:get_connection(mqtt_storage),

@@ -171,7 +171,7 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	?assertEqual([#storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}}], R1),
  	R1a = Storage:subscription(get, #subs_primary_key{topicFilter = "AK_Test", client_id = "lemon"}, server),
 %	?debug_Fmt("::test:: read returns R1a ~120p", [R1a]),	
- 	?assertEqual(undefined, R1a),
+ 	?assertEqual([], R1a),
  	R2 = Storage:connect_pid(get, "apple", server),
 %	?debug_Fmt("::test:: read returns R2 ~120p", [R2]),	
  	?assertEqual(list_to_pid("<0.4.3>"), R2),
@@ -286,6 +286,11 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 101}, server),
 %	?debug_Fmt("::test:: after delete ~p", [R]),	
 	?assertEqual(undefined, R),
+
+	Storage:subscription(remove, #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, server),
+	Storage:subscription(remove, #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, server),
+	R0 = Storage:subscription(get_all, topic, server),
+	?assertEqual(9, length(R0)),
 
 	Storage:user(remove, "fedor"),
 	R1 = Storage:user(get, "fedor"),
