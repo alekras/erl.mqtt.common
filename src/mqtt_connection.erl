@@ -300,7 +300,8 @@ handle_cast({republish, #publish{last_sent = pubrel}, Packet_Id},
 	Packet = packet(pubrel, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
-			New_processes = (State#connection_state.processes)#{Packet_Id => #publish{last_sent = pubrel}},
+			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, publish}),
+			New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, #publish{last_sent = pubrel}}},
 			{noreply, State#connection_state{processes = New_processes}};
 		{error, _Reason} -> {noreply, State} %% @todo error process
 	end;
@@ -310,7 +311,7 @@ handle_cast({republish, #publish{last_sent = pubrec}, Packet_Id},
 	Packet = packet(pubrec, State#connection_state.config#connect.version, {Packet_Id, 0}, []),
 	case Transport:send(Socket, Packet) of
 		ok ->
-			New_processes = (State#connection_state.processes_ext)#{Packet_Id => #publish{last_sent = pubrec}},
+			New_processes = (State#connection_state.processes_ext)#{Packet_Id => {undefined, #publish{last_sent = pubrec}}},
 			{noreply, State#connection_state{processes_ext = New_processes}};
 		{error, _Reason} -> {noreply, State} %% @todo process error
 	end;
@@ -326,7 +327,8 @@ handle_cast({republish, #publish{last_sent = publish, expiration_time= ExpT} = P
 			Packet = packet(publish, State#connection_state.config#connect.version, {Params#publish{dup = 1}, Packet_Id}, []),
 			case Transport:send(Socket, Packet) of
 				ok -> 
-					New_processes = (State#connection_state.processes)#{Packet_Id => Params},
+					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, publish}),
+					New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, Params}},
 					{noreply, State#connection_state{processes = New_processes}};
 				{error, _Reason} -> {noreply, State} %% @todo process error
 			end;

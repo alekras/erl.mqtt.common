@@ -188,13 +188,13 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 							delivery_to_application(State, Record);
 						_ -> ok
 					end;
-				true -> ok
+				?ELSE -> ok
 			end,
 %% discard PI before pubcomp send
 			Storage:session(remove, Prim_key, State#connection_state.end_type),
 			Packet =
 			if State#connection_state.test_flag =:= skip_send_pubcomp -> <<>>; 
-					true -> packet(pubcomp, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString or/and UserProperty
+					?ELSE -> packet(pubcomp, Version, {Packet_Id, 0}, []) %% TODO fill out properties with ReasonString or/and UserProperty
 			end,
 			New_State =
 			case Transport:send(Socket, Packet) of
@@ -241,7 +241,7 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 	Topic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubRecord, State),
 %%	NewPubRecord = PubRecord#publish{topic = Topic},
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]);
+		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]); %% @todo - why undefined?
 		List ->
 			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || {SubsOption, _Callback} <- List]
 	end,
