@@ -410,8 +410,13 @@ handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
 handle_cast(disconnect, #connection_state{end_type = client} = State) ->
+	Processes = State#connection_state.processes,
+	Timeout_ref = maps:get(disconnect, Processes, undefined),
+	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+		 ?ELSE -> ok
+	end,
 	close_socket(State),
-	{noreply, State#connection_state{connected = 0, packet_id = 100}};
+	{noreply, State#connection_state{connected = 0, packet_id = 100, processes = maps:remove(disconnect, Processes)}};
 
 %% Server side:
 handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
@@ -452,11 +457,11 @@ handle_info({tcp, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	{noreply, New_State};
 
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, end_type = client} = State) ->
-	lager:notice([{endtype, client}], "handle_info tcp closed while connected, state:~p~n", [State]),
-	gen_server:cast(self(), {disconnect, 0, [{?Reason_String, "TCP socket closed event"}]}),
+	lager:notice([{endtype, client}], "handle_info tcp closed while state:~p~n", [State]),
+	gen_server:cast(self(), disconnect),
 	{noreply, State#connection_state{connected = 0}};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 0, end_type = server} = State) ->
-	lager:notice([{endtype, server}], "handle_info tcp closed while disconnected, state:~p~n", [State]),
+	lager:notice([{endtype, server}], "handle_info tcp closed while state:~p~n", [State]),
 	{stop, normal, State};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, connected = 1, end_type = server} = State) ->
 	lager:notice([{endtype, server}], "handle_info tcp closed while connected, state:~p~n", [State]),
