@@ -159,7 +159,7 @@ disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, P
 		"Client ~p is disconnecting with reason ~p and Props=~p~n",
 		[Client_Id, DisconnectReasonCode, Properties]
 	),
-	State#connection_state{connected = 0, processes = maps:remove(connect, Processes)};
+	State#connection_state{connected = 0, processes = maps:remove(disconnect, Processes)};
 disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, Properties) ->
 % Common values:
 	Client_Id = (State#connection_state.config)#connect.client_id,

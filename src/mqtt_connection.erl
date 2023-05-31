@@ -387,7 +387,12 @@ handle_cast(pingreq,
 
 %% Client side:
 handle_cast({disconnect, ReasonCode, Properties},
-						#connection_state{socket = Socket, transport = Transport, config = Config, end_type = client} = State) when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
+						#connection_state{socket = Socket,
+															transport = Transport,
+															config = Config,
+															end_type = client,
+															connected = 1} = State)
+						when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			lager:info([{endtype, client}], 
