@@ -176,7 +176,8 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	Processes = State#connection_state.processes,
 	ProcessesExt = State#connection_state.processes_ext,
 	Storage = State#connection_state.storage,
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p	~p reason Code=~p, Props=~p~n", [Packet_Id, Processes, _ReasonCode, Properties]),
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
+							[Packet_Id, Processes, ProcessesExt, _ReasonCode, Properties]),
 	case maps:get(Packet_Id, ProcessesExt, undefined) of
 		undefined -> State;
 		{_, _Params} ->
@@ -212,7 +213,7 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
-%	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
 		{Timeout_ref, _Params} ->

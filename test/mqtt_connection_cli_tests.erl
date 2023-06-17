@@ -198,8 +198,6 @@ connection_timeout_test('5.0' = Version, Conn_config) -> {"Connection Timeout te
 			?assert(false)
 	end,
 
-	disconnect(),
-
 	?passed
 end}.
 

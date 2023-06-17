@@ -177,7 +177,8 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 
 handle_cast({reconnect, _},
 						#connection_state{config = #connect{client_id = undefined}, end_type = client} = State) ->
-	{reply, #mqtt_error{oper = reconnect, error_msg = "Try reconnect while connect config not defined"}, State};
+	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= reconnect, error_msg= "Try reconnect while connect config not defined"}]),
+	{noreply, State};
 handle_cast({reconnect, Socket_options}, State) ->
 	handle_cast({reconnect, undefined, Socket_options}, State);
 handle_cast({reconnect, Callback, Socket_options},
@@ -399,9 +400,14 @@ handle_cast({disconnect, ReasonCode, Properties},
 								"Process ~p sent disconnect request to server with reason code:~p, and properties:~p.",
 								[Config#connect.client_id, ReasonCode, Properties]
 						),
-			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, disconnect}),
-			New_processes = (State#connection_state.processes)#{disconnect => Timeout_ref}, %% @todo check if 'disconnect' key exists; if yes - error
-			{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
+			if State#connection_state.config#connect.version == '5.0' ->
+					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, disconnect}),
+					New_processes = (State#connection_state.processes)#{disconnect => Timeout_ref}, %% @todo check if 'disconnect' key exists; if yes - error
+					{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
+				?ELSE ->
+					close_socket(State),
+					{noreply, State#connection_state{packet_id = 100}}
+			end;
 		{error, _Reason} -> 
 			close_socket(State),
 			{noreply, State#connection_state{connected = 0}} %% @todo process error
@@ -674,7 +680,7 @@ topic_alias_handle('5.0',
 		 true ->
 %% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 			case {Topic, Alias} of
-				%% TODO client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
+				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 				{"", -1} -> {#mqtt_error{errno = 16#82, error_msg = "Protocol Error"}, State};
 				{"", N} ->
 					case maps:get(N, TopicAliasINMap, undefined) of
