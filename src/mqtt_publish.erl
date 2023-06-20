@@ -58,7 +58,11 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	lager:info([{endtype, State#connection_state.end_type}], "Publish packet for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
 	case mqtt_connection:topic_alias_handle(Version, Record, State) of
 		{#mqtt_error{oper = publish, errno = ErrNo, error_msg = Msg}, NewState} ->
-			gen_server:cast(self(), {disconnect, ErrNo, [{?Reason_String, Msg}]}),
+			if State#connection_state.end_type == server ->
+					gen_server:cast(self(), {disconnect, ErrNo, [{?Reason_String, Msg}]});
+				?ELSE ->
+					gen_server:cast(self(), disconnect)
+			end,
 			NewState;
 		{NewRecord, NewState} -> 
 			%%lager:debug([{endtype, State#connection_state.end_type}], " >>> NewRecord = ~p NewState = ~p~n", [NewRecord, NewState]),
@@ -244,7 +248,7 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 	case get_topic_attributes(State, Topic) of
 		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]); %% @todo - why undefined?
 		List ->
-			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || {SubsOption, _Callback} <- List]
+			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || SubsOption <- List]
 	end,
 	lager:info([{endtype, State#connection_state.end_type}], 
 						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 

@@ -269,8 +269,9 @@ handle_cast({publish, #publish{qos = QoS} = PubRec},
 				{noreply, NewState}; %% @todo process error
 			{ok, NewState} ->
 				case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, NewState) of
-					{#mqtt_error{} = _Response, VeryNewState} ->
-						{noreply, VeryNewState}; %% @todo process error
+					{#mqtt_error{} = Response, VeryNewState} ->
+						do_callback(State#connection_state.event_callback, [onError, Response#mqtt_error{oper= publish}]),
+						{noreply, VeryNewState};
 					{Params, VeryNewState} ->
 						Packet =
 							if VeryNewState#connection_state.test_flag =:= skip_send_publish -> <<>>;
@@ -348,9 +349,9 @@ handle_cast({subscribe, Subscriptions, Properties},
 		ok ->
 			Subscriptions2 =
 			[case mqtt_data:is_topicFilter_valid(Topic) of
-				{true, [_, TopicFilter]} -> {TopicFilter, Options, Callback};
-				false -> {"", Options, Callback}		%% @todo process the error!
-			 end || {Topic, Options, Callback} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
+				{true, [_, TopicFilter]} -> {TopicFilter, Options};
+				false -> {"", Options}		%% @todo process the error!
+			 end || {Topic, Options} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, subscribe}),
 			New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, Subscriptions2}},
 			{noreply, State#connection_state{packet_id = next(Packet_Id, State), processes = New_processes}};
@@ -404,13 +405,14 @@ handle_cast({disconnect, ReasonCode, Properties},
 					Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, disconnect}),
 					New_processes = (State#connection_state.processes)#{disconnect => Timeout_ref}, %% @todo check if 'disconnect' key exists; if yes - error
 					{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
-				?ELSE ->
+				?ELSE -> %% if version = 3.1 or 3.1.1
 					close_socket(State),
-					{noreply, State#connection_state{packet_id = 100}}
+					do_callback(State#connection_state.event_callback, [onClose, {ReasonCode, Properties}]),
+					{noreply, State#connection_state{packet_id = 100, connected = 0}}
 			end;
 		{error, _Reason} -> 
 			close_socket(State),
-			{noreply, State#connection_state{connected = 0}} %% @todo process error
+			{noreply, State#connection_state{packet_id = 100, connected = 0}} %% @todo process error
 	end;
 handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
@@ -641,7 +643,7 @@ topic_alias_handle('5.0',
 			{#mqtt_error{errno = 16#94, source = {?MODULE, ?FUNCTION_NAME, ?LINE}, error_msg = "Topic Alias invalid"}, State};
 		 SkipCheck ->
 			{PubRec, State};
-		 true ->
+		 ?ELSE ->
 			case {Topic, Alias} of
 				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
 				{"", -1} -> {#mqtt_error{errno = 16#82, error_msg = "Protocol Error: topic alias invalid"}, State}; 
@@ -651,7 +653,7 @@ topic_alias_handle('5.0',
 								undefined -> {#mqtt_error{errno = 16#94, error_msg = "Topic Alias invalid"}, State}; 
 								_ -> {PubRec, State}
 							end;
-						 true ->
+						 ?ELSE ->
 							 {#mqtt_error{errno = 16#94, error_msg = "Topic Alias invalid"}, State}
 					end;
 				{T, -1} -> %% if server publish msg to a client that already has topic alias map but server has no knowledge about this.
@@ -677,7 +679,7 @@ topic_alias_handle('5.0',
 	AliasMax = proplists:get_value(?Topic_Alias_Maximum, ConnectProps, 16#ffff),
 	%% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 	if (Alias == 0) orelse (Alias > AliasMax) -> {#mqtt_error{oper = protocol, errno=16#94, error_msg = "Topic Alias invalid"}, State};
-		 true ->
+		 ?ELSE ->
 %% @todo client side: error; server side: Alias == 0 or > maxAlias -> DISCONNECT(0x94,"Topic Alias invalid")
 			case {Topic, Alias} of
 				%% @todo client side: catch error and return from call; server side: DISCONNECT(0x82, "Protocol Error"))
