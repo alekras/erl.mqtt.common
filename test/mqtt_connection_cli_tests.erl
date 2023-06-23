@@ -133,7 +133,7 @@ connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to
 	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	ping_pong(),
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -226,7 +226,7 @@ subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_l
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
 	connect_v3(Conn_config),
 	subscribe_v3(),	
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -303,7 +303,7 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 			?assert(false)
 	end,
 
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -397,7 +397,7 @@ publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_l
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 0, topic = <<"Topic">>, payload = <<"Payload">>}}),
 	wait_mock_tcp("publish<0> packet"),
 	
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -448,7 +448,7 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -555,7 +555,7 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -672,7 +672,7 @@ receive_0_test('3.1.1'=Version, Conn_config) -> {"Receive 0 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -750,7 +750,7 @@ receive_1_test('3.1.1'=Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_l
 
 	wait_mock_tcp("publish<1> puback packet"), %% from client -> server
 
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -836,7 +836,7 @@ receive_2_test('3.1.1'=Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_l
 	client_gensrv ! {tcp, get_socket(), <<98,2,0,100>>}, %% Pubrel packet from server -> client
 	wait_mock_tcp("publish<2> pubcomp packet"),
 
-	disconnect(),
+	disconnect_v3(),
 
 	?passed
 end};
@@ -1003,6 +1003,24 @@ subscribe(Expected_packet, Subscribe_tuple, Suback_packet) ->
 			?assert(false)
 	after 2000 ->
 			?debug_Fmt("::test:: Timeout while waiting suback callback from client~n", []),
+			?assert(false)
+	end.
+
+disconnect_v3() ->
+	?debug_Fmt("::test:: >>> disconnect PID:~p~n", [self()]),
+%	mock_tcp:set_expectation(<<224,0>>),
+	gen_server:cast(client_gensrv, {disconnect, 0, []}),
+%	wait_mock_tcp("disconnect"),
+%%	from server
+%	client_gensrv ! {tcp, get_socket(), <<224,0>>}, %% Disconnect packet
+	receive
+		[onClose, {_DisconnectReasonCode, _Properties}] = Args ->
+			?debug_Fmt("::test:: onClose event callback = ~p ~n", [Args]);
+		Message ->
+			?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Message]),
+			?assert(false)
+	after 2000 ->
+			?debug_Fmt("::test:: Timeout while waiting onClose callback from client~n", []),
 			?assert(false)
 	end.
 

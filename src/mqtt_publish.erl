@@ -442,7 +442,7 @@ handle_get_topic_from_alias('5.0', #publish{topic = Prms_Topic} = PubParam, Stat
 	if Prms_Topic =:= "" ->
 				TopicAlias = proplists:get_value(?Topic_Alias, PubParam#publish.properties, 0),
 				if TopicAlias == 0 -> error;
-					 true ->
+					 ?ELSE ->
 							maps:get(TopicAlias, State#connection_state.topic_alias_in_map, error)
 				end;
 		 true -> Prms_Topic

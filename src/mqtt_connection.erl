@@ -349,7 +349,11 @@ handle_cast({subscribe, Subscriptions, Properties},
 		ok ->
 			Subscriptions2 =
 			[case mqtt_data:is_topicFilter_valid(Topic) of
-				{true, [_, TopicFilter]} -> {TopicFilter, Options};
+				{true, [_, TopicFilter]} -> 
+					if is_integer(Options) -> {TopicFilter, #subscription_options{max_qos = Options}};
+						 is_record(Options, subscription_options) -> {TopicFilter, Options};
+						 ?ELSE -> {"", Options}		%% @todo process the error!
+					end;
 				false -> {"", Options}		%% @todo process the error!
 			 end || {Topic, Options} <- Subscriptions], %% @todo check for proper record #subs_options for v5 (and v3.1.1 ?)
 			Timeout_ref = erlang:start_timer(?MQTT_GEN_SERVER_TIMEOUT, self(), {operation_timeout, subscribe}),

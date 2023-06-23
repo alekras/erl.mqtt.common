@@ -58,7 +58,7 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 							if SubId == 0 -> Options;
 								 ?ELSE -> Options#subscription_options{identifier = SubId}
 							end;
-					 true ->
+					 ?ELSE ->
 							#subscription_options{max_qos = Options}
 				end,
 			{ShareName, TopicFilter} =
