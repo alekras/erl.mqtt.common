@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2022 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2023 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 
 %% @hidden
 %% @since 2020-04-10
-%% @copyright 2015-2022 Alexei Krasnopolski
+%% @copyright 2015-2023 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
 %% @doc This module is running unit tests for some modules.
 
--module(mqtt_common_puback_unit_testing).
+-module(mqtt_common_pubrel_unit_testing).
 
 %%
 %% Include files
@@ -47,55 +47,55 @@
 
 unit_test_() ->
 	[ 
-		{"packet output 1", fun() -> packet_output('3.1.1') end},
-		{"packet output 2", fun() -> packet_output('5.0') end},
-		{"packet output 3", fun() -> packet_output_props() end},
+		{"packet output", fun() -> packet_output('3.1.1') end},
+		{"packet output", fun() -> packet_output('5.0') end},
+		{"packet output", fun() -> packet_output_props() end},
 
 		{"input_parser", fun input_parser/0}
 	].
 
 packet_output('3.1.1') ->
-	Value = mqtt_output:packet(puback, '3.1.1', {23044, 0}, []),
+	Value = mqtt_output:packet(pubrel, '3.1.1', {23044,0}, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<64,2,90,4>>, Value),
+	?assertEqual(<<98,2,90,4>>, Value),
 
 	?passed;
 packet_output('5.0') ->
-	Value = mqtt_output:packet(puback, '5.0', {23044,0}, []),
+	Value = mqtt_output:packet(pubrel, '5.0', {23044,0}, []),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<64,2,90,4>>, Value),
+	?assertEqual(<<98,2,90,4>>, Value),
 
-	Value2 = mqtt_output:packet(puback, '5.0', {23044, 10}, []),
+	Value2 = mqtt_output:packet(pubrel, '5.0', {23044,10}, []),
 %	io:format(user, "~n -=- value2=~256p~n", [Value2]),
-	?assertEqual(<<64,3,90,4,10>>, Value2),
+	?assertEqual(<<98,3,90,4,10>>, Value2),
 
 	?passed.
 
 packet_output_props() ->
-	Value = mqtt_output:packet(puback, '5.0', {23044,16}, [{?Reason_String, "No matching subscribers"},
+	Value = mqtt_output:packet(pubrel, '5.0', {23044,146}, [{?Reason_String, "Packet Identifier not found"},
 																													 {?User_Property, {"Key Name", "Property Value"}}]),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual(<<64,57,90,4,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8>>, Value),
+	?assertEqual(<<98,61,90,4,146,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 27:16,"Packet Identifier not found"/utf8>>, Value),
 	
 	?passed.
 
 input_parser() ->
-	?assertEqual({puback, {101, 0}, [], <<1:8, 1:8>>}, 
-							 mqtt_input:input_parser('3.1.1', <<16#40:8, 2:8, 101:16, 1:8, 1:8>>)),
+	?assertEqual({pubrel, {102,0}, [], <<1:8, 1:8>>}, 
+							 mqtt_input:input_parser('3.1.1', <<16#62:8, 2:8, 102:16, 1:8, 1:8>>)),
 
-	Value = mqtt_input:input_parser('5.0', <<64,2,90,4, 1,1>>),
+	Value = mqtt_input:input_parser('5.0', <<98,2,90,5, 1,7>>),
 %	io:format(user, "~n --- value=~256p~n", [Value]),
-	?assertEqual({puback, {23044, 0}, [], <<1,1>>}, Value),
+	?assertEqual({pubrel, {23045,0}, [], <<1:8, 7:8>>}, Value),
 
-	Value1 = mqtt_input:input_parser('5.0', <<64,3,90,4,10, 1,1>>),
+	Value1 = mqtt_input:input_parser('5.0', <<98,3,90,5,10, 1,7>>),
 %	io:format(user, "~n --- value=~256p~n", [Value1]),
-	?assertEqual({puback, {23044, 10}, [], <<1,1>>}, Value1),
+	?assertEqual({pubrel, {23045,10}, [], <<1:8, 7:8>>}, Value1),
 
-	Value2 = mqtt_input:input_parser('5.0', <<64,57,90,4,16,53, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 23:16,"No matching subscribers"/utf8, 1,1>>),
+	Value2 = mqtt_input:input_parser('5.0', <<98,61,90,4,146,57, 38,8:16,"Key Name"/utf8, 14:16,"Property Value"/utf8, 31, 27:16,"Packet Identifier not found"/utf8, 1,7>>),
 %	io:format(user, "~n --- value=~256p~n", [Value2]),
-	?assertEqual({puback, {23044, 16}, [{?Reason_String, <<"No matching subscribers">>},
-																			{?User_Property, {<<"Key Name">>, <<"Property Value">>}}],
-								<<1,1>>},
-								Value2),
+	?assertEqual({pubrel, {23044,146}, [{?Reason_String, <<"Packet Identifier not found">>},
+																				{?User_Property, {<<"Key Name">>, <<"Property Value">>}}],
+								<<1:8, 7:8>>},
+							 Value2),
 
-?passed.
+	?passed.
