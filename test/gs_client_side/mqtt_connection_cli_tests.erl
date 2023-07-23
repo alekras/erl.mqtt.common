@@ -34,11 +34,15 @@
 %%
 %% Import modules
 %%
+-import(mock_tcp, [wait_mock_tcp/1]).
 
 %%
 %% Exported Functions
 %%
 -export([
+	connect/2,
+	disconnect/1,
+	subscribe/1
 ]).
 
 %%
@@ -92,7 +96,7 @@ connection_genServer_test_() ->
 	].
 
 do_start() ->
-	?debug_Fmt("::test:: >>> do_start() ~n", []),
+	application:start(mqtt_common),
 	lager:start(),
 
 	mqtt_dets_storage:start(client),
@@ -129,19 +133,19 @@ cleanup(X, Y) ->
 
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	ping_pong(),
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 	ping_pong(),
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
@@ -169,7 +173,7 @@ reconnection_test('5.0' = Version, Conn_config) -> {"Re-Connect test [" ++ atom_
 			?assert(false)
 	end,
 	ping_pong(),
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
@@ -217,31 +221,31 @@ connection_props_test('5.0' = Version, Conn_config) -> {"Connection test with pr
 	Connack_packet = <<32,7,1,0, 4, 37,1, 36,2>>,
 	connect(Config, Expected_packet, Connack_packet),
 	ping_pong(),
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
 
 subscribe_test('3.1.1'=Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
-	subscribe_v3(),	
-	disconnect_v3(),
+	connect(Version, Conn_config),
+	subscribe(Version),	
+	disconnect(Version),
 
 	?passed
 end};
 subscribe_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
-	subscribe_v5(),	
-	disconnect(),
+	connect(Version, Conn_config),
+	subscribe(Version),	
+	disconnect(Version),
 
 	?passed
 end}.
 
 subscribe_timeout_test('5.0' = Version, Conn_config) -> {"Subscribe Timeout test [" ++ atom_to_list(Version) ++ "]", timeout, 60, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	Expected_packet = <<130,28,0,100,17,11,233,230,10,38,0,3,75,101,121,0,5,86,97,108,117,101,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, 
@@ -268,24 +272,24 @@ subscribe_timeout_test('5.0' = Version, Conn_config) -> {"Subscribe Timeout test
 			?assert(false)
 	end,
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
 
 subscribe_props_test('5.0' = Version, Conn_config) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 	subscribe_v5_props(),	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
 
 unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
-	subscribe_v3(),
+	connect(Version, Conn_config),
+	subscribe(Version),
 	
 	mock_tcp:set_expectation(<<162,9,0,101,0,5,84,111,112,105,99>>),
 	gen_server:cast(client_gensrv, {unsubscribe, [<<"Topic">>]}),
@@ -303,14 +307,14 @@ unsubscribe_test('3.1.1'=Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 			?assert(false)
 	end,
 
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
-	subscribe_v5(),
+	connect(Version, Conn_config),
+	subscribe(Version),
 
 	mock_tcp:set_expectation(<<162,10,0,101,0,0,5,84,111,112,105,99>>),
 	gen_server:cast(client_gensrv, {unsubscribe, [<<"Topic">>]}),
@@ -328,15 +332,15 @@ unsubscribe_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_
 			?assert(false)
 	end,
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 unsubscribe_timeout_test('5.0' = Version, Conn_config) -> {"Unsubscribe Timeout test [" ++ atom_to_list(Version) ++ "]", timeout, 60, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect_v5(Conn_config),
-	subscribe_v5(),
+	connect(Version, Conn_config),
+	subscribe(Version),
 
 	mock_tcp:set_expectation(<<162,10,0,101,0,0,5,84,111,112,105,99>>),
 	gen_server:cast(client_gensrv, {unsubscribe, [<<"Topic">>]}),
@@ -358,15 +362,15 @@ unsubscribe_timeout_test('5.0' = Version, Conn_config) -> {"Unsubscribe Timeout 
 			?assert(false)
 	end,
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 end}.
 
 unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
-	subscribe_v5(),
+	connect(Version, Conn_config),
+	subscribe(Version),
 	
 	mock_tcp:set_expectation(<<162,23,101:16,13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,5:16,84,111,112,105,99>>),
 	gen_server:cast(client_gensrv, {unsubscribe, [<<"Topic">>], [{?User_Property, {"Key", "Value"}}]}),
@@ -384,39 +388,39 @@ unsubscribe_props_test('5.0' = Version, Conn_config) -> {"Unsubscribe test [" ++
 			?assert(false)
 	end,
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_0_test('3.1.1'=Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<48,14,0,5,84,111,112,105,99,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 0, topic = <<"Topic">>, payload = <<"Payload">>}}),
 	wait_mock_tcp("publish<0> packet"),
 	
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 publish_0_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<48,15,0,5,84,111,112,105,99,0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 0, topic = <<"Topic">>, payload = <<"Payload">>}}),
 	wait_mock_tcp("publish<0> packet"),
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<48,25,0,5,84,111,112,105,99,10, 9,4:16,1,2,3,4, 35,300:16,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 0, topic = <<"Topic">>,
@@ -424,14 +428,14 @@ publish_0_props_test('5.0' = Version, Conn_config) -> {"Publish 0 test [" ++ ato
 																										properties=[{?Topic_Alias, 300},{?Correlation_Data, <<1,2,3,4>>}]}}),
 	wait_mock_tcp("publish<0> packet"),
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<50,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -448,13 +452,13 @@ publish_1_test('3.1.1'=Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -473,14 +477,14 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_1_timeout_test('5.0' = Version, Conn_config) -> {"Publish 1 Timeout test [" ++ atom_to_list(Version) ++ "]", timeout, 60, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -500,14 +504,14 @@ publish_1_timeout_test('5.0' = Version, Conn_config) -> {"Publish 1 Timeout test
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<50,24,0,5,84,111,112,105,99,100:16, 7,2,120000:32,1,1,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish,
@@ -527,14 +531,14 @@ publish_1_props_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ ato
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<52,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 2, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -555,13 +559,13 @@ publish_2_test('3.1.1'=Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 2, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -582,14 +586,14 @@ publish_2_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_2_timeout_test('5.0' = Version, Conn_config) -> {"Publish 2 Timeout test [" ++ atom_to_list(Version) ++ "]", timeout, 60, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 2, topic = <<"Topic">>, payload = <<"Payload">>}}),
@@ -612,14 +616,14 @@ publish_2_timeout_test('5.0' = Version, Conn_config) -> {"Publish 2 Timeout test
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<52,27,0,5,84,111,112,105,99,100:16,10,9,0,4,1,2,3,4,35,1,44,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 2, topic = <<"Topic">>,
@@ -649,14 +653,14 @@ publish_2_props_test('5.0' = Version, Conn_config) -> {"Publish 2 test [" ++ ato
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_0_test('3.1.1'=Version, Conn_config) -> {"Receive 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	client_gensrv ! {tcp, get_socket(), <<48,14,0,5,84,111,112,105,99,80,97,121,108,111,97,100>>}, %% from server -> client
 	
@@ -672,13 +676,13 @@ receive_0_test('3.1.1'=Version, Conn_config) -> {"Receive 0 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 receive_0_test('5.0' = Version, Conn_config) -> {"Receive 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	client_gensrv ! {tcp, get_socket(), <<48,15,0,5,84,111,112,105,99,0,80,97,121,108,111,97,100>>}, %% from server -> client
 	
@@ -694,14 +698,14 @@ receive_0_test('5.0' = Version, Conn_config) -> {"Receive 0 test [" ++ atom_to_l
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_0_props_test('5.0' = Version, Conn_config) -> {"Receive 0 props test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	client_gensrv ! {
 		tcp,
@@ -724,14 +728,14 @@ receive_0_props_test('5.0' = Version, Conn_config) -> {"Receive 0 props test [" 
 			?assert(false)
 	end,
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_1_test('3.1.1'=Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<64,2,0,100>>),
 	client_gensrv ! {tcp, get_socket(), <<50,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>}, %% from server -> client
@@ -750,13 +754,13 @@ receive_1_test('3.1.1'=Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_l
 
 	wait_mock_tcp("publish<1> puback packet"), %% from client -> server
 
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 receive_1_test('5.0' = Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<64,2,100:16>>),
 	client_gensrv ! {tcp, get_socket(), <<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>}, %% from server -> client
@@ -775,14 +779,14 @@ receive_1_test('5.0' = Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_l
 	
 	wait_mock_tcp("publish<1> puback packet"), %% from client -> server
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_1_props_test('5.0' = Version, Conn_config) -> {"Receive 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<64,2,100:16>>),
 	client_gensrv ! {tcp, get_socket(), <<50,24,0,5,"Topic"/utf8,100:16, 7,2,120000:32,1,1, "Payload"/utf8>>}, %% from server -> client
@@ -806,14 +810,14 @@ receive_1_props_test('5.0' = Version, Conn_config) -> {"Receive 1 test [" ++ ato
 	
 	wait_mock_tcp("publish<1> puback packet"), %% from client -> server
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_2_test('3.1.1'=Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), %% Pubrec packet from client -> server
 	client_gensrv ! {tcp, get_socket(), <<52,16,0,5,84,111,112,105,99, 100:16, 80,97,121,108,111,97,100>>}, %% from server -> client
@@ -836,13 +840,13 @@ receive_2_test('3.1.1'=Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_l
 	client_gensrv ! {tcp, get_socket(), <<98,2,0,100>>}, %% Pubrel packet from server -> client
 	wait_mock_tcp("publish<2> pubcomp packet"),
 
-	disconnect_v3(),
+	disconnect(Version),
 
 	?passed
 end};
 receive_2_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), %% Pubrec packet from client -> server
 	client_gensrv ! {tcp, get_socket(), <<52,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>}, %% from server -> client
@@ -865,14 +869,14 @@ receive_2_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_l
 	client_gensrv ! {tcp, get_socket(), <<98,2,0,100>>}, %% Pubrel packet from server -> client
 	wait_mock_tcp("publish<2> pubcomp packet"),
 
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
 
 receive_2_props_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) ~n", [Version, Conn_config]),
-	connect_v5(Conn_config),
+	connect(Version, Conn_config),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), %% Pubrec packet from client -> server
 	client_gensrv ! {tcp, get_socket(), <<52,27,0,5,84,111,112,105,99,100:16,10,9,0,4,1,2,3,4,35,1,44,80,97,121,108,111,97,100>>}, %% from server -> client
@@ -899,7 +903,7 @@ receive_2_props_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ ato
 	client_gensrv ! {tcp, get_socket(), <<98,2,0,100>>}, %% Pubrel packet from server -> client
 	wait_mock_tcp("publish<2> pubcomp packet"),
 	
-	disconnect(),
+	disconnect(Version),
 
 	?passed
 	end}.
@@ -907,27 +911,12 @@ receive_2_props_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ ato
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-wait_mock_tcp(R) ->
-	receive
-		{mock_tcp, true} ->
-			?debug_Fmt("::test:: mock_tcp ~p acknowledge ~n", [R]),
-			?assert(true);
-		{mock_tcp, false} ->
-			?assert(false);
-		M ->
-			?debug_Fmt("::test:: while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
-			?assert(false)
-	after 2000 ->
-			?debug_Fmt("::test:: Timeout while waiting ~p from mock_tcp~n", [R]),
-			?assert(false)
-	end.
 
-connect_v3(Conn_config) ->
+connect('3.1.1', Conn_config) ->
 	Expected_packet = <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>, 
 	Connack_packet = <<32,2,0,0>>,
-	connect(Conn_config, Expected_packet, Connack_packet).
-
-connect_v5(Conn_config) ->
+	connect(Conn_config, Expected_packet, Connack_packet);
+connect('5.0', Conn_config) ->
 	Expected_packet = <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>, 
 	Connack_packet = <<32,3,1,0,0>>,
 	connect(Conn_config, Expected_packet, Connack_packet).
@@ -968,22 +957,24 @@ ping_pong() ->
 			?assert(false)
 	end.
 
-subscribe_v3() ->
+subscribe('3.1.1') ->
 	Expected_packet = <<130,10,0,100,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, [{<<"Topic">>, 2}]}, 
-	Suback_packet = <<144,3,0,100,2>>,
-	subscribe(Expected_packet, Subscribe_tuple, Suback_packet).
-
-subscribe_v5() ->
+	Suback_packet = <<144,3, 0,100, 2>>,
+	subscribe(Expected_packet, Subscribe_tuple, Suback_packet);
+subscribe('5.0') ->
 	Expected_packet = <<130,11,0,100,0,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, [{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}}]}, 
 	Suback_packet = <<144,4, 0,100, 0, 2>>,
 	subscribe(Expected_packet, Subscribe_tuple, Suback_packet).
 
 subscribe_v5_props() ->
+	subscribe_v5_props(#subscription_options{max_qos=2, nolocal=0, retain_as_published=2}).
+
+subscribe_v5_props(Opt) ->
 	Expected_packet = <<130,28,0,100,17,11,233,230,10,38,0,3,75,101,121,0,5,86,97,108,117,101,0,5,84,111,112,105,99,2>>, 
 	Subscribe_tuple = {subscribe, 
-										[{<<"Topic">>, #subscription_options{max_qos=2, nolocal=0, retain_as_published=2}}],
+										[{<<"Topic">>, Opt}],
 										[{?User_Property, {<<"Key">>, <<"Value">>}}, {?Subscription_Identifier, 177001}]
 									}, 
 	Suback_packet = <<144,37, 0,100, 33, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 31,17:16,"Unspecified error"/utf8, 0>>,
@@ -1006,7 +997,7 @@ subscribe(Expected_packet, Subscribe_tuple, Suback_packet) ->
 			?assert(false)
 	end.
 
-disconnect_v3() ->
+disconnect('3.1.1') ->
 	?debug_Fmt("::test:: >>> disconnect PID:~p~n", [self()]),
 %	mock_tcp:set_expectation(<<224,0>>),
 	gen_server:cast(client_gensrv, {disconnect, 0, []}),
@@ -1022,9 +1013,8 @@ disconnect_v3() ->
 	after 2000 ->
 			?debug_Fmt("::test:: Timeout while waiting onClose callback from client~n", []),
 			?assert(false)
-	end.
-
-disconnect() ->
+	end;
+disconnect('5.0') ->
 	?debug_Fmt("::test:: >>> disconnect PID:~p~n", [self()]),
 	mock_tcp:set_expectation(<<224,0>>),
 	gen_server:cast(client_gensrv, {disconnect, 0, []}),

@@ -34,12 +34,15 @@
 %%
 %% Import modules
 %%
-%-import(helper_common, []).
+-import(mock_tcp, [wait_mock_tcp/1]).
 
 %%
 %% Exported Functions
 %%
 -export([
+	connect/2,
+	subscribe/3,
+	disconnect/0
 ]).
 
 %%
@@ -190,7 +193,7 @@ end}.
 
 subscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(),
+	connect(Version, Socket),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,"Topic"/utf8,2>>}, %% Subscription request
@@ -202,7 +205,7 @@ subscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Subscribe test [" ++
 end};
 subscribe_test('5.0' = Version, {Socket, Conn_config}) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
+	connect(Version, Socket),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
@@ -215,7 +218,7 @@ end}.
 
 subscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Subscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
+	connect(Version, Socket),
 
 %%	mock_tcp:set_expectation(<<144,21, 100:16, 17, 11,233,230,10, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8, 2>>), %% Suback packet
 	mock_tcp:set_expectation(<<144,4,100:16, 0,2>>), %% Suback packet
@@ -229,7 +232,7 @@ end}.
 
 unsubscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(),
+	connect(Version, Socket),
 
 	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,10,0,100,0,5,"Topic"/utf8,2>>}, %% Subscription request
@@ -245,7 +248,7 @@ unsubscribe_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Unsubscribe test [
 end};
 unsubscribe_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
+	connect(Version, Socket),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
@@ -262,7 +265,7 @@ unsubscribe_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe test [
 
 unsubscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
+	connect(Version, Socket),
 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
@@ -287,8 +290,8 @@ unsubscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe 
 
 publish_0_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(),
-	subscribe_v3(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, 2),
 
 	mock_tcp:set_expectation(<<48,14,0,5,"Topic"/utf8,"Payload"/utf8>>), %% Publish packet from server -> client
 	conn_server ! {tcp, Socket, <<48,14,0,5,"Topic"/utf8,"Payload"/utf8>>}, %% Publish packet from client -> server
@@ -300,8 +303,8 @@ publish_0_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 0 test [" ++
 end};
 publish_0_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation(<<48,15,0,5,"Topic"/utf8,0,"Payload"/utf8>>), %% Publish packet from server -> client
 	conn_server ! {tcp, Socket, <<48,15,0,5,"Topic"/utf8,0,"Payload"/utf8>>}, %% Publish packet from client -> server
@@ -314,8 +317,8 @@ publish_0_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 0 test [" ++
 
 publish_0_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 0 test [" ++ atom_to_list(Version) ++ "]", timeout, 1, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation(<<48,25,0,5,"Topic"/utf8,10, 9,4:16,1,2,3,4, 35,300:16,"Payload"/utf8>>), %% Publish packet from server -> client
 	conn_server ! {tcp, Socket, <<48,25,0,5,"Topic"/utf8, 10, 9,4:16,1,2,3,4, 35,300:16, "Payload"/utf8>>}, %% Publish packet from client -> server
@@ -328,8 +331,8 @@ publish_0_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 0 test
 
 publish_1_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(),
-	subscribe_v3(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, 2),
 	
 	mock_tcp:set_expectation([<<64,2,0,100>>,<<50,16,0,5,"Topic"/utf8,0,100,"Payload"/utf8>>]), % puback packet, publish packet server -> subscriber
 	conn_server ! {tcp, Socket, <<50,16,0,5,"Topic"/utf8, 100:16, "Payload"/utf8>>}, %% Publish packet from client -> server
@@ -347,8 +350,8 @@ publish_1_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++
 end};
 publish_1_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation([<<64,2,100:16>>,<<50,17,0,5,"Topic"/utf8,100:16, 0,"Payload"/utf8>>]),
 	conn_server ! {tcp, Socket, <<50,17,0,5,"Topic"/utf8,100:16, 0,"Payload"/utf8>>}, %% Publish packet from client -> server
@@ -365,8 +368,8 @@ publish_1_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++
 
 publish_1_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation([<<64,2,100:16>>,
 														<<50,19, 5:16,"Topic"/utf8, 100:16, 2,1,1, "Payload"/utf8>>]),
@@ -384,8 +387,8 @@ publish_1_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 1 test
 
 publish_2_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p~n", [Version, Conn_config, self()]),
-	connect_v3(),
-	subscribe_v3(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, 2),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), % pubrec packet from server -> client
 	conn_server ! {tcp, Socket, <<52,16,0,5,"Topic"/utf8, 100:16, "Payload"/utf8>>}, %% Publish packet from client -> server
@@ -409,8 +412,8 @@ publish_2_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Publish 2 test [" ++
 end};
 publish_2_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), % pubrec packet from server -> client
 	conn_server ! {tcp, Socket, <<52,17,0,5,"Topic"/utf8,100:16, 0,"Payload"/utf8>>}, %% Publish packet from client -> server
@@ -435,8 +438,8 @@ publish_2_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 2 test [" ++
 
 publish_2_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 2, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) ~n", [Version, Conn_config]),
-	connect_v5(),
-	subscribe_v5(),
+	connect(Version, Socket),
+	subscribe(Version, Socket, {0,0,0,2}),
 
 	mock_tcp:set_expectation(<<80,2,0,100>>), % pubrec packet from server -> client
 	conn_server ! {tcp, Socket, <<52,27,0,5,"Topic"/utf8,100:16,10,9,0,4,1,2,3,4,35,1,44,"Payload"/utf8>>}, %% Publish packet from client -> server
@@ -468,39 +471,26 @@ publish_2_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Publish 2 test
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-wait_mock_tcp(R) ->
-	receive
-		{mock_tcp, true} ->
-			?debug_Fmt("::test:: mock_tcp ~p acknowledge ~n", [R]),
-			?assert(true);
-		{mock_tcp, false} ->
-			?assert(false);
-		M ->
-			?debug_Fmt("::test:: while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
-			?assert(false)
-	after 2000 ->
-			?debug_Fmt("::test:: Timeout while waiting ~p from mock_tcp~n", [R]),
-			?assert(false)
-	end.
 
-connect_v3() ->
+connect('3.1.1', Socket) ->
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
-	wait_mock_tcp("connack").
-
-connect_v5() ->
+	conn_server ! {tcp, Socket, <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	wait_mock_tcp("connack");
+connect('5.0', Socket) ->
 	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, Socket, <<16>>},
+	conn_server ! {tcp, Socket, <<38>>},
+	conn_server ! {tcp, Socket, <<4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack").
 
-subscribe_v3() ->
-	mock_tcp:set_expectation(<<144,3,0,100,2>>), %% Suback packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<130,10,0,100,0,5,"Topic"/utf8,2>>}, %% Subscription request
-	wait_mock_tcp("suback").
-
-subscribe_v5() ->
-	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
-	conn_server ! {tcp, (sys:get_state(conn_server))#connection_state.socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
+subscribe('3.1.1', Socket, _) ->
+	mock_tcp:set_expectation(<<144,4,0,100,2,1>>), %% Suback packet
+	conn_server ! {tcp, Socket, <<130,19,0,100, 0,5,"Topic"/utf8,2, 0,6,"TopicA"/utf8,1>>}, %% Subscription request
+	wait_mock_tcp("suback");
+subscribe('5.0', Socket, {Retain_handling,Retain_as_published,No_local,Max_qos}) ->
+	mock_tcp:set_expectation(<<144,5, 0,100, 0, 2,2>>), %% Suback packet
+	conn_server ! {tcp, Socket, <<130,29,0,100,0,0,5,"Topic"/utf8,0:2,Retain_handling:2,Retain_as_published:1,No_local:1,Max_qos:2,
+																0,15,"$share/A/TopicA"/utf8,0:2,Retain_handling:2,Retain_as_published:1,No_local:1,Max_qos:2>>}, %% Subscription request
 	wait_mock_tcp("suback").
 
 disconnect() ->

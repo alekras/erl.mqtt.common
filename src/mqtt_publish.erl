@@ -246,7 +246,7 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 	Topic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubRecord, State),
 %%	NewPubRecord = PubRecord#publish{topic = Topic},
 	case get_topic_attributes(State, Topic) of
-		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]); %% @todo - why undefined?
+		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]);
 		List ->
 			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || SubsOption <- List]
 	end,
@@ -277,9 +277,9 @@ handle_retain_msg_during_publish('5.0',
 																	#publish{qos = Params_QoS, payload = _Payload, retain = Retain, dup = _Dup} = Param, Params_Topic) ->
 	if (Retain =:= 1) and (Params_QoS =:= 0) ->
 				Storage:retain(remove, Params_Topic),
-				Storage:session(save, Param, server);
+				Storage:retain(save, Param);
 			(Retain =:= 1) ->
-				Storage:session(save, Param, server);
+				Storage:retain(save, Param);
 			true -> ok
 	end;
 handle_retain_msg_during_publish(_,
@@ -287,9 +287,9 @@ handle_retain_msg_during_publish(_,
 																	#publish{qos = Params_QoS, retain = Retain} = Param, Params_Topic) ->
 	if (Retain =:= 1) and (Params_QoS =:= 0) ->
 				Storage:retain(remove, Params_Topic),
-				Storage:session(save, Param, server);
+				Storage:retain(save, Param);
 			(Retain =:= 1) ->
-				Storage:session(save, Param, server); %% It is protocol extension: we have to remove all previously retained messages by MQTT protocol.
+				Storage:retain(save, Param); %% It is protocol extension: we have to remove all previously retained messages by MQTT protocol.
 			true -> ok
 	end.
 
@@ -410,7 +410,7 @@ handle_server_publish(
 server_send_publish(Pid, Params) -> 
 	lager:info([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
 %% TODO process look up topic alias for the Pid client/session and update #publish record
-	gen_server:cast(Pid, {publish, Params#publish{dir=out}}), %% @todo callback for timeout or error
+	gen_server:cast(Pid, {publish, Params#publish{dir=out}}), %% @todo callback for timeout or error in self process connection_state
 	lager:info([{endtype, server}], "Server has successfuly published message to subscriber.~n", []).
 
 msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->

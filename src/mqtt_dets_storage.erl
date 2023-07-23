@@ -185,7 +185,13 @@ subscription(save, #storage_subscription{key = Key} = Document, End_Type) ->
 		ok ->
 			true
 	end;
-subscription(exist, _Key, _End_Type) -> false;
+subscription(exist, Key, End_Type) ->
+	case dets:member(db_id(2, End_Type), Key) of
+		{error, Reason} ->
+			lager:error([{endtype, End_Type}], "Exist failed: key=~p reason=~p~n", [Key, Reason]),
+			false;
+		R -> R
+	end;
 subscription(get, #subs_primary_key{} = Key, End_Type) -> %% @todo delete it
 	case dets:match_object(db_id(2, End_Type), #storage_subscription{key = Key, _ = '_'}) of
 		{error, Reason} ->

@@ -151,7 +151,8 @@
 		processes_ext = #{} :: map(), 
 		tail = <<>> :: binary(),
 		ping_count = 0 :: integer(), %% is used ?
-		timer_ref :: reference(), %% for keep_alive
+		timer_ref :: reference(), %% for operation's timeout processing
+		timeout = 0 :: integer(),
 		test_flag :: atom() %% for testing only
   }
 ).
@@ -177,7 +178,7 @@
 -define(SOC_BUFFER_SIZE, 16#4000).
 -define(SOC_SEND_TIMEOUT, 60000).
 -define(SOC_CONN_TIMEOUT, 60000).
--define(MQTT_GEN_SERVER_TIMEOUT, 1000).
+-define(MQTT_GEN_SERVER_TIMEOUT, 500).
 
 -define(CONNECT_PACK_TYPE, 16#10:8).
 -define(CONNACK_PACK_TYPE, 16#20:8).
