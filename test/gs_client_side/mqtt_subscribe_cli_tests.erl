@@ -31,7 +31,9 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--import(mqtt_connection_cli_tests, [connect/2, disconnect/1, wait_mock_tcp/1]).
+-import(mqtt_connection_cli_tests, [connect/2, disconnect/1]).
+-import(mock_tcp, [wait_mock_tcp/1]).
+
 -export([]).
 
 subscribe_genServer_test_() ->

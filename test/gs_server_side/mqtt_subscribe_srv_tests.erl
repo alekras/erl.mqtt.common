@@ -59,6 +59,7 @@ subscribe_genServer_test_() ->
 				{'3.1.1', fun storage_test/2}
 				,{'5.0',  fun storage_test/2}
 				,{'5.0',  fun share_test/2}
+				,{'5.0',  fun error_test/2}
 				,{'3.1.1', fun retain0_test/2}
 				,{'5.0', fun retain0_test/2}
 				,{'5.0', fun retain1_test/2}
@@ -162,16 +163,48 @@ storage_test('5.0' = Version, {Socket, Conn_config}) -> {"Storage test [" ++ ato
 	?passed
 end}.
 
+%% test share and identifier
 share_test('5.0' = Version, {Socket, Conn_config}) -> {"Share test [" ++ atom_to_list(Version) ++ "]", timeout, 10, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
 	connect(Version, Socket),
 
-	subscribe(Version, Socket, {0,0,0,2}),
+%%	subscribe(Version, Socket, {0,0,0,2}),
+	mock_tcp:set_expectation(<<144,5, 0,100, 0, 2,2>>), %% Suback packet
+	conn_server ! {tcp, Socket, <<130,31,100:16, 2,11,7, 5:16,"Topic"/utf8,0:2,0:2,0:1,0:1,2:2,
+																0,15,"$share/A/TopicA"/utf8,0:2,0:2,0:1,0:1,2:2>>}, %% Subscription request
+	wait_mock_tcp("suback"),
+
 	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
 	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "TopicA", shareName= "A"}, server),
 	?debug_Fmt("::test:: Record = ~p ~n", [Record]),
 	?assertEqual(2, (Record#storage_subscription.options)#subscription_options.max_qos),	
 	?assertEqual("A", (Record#storage_subscription.key)#subs_primary_key.shareName),	
+	?assertEqual(7, (Record#storage_subscription.options)#subscription_options.identifier),	
+
+	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
+	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
+	wait_mock_tcp("unsuback"),
+	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	?assertEqual([], Record1),
+
+	disconnect(),
+
+	?passed
+end}.
+
+%% test errror while wrong topic name
+error_test('5.0' = Version, {Socket, Conn_config}) -> {"Error test [" ++ atom_to_list(Version) ++ "]", timeout, 10, fun() ->
+	?debug_Fmt("::test:: >>> test(~p, ~128p) PID=~p ~n", [Version, Conn_config, self()]),
+	connect(Version, Socket),
+
+%%	subscribe(Version, Socket, {0,0,0,2}),
+	mock_tcp:set_expectation(<<144,5, 0,100, 0, 2,128>>), %% Suback packet
+	conn_server ! {tcp, Socket, <<130,32,100:16, 2,11,7, 5:16,"Topic"/utf8,0:2,0:2,0:1,0:1,2:2,
+																16:16,"$share/A+/TopicA"/utf8,0:2,0:2,0:1,0:1,2:2>>}, %% Subscription request
+	wait_mock_tcp("suback"),
+
+	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
+	[] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "TopicA", shareName= "A"}, server),
 
 	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
