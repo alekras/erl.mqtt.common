@@ -115,71 +115,80 @@ handle_call(status, _From, #connection_state{storage = Storage} = State) ->
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 %% Client only site.
+handle_cast({connect, _, Callback, _}, #connection_state{connected = 1, end_type = client} = State) ->
+	do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already connected."}]),
+	{noreply, State};
 handle_cast({connect, Conn_config, Callback, Socket_options},
-						#connection_state{storage = Storage, end_type = client} = State) ->
-	{Transport, Sock_Opts} =
-	case Conn_config#connect.conn_type of 
-		CT when CT == ssl; CT == tls -> {ssl, [
-				{verify, verify_none},
-				{depth, 2},
-				{server_name_indication, disable} | Socket_options]
-			};
-		clear -> {gen_tcp, Socket_options};
-		web_socket -> {mqtt_ws_client_handler, [{conn_type, web_socket} | Socket_options]};
-		web_sec_socket -> {mqtt_ws_client_handler, [{conn_type, web_sec_socket} | Socket_options]};
-		T -> {T, Socket_options}
-	end,
-
-	Socket = open_socket(
-			Transport,
-			Conn_config#connect.host,
-			Conn_config#connect.port,
-			Sock_Opts),
-
-	New_State = State#connection_state{
-		config = Conn_config,
-		transport = Transport,
-		socket = Socket,
-		event_callback = Callback,
-		topic_alias_in_map = #{},
-		topic_alias_out_map = #{}},
-
-	try 
-		mqtt_data:validate_config(Conn_config),
-		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
-			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
-				ok -> 
-					New_State_2 =
-					case Conn_config#connect.clean_session of
-						1 ->
-							Storage:cleanup(Conn_config#connect.client_id, State#connection_state.end_type),
-							New_State;
-						0 ->
-							restore_session(New_State) 
-					end,
-					Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, connect}),
-					New_processes = (State#connection_state.processes)#{connect => Timeout_ref}, %% @todo check if 'connect' key exists; if yes - error
-					{noreply, New_State_2#connection_state{processes = New_processes}};
-				{error, Reason} ->
-					do_callback(New_State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= Reason}]),
-					{noreply, New_State};
-				Exit -> 
-					do_callback(New_State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= Exit}]),
-					lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+						#connection_state{storage = Storage, processes = Processes, end_type = client} = State) ->
+	case maps:get(connect, Processes, undefined) of
+		undefined ->
+			{Transport, Sock_Opts} =
+			case Conn_config#connect.conn_type of 
+				CT when CT == ssl; CT == tls -> {ssl, [
+						{verify, verify_none},
+						{depth, 2},
+						{server_name_indication, disable} | Socket_options]
+					};
+				clear -> {gen_tcp, Socket_options};
+				web_socket -> {mqtt_ws_client_handler, [{conn_type, web_socket} | Socket_options]};
+				web_sec_socket -> {mqtt_ws_client_handler, [{conn_type, web_sec_socket} | Socket_options]};
+				T -> {T, Socket_options}
+			end,
+		
+			Socket = open_socket(
+					Transport,
+					Conn_config#connect.host,
+					Conn_config#connect.port,
+					Sock_Opts),
+		
+			New_State = State#connection_state{
+				config = Conn_config,
+				transport = Transport,
+				socket = Socket,
+				event_callback = Callback,
+				topic_alias_in_map = #{},
+				topic_alias_out_map = #{}},
+		
+			try 
+				mqtt_data:validate_config(Conn_config),
+				if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
+					case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
+						ok -> 
+							New_State_2 =
+							case Conn_config#connect.clean_session of
+								1 ->
+									Storage:cleanup(Conn_config#connect.client_id, State#connection_state.end_type),
+									New_State;
+								0 ->
+									restore_session(New_State) 
+							end,
+							Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, connect}),
+							New_processes = Processes#{connect => Timeout_ref},
+							{noreply, New_State_2#connection_state{processes = New_processes}};
+						{error, Reason} ->
+							do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= Reason}]),
+							{noreply, New_State};
+						Exit -> 
+							do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= Exit}]),
+							lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+						{noreply, New_State}
+					end;
+					?ELSE ->
+						do_callback(Callback, [onError, Socket]),
+						{noreply, New_State}
+				end
+			catch _:E -> 
+				do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= E}]),
 				{noreply, New_State}
 			end;
-			?ELSE ->
-				do_callback(New_State#connection_state.event_callback, [onError, Socket]),
-				{noreply, New_State}
-		end
-	catch _:E -> 
-		do_callback(New_State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, error_msg= E}]),
-		{noreply, New_State}
+		_ ->
+			do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already received connection request."}]),
+			{noreply, State}
 	end;
 
 handle_cast({reconnect, _},
 						#connection_state{config = #connect{client_id = undefined}, end_type = client} = State) ->
-	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= reconnect, error_msg= "Try reconnect while connect config not defined"}]),
+	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= reconnect, error_msg= "Try to reconnect while connect config not defined"}]),
 	{noreply, State};
 handle_cast({reconnect, Socket_options}, State) ->
 	handle_cast({reconnect, undefined, Socket_options}, State);
@@ -503,10 +512,10 @@ handle_info({ssl_closed, Socket}, #connection_state{socket = Socket, connected =
 handle_info({timeout, TimerRef, keep_alive_timeout} = Info, #connection_state{timer_ref = TimerRef, end_type = server} = State) ->
 	lager:debug([{endtype, server}], "handle_info KEEP_ALIVE timeout message: ~p state:~p~n", [Info, State]),
 	{stop, timeout, State};
-handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, State) ->
+handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, #connection_state{processes = Processes} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], "handle_info OPERATION timeout message: ~p state:~p~n", [Info, State]),
 	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= Operation, errno= 136, error_msg= "Server unavailable. Operation timeout"}]),
-	{noreply, State};
+	{noreply, State#connection_state{processes = maps:remove(connect, Processes)}};
 handle_info(Info, State) ->
 	lager:error([{endtype, State#connection_state.end_type}], "handle_info get unexpected message: ~p state:~p~n", [Info, State]),
 	{noreply, State}.

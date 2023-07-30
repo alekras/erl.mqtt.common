@@ -60,8 +60,8 @@ connection_genServer_test_() ->
 				{'3.1.1', fun connection_test/2}
 				,{'5.0',   fun connection_test/2}
 				,{'5.0',   fun reconnection_test/2}
-				,{'5.0',   fun connection_props_test/2}
 				,{'5.0',   fun connection_timeout_test/2}
+				,{'5.0',   fun connection_props_test/2}
 				,{'3.1.1', fun subscribe_test/2}
 				,{'5.0',   fun subscribe_test/2}
 				,{'5.0',   fun subscribe_timeout_test/2}
