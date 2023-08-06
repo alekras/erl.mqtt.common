@@ -189,13 +189,18 @@ handle_conack_properties('5.0', #connection_state{config = Config} = State, Prop
 	case proplists:get_value(?Topic_Alias_Maximum, Properties, undefined) of
 		undefined -> State;
 		TAMaximum ->
-			ConfProps = lists:keystore(?Topic_Alias_Maximum, 1, Config#connect.properties, {?Topic_Alias_Maximum, TAMaximum}),
-			State#connection_state{config = Config#connect{properties = ConfProps}}
+			ConfProps1 = lists:keystore(?Topic_Alias_Maximum, 1, Config#connect.properties, {?Topic_Alias_Maximum, TAMaximum}),
+			State#connection_state{config = Config#connect{properties = ConfProps1}}
 	end,
 	case proplists:get_value(?Receive_Maximum, Properties, -1) of
 		-1 -> NewState#connection_state{receive_max = 65535, send_quota = 65535};
 		 0 -> NewState; %% TODO protocol_error;
-		 N -> NewState#connection_state{receive_max = N + 1, send_quota = N + 1} %% it allows server side to treat the number publish proceses 
+		 N ->
+			ConfProps2 = proplists:delete(?Receive_Maximum, Config#connect.properties),
+			NewState#connection_state{
+				receive_max = N + 1, send_quota = N + 1, %% it allows server side to treat the number publish proceses
+				config = Config#connect{properties = ConfProps2}
+			}
 	end;
 handle_conack_properties(_, State, _) ->
 	State.

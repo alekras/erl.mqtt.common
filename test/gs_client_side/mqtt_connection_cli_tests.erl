@@ -34,7 +34,7 @@
 %%
 %% Import modules
 %%
--import(mock_tcp, [wait_mock_tcp/1]).
+-import(mock_tcp, [wait_mock_tcp/1, wait_mock_tcp/2]).
 
 %%
 %% Exported Functions
@@ -999,21 +999,21 @@ subscribe(Expected_packet, Subscribe_tuple, Suback_packet) ->
 
 disconnect('3.1.1') ->
 	?debug_Fmt("::test:: >>> disconnect PID:~p~n", [self()]),
-%	mock_tcp:set_expectation(<<224,0>>),
+	mock_tcp:set_expectation(<<224,0>>),
 	gen_server:cast(client_gensrv, {disconnect, 0, []}),
-%	wait_mock_tcp("disconnect"),
-%%	from server
-%	client_gensrv ! {tcp, get_socket(), <<224,0>>}, %% Disconnect packet
-	receive
-		[onClose, {_DisconnectReasonCode, _Properties}] = Args ->
-			?debug_Fmt("::test:: onClose event callback = ~p ~n", [Args]);
-		Message ->
-			?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Message]),
-			?assert(false)
-	after 2000 ->
-			?debug_Fmt("::test:: Timeout while waiting onClose callback from client~n", []),
-			?assert(false)
-	end;
+	F = 
+		fun(M) ->
+			case M of
+				[onClose, {_DisconnectReasonCode, _Properties}] = Args ->
+					?debug_Fmt("::test:: onClose event callback = ~p ~n", [Args]);
+				Message ->
+					?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Message]),
+					?assert(false)
+			end
+		end,
+
+	wait_mock_tcp("disconnect | onClose", F),
+	wait_mock_tcp("disconnect | onClose", F);
 disconnect('5.0') ->
 	?debug_Fmt("::test:: >>> disconnect PID:~p~n", [self()]),
 	mock_tcp:set_expectation(<<224,0>>),

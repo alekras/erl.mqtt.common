@@ -406,29 +406,40 @@ handle_cast(pingreq,
 handle_cast({disconnect, ReasonCode, Properties},
 						#connection_state{socket = Socket,
 															transport = Transport,
+															processes = Processes,
 															config = Config,
 															end_type = client,
+															event_callback = Callback,
 															connected = 1} = State)
 						when is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
-		ok -> 
-			lager:info([{endtype, client}], 
-								"Process ~p sent disconnect request to server with reason code:~p, and properties:~p.",
-								[Config#connect.client_id, ReasonCode, Properties]
-						),
-			if State#connection_state.config#connect.version == '5.0' ->
-					Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, disconnect}),
-					New_processes = (State#connection_state.processes)#{disconnect => Timeout_ref}, %% @todo check if 'disconnect' key exists; if yes - error
-					{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
-				?ELSE -> %% if version = 3.1 or 3.1.1
+	case maps:get(disconnect, Processes, undefined) of
+		undefined ->
+			case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
+				ok -> 
+					lager:info([{endtype, client}], 
+										"Process ~p sent disconnect request to server with reason code:~p, and properties:~p.",
+										[Config#connect.client_id, ReasonCode, Properties]
+								),
+					if State#connection_state.config#connect.version == '5.0' ->
+							Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, disconnect}),
+							New_processes = Processes#{disconnect => Timeout_ref},
+							{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
+						?ELSE -> %% if version = 3.1 or 3.1.1
+							close_socket(State),
+							do_callback(Callback, [onClose, {ReasonCode, Properties}]),
+							{noreply, State#connection_state{packet_id = 100, connected = 0}}
+					end;
+				{error, _Reason} -> 
 					close_socket(State),
-					do_callback(State#connection_state.event_callback, [onClose, {ReasonCode, Properties}]),
-					{noreply, State#connection_state{packet_id = 100, connected = 0}}
+					{noreply, State#connection_state{packet_id = 100, connected = 0}} %% @todo process error
 			end;
-		{error, _Reason} -> 
-			close_socket(State),
-			{noreply, State#connection_state{packet_id = 100, connected = 0}} %% @todo process error
+		_ ->
+			do_callback(Callback, [onError, #mqtt_error{oper= disconnect, error_msg= "Disconnect request is already sent."}]),
+			{noreply, State}
 	end;
+handle_cast({disconnect, _, _}, #connection_state{event_callback = Callback, connected = 0, end_type = client} = State) ->
+	do_callback(Callback, [onError, #mqtt_error{oper= disconnect, error_msg= "Already disconnected."}]),
+	{noreply, State};
 handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
@@ -515,7 +526,9 @@ handle_info({timeout, TimerRef, keep_alive_timeout} = Info, #connection_state{ti
 handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, #connection_state{processes = Processes} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}], "handle_info OPERATION timeout message: ~p state:~p~n", [Info, State]),
 	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= Operation, errno= 136, error_msg= "Server unavailable. Operation timeout"}]),
-	{noreply, State#connection_state{processes = maps:remove(connect, Processes)}};
+	Pr1 = maps:remove(connect, Processes),
+	Pr2 = maps:remove(disconnect, Pr1),
+	{noreply, State#connection_state{processes = Pr2}};
 handle_info(Info, State) ->
 	lager:error([{endtype, State#connection_state.end_type}], "handle_info get unexpected message: ~p state:~p~n", [Info, State]),
 	{noreply, State}.

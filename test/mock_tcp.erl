@@ -19,6 +19,7 @@
 	close/1, 
 	loop/1, 
 	wait_mock_tcp/1,
+	wait_mock_tcp/2,
 	wait_no_mock_tcp/1
 ]).
 
@@ -77,6 +78,12 @@ loop({Pid, ExpList}) ->
 	end.
 
 wait_mock_tcp(R) ->
+	wait_mock_tcp(R, fun(M) ->
+			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
+			?assert(false) end
+	).
+
+wait_mock_tcp(R, Func) ->
 	receive
 		{mock_tcp, true} ->
 			?debug_Fmt("::test:: mock_tcp ~p acknowledge~n", [R]),
@@ -84,8 +91,9 @@ wait_mock_tcp(R) ->
 		{mock_tcp, false} ->
 			?assert(false);
 		M ->
-			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
-			?assert(false)
+			Func(M)
+%% 			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
+%% 			?assert(false)
 	after 200 ->
 			?debug_Fmt("**test** Timeout while waiting ~p from mock_tcp~n", [R]),
 			?assert(false)
