@@ -914,11 +914,11 @@ receive_2_props_test('5.0' = Version, Conn_config) -> {"Receive 2 test [" ++ ato
 
 connect('3.1.1', Conn_config) ->
 	Expected_packet = <<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>, 
-	Connack_packet = <<32,2,0,0>>,
+	Connack_packet = <<32,2,0,0>>, % SP=0
 	connect(Conn_config, Expected_packet, Connack_packet);
 connect('5.0', Conn_config) ->
 	Expected_packet = <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>, 
-	Connack_packet = <<32,3,1,0,0>>,
+	Connack_packet = <<32,3,0,0,0>>, % SP=0
 	connect(Conn_config, Expected_packet, Connack_packet).
 
 connect(Conn_config, Expected_packet, Connack_packet) ->

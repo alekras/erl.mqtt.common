@@ -113,7 +113,7 @@ connect(State, Config) ->
 	end.
 
 %% client side only
-connack(State, SP, CRC, Msg, Properties) ->
+connack(State, SessionPresant, CRC, Msg, Properties) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(connect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
@@ -126,8 +126,8 @@ connack(State, SP, CRC, Msg, Properties) ->
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
 	{Host, Port} = get_peername(Transport, Socket),
-	lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SP, CRC, Msg, Properties]),
-	if SP == 0 -> Storage:cleanup(Client_Id, client);
+	lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SessionPresant, CRC, Msg, Properties]),
+	if SessionPresant == 0 -> Storage:cleanup(Client_Id, client);
 		 ?ELSE -> ok
 	end,
 	IsConnected = if CRC == 0 -> %% TODO process all codes for v5.0
@@ -139,8 +139,16 @@ connack(State, SP, CRC, Msg, Properties) ->
 			do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, errno= CRC, error_msg= Msg}]),
 			0
 		end,
-	NewState = handle_conack_properties(Version, State, Properties),
-	NewState#connection_state{session_present = SP,
+	NewState =
+		case SessionPresant of
+			0 ->
+				Storage:cleanup(Client_Id, State#connection_state.end_type),
+				State;
+			1 ->
+				restore_session(State) 
+		end,
+	NewState1 = handle_conack_properties(Version, NewState, Properties),
+	NewState1#connection_state{session_present = SessionPresant,
 														connected = IsConnected,
 														processes = maps:remove(connect, Processes)}.
 
@@ -183,6 +191,33 @@ disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, P
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = server} = State) ->
+	case Storage:session_state(get, Client_Id) of
+		undefined ->
+			State#connection_state{session_present= 0};
+		_ ->
+			Records = Storage:session(get_all, Client_Id, server),
+			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
+			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
+	end;
+restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = client} = State) ->
+	Records = Storage:session(get_all, Client_Id, client),
+	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
+	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList);
+restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = EndType} = State) ->
+	Records = Storage:session(get_all, Client_Id, EndType),
+	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+	lager:debug([{endtype, EndType}], "In restore session: MessageList = ~128p~n", [MessageList]),
+	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
+
+restore_state({Packet_Id, Params}, State) ->
+	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_state request ~p, PI: ~p.~n", [Params, Packet_Id]),
+	spawn(gen_server, cast, [self(), {republish, Params, Packet_Id}]),
+	New_processes = (State#connection_state.processes)#{Packet_Id => Params},
+	State#connection_state{processes = New_processes, packet_id= mqtt_connection:next(Packet_Id, State)}.
 
 handle_conack_properties('5.0', #connection_state{config = Config} = State, Properties) ->
 	NewState =

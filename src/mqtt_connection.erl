@@ -38,7 +38,6 @@
 
 -export([	
 	next/2,
-	restore_session/1,
 	topic_alias_handle/3,
 	session_expire/3
 ]).
@@ -119,7 +118,7 @@ handle_cast({connect, _, Callback, _}, #connection_state{connected = 1, end_type
 	do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already connected."}]),
 	{noreply, State};
 handle_cast({connect, Conn_config, Callback, Socket_options},
-						#connection_state{storage = Storage, processes = Processes, end_type = client} = State) ->
+						#connection_state{processes = Processes, end_type = client} = State) ->
 	case maps:get(connect, Processes, undefined) of
 		undefined ->
 			{Transport, Sock_Opts} =
@@ -154,17 +153,10 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 				if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 					case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 						ok -> 
-							New_State_2 =
-							case Conn_config#connect.clean_session of
-								1 ->
-									Storage:cleanup(Conn_config#connect.client_id, State#connection_state.end_type),
-									New_State;
-								0 ->
-									restore_session(New_State) 
-							end,
+							clean_up_timeout(Processes),
 							Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, connect}),
-							New_processes = Processes#{connect => Timeout_ref},
-							{noreply, New_State_2#connection_state{processes = New_processes}};
+							New_processes = #{connect => Timeout_ref},
+							{noreply, New_State#connection_state{processes = New_processes}};
 						{error, Reason} ->
 							do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= Reason}]),
 							{noreply, New_State};
@@ -186,6 +178,9 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 			{noreply, State}
 	end;
 
+handle_cast({reconnect, _, Callback, _}, #connection_state{connected = 1, end_type = client} = State) ->
+	do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already connected."}]),
+	{noreply, State};
 handle_cast({reconnect, _},
 						#connection_state{config = #connect{client_id = undefined}, end_type = client} = State) ->
 	do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= reconnect, error_msg= "Try to reconnect while connect config not defined"}]),
@@ -193,55 +188,61 @@ handle_cast({reconnect, _},
 handle_cast({reconnect, Socket_options}, State) ->
 	handle_cast({reconnect, undefined, Socket_options}, State);
 handle_cast({reconnect, Callback, Socket_options},
-						#connection_state{transport = Transport, config = Conn_config, end_type = client} = State) ->
-	Sock_Opts =
-	case Conn_config#connect.conn_type of 
-		CT when CT == ssl; CT == tls ->
-			[
-				{verify, verify_none},
-				{depth, 2},
-				{server_name_indication, disable} | Socket_options];
-		clear -> Socket_options;
-		web_socket -> [{conn_type, web_socket} | Socket_options];
-		web_sec_socket -> [{conn_type, web_sec_socket} | Socket_options];
-		_ -> Socket_options
-	end,
+						#connection_state{processes = Processes, transport = Transport, config = Conn_config, end_type = client} = State) ->
+	case maps:get(connect, Processes, undefined) of
+		undefined ->
+			Sock_Opts =
+			case Conn_config#connect.conn_type of 
+				CT when CT == ssl; CT == tls ->
+					[
+						{verify, verify_none},
+						{depth, 2},
+						{server_name_indication, disable} | Socket_options];
+				clear -> Socket_options;
+				web_socket -> [{conn_type, web_socket} | Socket_options];
+				web_sec_socket -> [{conn_type, web_sec_socket} | Socket_options];
+				_ -> Socket_options
+			end,
 
-	Socket = open_socket(
-			Transport,
-			Conn_config#connect.host,
-			Conn_config#connect.port,
-			Sock_Opts),
+			Socket = open_socket(
+					Transport,
+					Conn_config#connect.host,
+					Conn_config#connect.port,
+					Sock_Opts),
 
-	New_State = case Callback of
-		undefined -> 
-			State#connection_state{
-				socket = Socket
-			};
-		_ ->
-			State#connection_state{
-				socket = Socket,
-				event_callback = Callback
-			}
-	end,
+			New_State = case Callback of
+				undefined -> 
+					State#connection_state{
+						socket = Socket
+					};
+				_ ->
+					State#connection_state{
+						socket = Socket,
+						event_callback = Callback
+					}
+			end,
 	
-	try 
-		if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
-			case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
-				ok -> 
-					New_State_2 = restore_session(New_State),
-					Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, reconnect}),
-					New_processes = (State#connection_state.processes)#{connect => Timeout_ref}, %% @todo check if 'connect' key exists; if yes - error
-					{noreply, New_State_2#connection_state{processes = New_processes}};
-				{error, _Reason} -> {noreply, New_State};
-			Exit -> 
-				lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
-				{noreply, New_State}
-		end;
-			?ELSE ->
-				{noreply, New_State} %% Socket = #mqtt_error{}
-		end
-	catch _:_E -> {noreply, New_State}
+			try 
+				if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
+					case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
+						ok -> 
+							clean_up_timeout(Processes),
+							Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, reconnect}),
+							New_processes = (State#connection_state.processes)#{connect => Timeout_ref}, %% @todo check if 'connect' key exists; if yes - error
+							{noreply, New_State#connection_state{processes = New_processes}};
+						{error, _Reason} -> {noreply, New_State};
+					Exit -> 
+						lager:debug([{endtype, client}], "EXIT while send message~p~n", [Exit]),
+						{noreply, New_State}
+				end;
+					?ELSE ->
+						{noreply, New_State} %% Socket = #mqtt_error{}
+				end
+			catch _:_E -> {noreply, New_State}
+			end;
+				_ ->
+					do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already received connection request."}]),
+					{noreply, State}
 	end;
 
 ?test_fragment_break_connection
@@ -625,33 +626,6 @@ next(Packet_Id, #connection_state{storage = Storage} = State) ->
 		true -> next(PI, State)
 	end.
 
-restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = server} = State) ->
-	case Storage:session_state(get, Client_Id) of
-		undefined ->
-			State#connection_state{session_present= 0};
-		_ ->
-			Records = Storage:session(get_all, Client_Id, server),
-			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
-			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
-	end;
-restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = client} = State) ->
-	Records = Storage:session(get_all, Client_Id, client),
-	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
-	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList);
-restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = EndType} = State) ->
-	Records = Storage:session(get_all, Client_Id, EndType),
-	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, EndType}], "In restore session: MessageList = ~128p~n", [MessageList]),
-	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
-
-restore_state({Packet_Id, Params}, State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_prosess_list request ~p, PI: ~p.~n", [Params, Packet_Id]),
-	spawn(gen_server, cast, [self(), {republish, Params, Packet_Id}]),
-	New_processes = (State#connection_state.processes)#{Packet_Id => Params},
-	State#connection_state{processes = New_processes, packet_id= next(Packet_Id, State)}.
-
 keep_alive_timer(undefined, undefined) -> undefined;
 keep_alive_timer(Keep_Alive_Time, undefined) ->
 	erlang:start_timer(Keep_Alive_Time * 1000, self(), keep_alive_timeout);
@@ -792,3 +766,12 @@ session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
 	end;
 session_end_handle(_Storage, _Config) ->
 	ok.
+
+clean_up_timeout(Processes) ->
+	Func = 
+		fun(_Key, {Timeout_ref, _}) -> 
+			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
+				 ?ELSE -> ok
+			end
+		end,
+	maps:foreach(Func, Processes).

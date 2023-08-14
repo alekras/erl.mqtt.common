@@ -109,7 +109,7 @@ wait_no_mock_tcp(R) ->
 		M ->
 			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
 			?assert(false)
-	after 200 ->
+	after 1000 ->
 			?debug_Fmt("::test:: mock_tcp ~p acknowledge (expected timeout)~n", [R]),
 			?assert(true)
 	end.

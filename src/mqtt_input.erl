@@ -55,11 +55,11 @@ input_parser(_, <<?CONNECT_PACK_TYPE, Bin/binary>>) ->
 input_parser('5.0', <<?CONNACK_PACK_TYPE, Bin/binary>>) ->
 	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
 	L = (Length - 2),
-	<<0:7, SP:1, Connect_Return_Code:8, RestBin_1:L/binary, Tail/binary>> = RestBin,
+	<<0:7, SessionPresant:1, Connect_Return_Code:8, RestBin_1:L/binary, Tail/binary>> = RestBin,
 	{Properties, _RestBin_2} = mqtt_property:parse(RestBin_1), % _RestBin_2 has to be empty
-	{connack, SP, Connect_Return_Code, connect_reason_code(Connect_Return_Code), Properties, Tail};
-input_parser(_, <<?CONNACK_PACK_TYPE, 2:8, 0:7, SP:1, Connect_Return_Code:8, Tail/binary>>) ->
-	{connack, SP, Connect_Return_Code, return_code_response(Connect_Return_Code), [], Tail};
+	{connack, SessionPresant, Connect_Return_Code, connect_reason_code(Connect_Return_Code), Properties, Tail};
+input_parser(_, <<?CONNACK_PACK_TYPE, 2:8, 0:7, SessionPresant:1, Connect_Return_Code:8, Tail/binary>>) ->
+	{connack, SessionPresant, Connect_Return_Code, return_code_response(Connect_Return_Code), [], Tail};
 
 input_parser(Version, <<?PUBLISH_PACK_TYPE, DUP:1, QoS:2, RETAIN:1, Bin/binary>>) ->
 	{RestBin, Length} = mqtt_data:extract_variable_byte_integer(Bin),
