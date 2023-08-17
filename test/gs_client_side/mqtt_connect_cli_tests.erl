@@ -93,6 +93,10 @@ cleanup(X, Y) ->
 %	?debug_Fmt("::test:: >>> cleanup(~p,~p) PID:~p~n", [X, Y#connect.client_id, self()]),
 	mqtt_dets_storage:session(clean, <<"test0Client">>, client).
 
+%% ====================================================================
+%% API functions
+%% ====================================================================
+
 config_setup_test('5.0' = Version, Conn_config) -> {"Config setup test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config#connect{properties = [{?Topic_Alias_Maximum, 2},{?Receive_Maximum, 10}]}),
@@ -112,7 +116,7 @@ restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
 	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
-
+	?debug_Fmt("::test:: Records : ~p~n", [mqtt_dets_storage:session(get_all, <<"test0Client">>, client)]),
 %%	connect(Version, Conn_config#connect{properties = []}),
 	mock_tcp:set_expectation(
 		<<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -125,8 +129,7 @@ restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 	client_gensrv ! {tcp, get_socket(), <<32,2,1,0>>}, %% Connack packet SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("publish packet"), % may come before
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -150,9 +153,7 @@ restore_session_1_test('5.0' = Version, Conn_config) -> {"Restore session test [
 	client_gensrv ! {tcp, get_socket(), <<32,9,1,0,6,33,10:16,34,2:16>>}, %% Connack packet, % SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("publish packet"), % may come before
-
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -176,8 +177,7 @@ restore_session_2_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 	client_gensrv ! {tcp, get_socket(), <<32,2,1,0>>}, %% Connack packet SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("pubrel packet"),
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -200,9 +200,7 @@ restore_session_2_test('5.0' = Version, Conn_config) -> {"Restore session test [
 	client_gensrv ! {tcp, get_socket(), <<32,9,1,0,6,33,10:16,34,2:16>>}, %% Connack packet, % SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("pubrel packet"),
-
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -226,8 +224,7 @@ restore_session_3_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 	client_gensrv ! {tcp, get_socket(), <<32,2,1,0>>}, %% Connack packet SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("pubrec packet"),
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -250,9 +247,7 @@ restore_session_3_test('5.0' = Version, Conn_config) -> {"Restore session test [
 	client_gensrv ! {tcp, get_socket(), <<32,9,1,0,6,33,10:16,34,2:16>>}, %% Connack packet, % SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_mock_tcp("pubrec packet"),
-
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -272,11 +267,9 @@ restore_session_expiration_test('3.1.1' = Version, Conn_config) -> {"Restore ses
 	wait_mock_tcp("connect packet"),
 
 %% from server:
-%	mock_tcp:set_expectation(<<56,14,0,5,"Topic"/utf8,"Payload"/utf8>>),
 	client_gensrv ! {tcp, get_socket(), <<32,2,1,0>>}, %% Connack packet SP=1
 	wait_for_callback_event(onConnect),
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 	wait_no_mock_tcp("no publish packet"),
 
 	disconnect(Version),
@@ -296,13 +289,10 @@ restore_session_expiration_test('5.0' = Version, Conn_config) -> {"Restore sessi
 	wait_mock_tcp("connect packet"),
 
 %% from server:
-%	mock_tcp:set_expectation(<<56,15,0,5,"Topic"/utf8,0,"Payload"/utf8>>),
 	client_gensrv ! {tcp, get_socket(), <<32,9,1,0,6,33,10:16,34,2:16>>}, %% Connack packet, % SP=1
 	wait_for_callback_event(onConnect), % may come after
 	wait_no_mock_tcp("no publish packet"),
-
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -312,8 +302,7 @@ end}.
 disconnect_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config#connect{properties = []}),
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 
@@ -334,8 +323,7 @@ end};
 disconnect_test('5.0' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config#connect{properties = [{?Topic_Alias_Maximum, 2},{?Receive_Maximum, 10}]}),
-	State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 
 	disconnect(Version),
 

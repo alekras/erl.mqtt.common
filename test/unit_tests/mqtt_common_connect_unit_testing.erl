@@ -191,7 +191,7 @@ packet_output_props('5.0' = Ver) ->
 
 input_parser_zero() ->
 	Config = #connect{
-						client_id = "publisher",
+						client_id = <<"publisher">>,
 						user_name = "",
 						password = <<>>,
 						clean_session = 0,
@@ -215,7 +215,7 @@ input_parser_zero() ->
 
 input_parser_user() ->
 	Config = #connect{
-						client_id = "publisher",
+						client_id = <<"publisher">>,
 						user_name = "guest",
 						password = <<"guest">>,
 						clean_session = 1,
@@ -239,7 +239,7 @@ input_parser_user() ->
 
 input_parser_will() ->
 	Config = #connect{
-						client_id = "publisher",
+						client_id = <<"publisher">>,
 						user_name = "guest",
 						password = <<"guest">>,
 						will_publish = #publish{topic="Last_msg", qos=2, retain=1, payload= <<"Good bye!">>},
@@ -264,7 +264,7 @@ input_parser_will() ->
 
 input_parser_willProps() ->
 	Config = #connect{
-						client_id = "publisher",
+						client_id = <<"publisher">>,
 						user_name = "guest",
 						password = <<"guest">>,
 						will_publish = #publish{topic="Last_msg", qos=2, retain=1,
@@ -285,7 +285,7 @@ input_parser_willProps() ->
 
 input_parser_props() ->
 	Config = #connect{
-						client_id = "publisher",
+						client_id = <<"publisher">>,
 						user_name = "guest",
 						password = <<"guest">>,
 						will_publish = #publish{topic="Last_msg", qos=2, retain=1,

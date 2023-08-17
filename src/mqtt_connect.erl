@@ -84,20 +84,20 @@ connect(State, Config) ->
 				New_State_2 =
 				case Config#connect.clean_session of
 					1 -> 
-						Storage:cleanup(Config#connect.client_id, server),
+						Storage:cleanup(Client_Id, server),
 						New_State#connection_state{session_present = 0};
 					0 ->	 
-						mqtt_connection:restore_session(New_State) 
+						restore_session(New_State) 
 				end,
-				New_Client_Id = Config#connect.client_id,
-				Storage:connect_pid(save, #storage_connectpid{client_id = New_Client_Id, pid = self()}, server),
-				Storage:session_state(save, #session_state{client_id = New_Client_Id,
+%%				New_Client_Id = Config#connect.client_id,
+				Storage:connect_pid(save, #storage_connectpid{client_id = Client_Id, pid = self()}, server),
+				Storage:session_state(save, #session_state{client_id = Client_Id,
 						session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
 						will_publish = Config#connect.will_publish}),
 				New_State_3 = receive_max_set_handle(ConnVersion, New_State_2),
 				Packet = packet(connack, ConnVersion, {New_State_3#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 				Transport:send(Socket, Packet),
-				lager:info([{endtype, server}], "Connection to client ~p is established~n", [New_Client_Id]),
+				lager:info([{endtype, server}], "Connection to client ~p is established~n", [Client_Id]),
 				New_State_3#connection_state{connected = 1};
 			true ->
 				Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
@@ -197,20 +197,29 @@ restore_session(#connection_state{config = #connect{client_id = Client_Id, versi
 		undefined ->
 			State#connection_state{session_present= 0};
 		_ ->
-			Records = Storage:session(get_all, Client_Id, server),
-			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
-			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
+%% 			Records = Storage:session(get_all, Client_Id, server),
+%% 			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+%% 			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
+%% 			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
+			run_restore_session(State)
 	end;
-restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = client} = State) ->
-	Records = Storage:session(get_all, Client_Id, client),
-	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
-	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList);
-restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = EndType} = State) ->
+%% restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = client} = State) ->
+%% 	Records = Storage:session(get_all, Client_Id, client),
+%% 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+%% 	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
+%% 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList);
+restore_session(State) ->
+	run_restore_session(State).
+%% 	Records = Storage:session(get_all, Client_Id, EndType),
+%% 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
+%% 	lager:debug([{endtype, EndType}], "In restore session for client:~p MessageList = ~128p~n", [Client_Id, MessageList]),
+%% 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
+
+run_restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = EndType} = State) ->
 	Records = Storage:session(get_all, Client_Id, EndType),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, EndType}], "In restore session: MessageList = ~128p~n", [MessageList]),
+	lager:debug([{endtype, EndType}], "In restore session for client: ~p MessageList = ~128p~n", [Client_Id, MessageList]),
+	Storage:session(clean, Client_Id, EndType),
 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
 
 restore_state({Packet_Id, Params}, State) ->

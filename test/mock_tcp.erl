@@ -70,7 +70,7 @@ loop({Pid, ExpList}) ->
 					Pid ! {mock_tcp, true},
 					loop({Pid, lists:delete(Msg, ExpList)});
 				true ->
-					?debug_Fmt("~n**test** Received msg = ~p~n not in list of expected = ~n~256p~n", [Msg, ExpList]),
+					?debug_Fmt("~n**test** Mock received msg = ~p not in list of expected = ~n~256p~n", [Msg, ExpList]),
 					Pid ! {mock_tcp, false},
 %					?assert(false)
 					loop({Pid, []})

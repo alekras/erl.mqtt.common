@@ -278,9 +278,7 @@ connect_pid(save, #storage_connectpid{client_id = Key} = Document, End_Type) ->
 			true
 	end;
 connect_pid(exist, _Key, _End_Type) -> false;
-connect_pid(get, Client_id, End_Type) when is_binary(Client_id)->
-	connect_pid(get, binary_to_list(Client_id), End_Type);
-connect_pid(get, Client_id, End_Type) when is_list(Client_id) ->
+connect_pid(get, Client_id, End_Type) ->
 	case dets:match_object(db_id(3, End_Type), #storage_connectpid{client_id = Client_id, _ = '_'}) of
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Get failed: key=~p reason=~p~n", [Client_id, Reason]),

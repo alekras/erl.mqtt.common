@@ -127,15 +127,15 @@ storage_test('3.1.1'=Version, {Socket, Conn_config}) -> {"Storage test [" ++ ato
 	connect(Version, Socket),
 
 	subscribe(Version, Socket, ok),
-	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
-	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,<<"test0Client">>,server)]),
+	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?debug_Fmt("::test:: Record = ~p ~n", [Record]),
 	?assertEqual(2, (Record#storage_subscription.options)#subscription_options.max_qos),	
 	
 	mock_tcp:set_expectation(<<176,2,0,101>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,9,0,101,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?assertEqual([], Record1),
 
 	disconnect(),
@@ -147,15 +147,15 @@ storage_test('5.0' = Version, {Socket, Conn_config}) -> {"Storage test [" ++ ato
 	connect(Version, Socket),
 
 	subscribe(Version, Socket, {0,0,0,2}),
-	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
-	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,<<"test0Client">>,server)]),
+	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?debug_Fmt("::test:: Record = ~p ~n", [Record]),
 	?assertEqual(2, (Record#storage_subscription.options)#subscription_options.max_qos),	
 
 	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?assertEqual([], Record1),
 
 	disconnect(),
@@ -174,8 +174,8 @@ share_test('5.0' = Version, {Socket, Conn_config}) -> {"Share test [" ++ atom_to
 																0,15,"$share/A/TopicA"/utf8,0:2,0:2,0:1,0:1,2:2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
-	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
-	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "TopicA", shareName= "A"}, server),
+	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,<<"test0Client">>,server)]),
+	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "TopicA", shareName= "A"}, server),
 	?debug_Fmt("::test:: Record = ~p ~n", [Record]),
 	?assertEqual(2, (Record#storage_subscription.options)#subscription_options.max_qos),	
 	?assertEqual("A", (Record#storage_subscription.key)#subs_primary_key.shareName),	
@@ -184,7 +184,7 @@ share_test('5.0' = Version, {Socket, Conn_config}) -> {"Share test [" ++ atom_to
 	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?assertEqual([], Record1),
 
 	disconnect(),
@@ -203,13 +203,13 @@ error_test('5.0' = Version, {Socket, Conn_config}) -> {"Error test [" ++ atom_to
 																16:16,"$share/A+/TopicA"/utf8,0:2,0:2,0:1,0:1,2:2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
 
-	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,"test0Client",server)]),
-	[] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "TopicA", shareName= "A"}, server),
+	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,<<"test0Client">>,server)]),
+	[] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "TopicA", shareName= "A"}, server),
 
 	mock_tcp:set_expectation(<<176,4,0,101,0,0>>), %% Unsuback packet
 	conn_server ! {tcp, Socket, <<162,10,0,101,0,0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= "test0Client", topicFilter= "Topic"}, server),
+	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, server),
 	?assertEqual([], Record1),
 
 	disconnect(),

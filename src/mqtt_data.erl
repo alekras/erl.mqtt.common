@@ -41,6 +41,7 @@
 	is_topicFilter_valid/1,
 	is_match/2,
 	topic_regexp/1,
+	normalize_config/1,
 	validate_config/1,
 	validate_publish/2,
 	binary_to_hex/1,
@@ -136,6 +137,13 @@ is_match(Topic, TopicFilter) ->
 		_E ->		false
 	end.
 
+normalize_config(#connect{client_id= ClientId} = Config) when is_atom(ClientId) ->
+	Config#connect{client_id= atom_to_binary(ClientId)};
+normalize_config(#connect{client_id= ClientId} = Config) when is_list(ClientId) ->
+	Config#connect{client_id= list_to_binary(ClientId)};
+normalize_config(#connect{client_id= ClientId} = Config) when is_binary(ClientId) ->
+	Config.
+	
 validate_config(#connect{client_id= ClientId, user_name= User, will_publish = WillPubRec,
 												 properties= Props, version= '5.0'}) ->
 	true = validate_string_field(ClientId, "Client Id"),

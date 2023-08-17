@@ -279,7 +279,7 @@ parse_connect_packet(MQTT_Version, Length, Binary) ->
 			}
 	end,
 	Config = #connect{
-		client_id = binary_to_list(Client_id), %% @todo utf8 unicode:characters_to_list(Client_id, utf8),???
+		client_id = Client_id, %% binary client_id has to be utf8, otherwise protokol error
 		user_name = binary_to_list(UserName), %% @todo do we need a list?
 		password = Password_bin,
 		clean_session = Clean_Session,

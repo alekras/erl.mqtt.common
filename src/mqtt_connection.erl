@@ -140,8 +140,9 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 					Conn_config#connect.port,
 					Sock_Opts),
 		
+			Normalized_Config = mqtt_data:normalize_config(Conn_config),
 			New_State = State#connection_state{
-				config = Conn_config,
+				config = Normalized_Config,
 				transport = Transport,
 				socket = Socket,
 				event_callback = Callback,
@@ -149,7 +150,7 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 				topic_alias_out_map = #{}},
 		
 			try 
-				mqtt_data:validate_config(Conn_config),
+				mqtt_data:validate_config(Normalized_Config),
 				if is_pid(Socket); is_port(Socket); is_record(Socket, sslsocket) ->
 					case Transport:send(Socket, packet(connect, undefined, Conn_config, [])) of
 						ok -> 
@@ -456,6 +457,7 @@ handle_cast(disconnect, #connection_state{end_type = client} = State) ->
 %% Server side:
 handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
 						#connection_state{socket = Socket, transport = Transport, config = Config, end_type = server} = State) ->
+	lager:debug([{endtype, server}], "State: ~p", [State]),
 	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
 		ok -> 
 			lager:info([{endtype, server}],
