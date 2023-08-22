@@ -111,7 +111,7 @@ config_setup_test('5.0' = Version, Conn_config) -> {"Config setup test [" ++ ato
 	?passed
 end}.
 
-restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
@@ -135,7 +135,7 @@ restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 
 	?passed
 end};
-restore_session_1_test('5.0' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_1_test('5.0' = Version, Conn_config) -> {"Restore session 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
@@ -160,7 +160,7 @@ restore_session_1_test('5.0' = Version, Conn_config) -> {"Restore session test [
 	?passed
 end}.
 
-restore_session_2_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_2_test('3.1.1' = Version, Conn_config) -> {"Restore session 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrel},
@@ -183,7 +183,7 @@ restore_session_2_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 
 	?passed
 end};
-restore_session_2_test('5.0' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_2_test('5.0' = Version, Conn_config) -> {"Restore session 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrel},
@@ -207,7 +207,7 @@ restore_session_2_test('5.0' = Version, Conn_config) -> {"Restore session test [
 	?passed
 end}.
 
-restore_session_3_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_3_test('3.1.1' = Version, Conn_config) -> {"Restore session 3 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrec},
@@ -230,7 +230,7 @@ restore_session_3_test('3.1.1' = Version, Conn_config) -> {"Restore session test
 
 	?passed
 end};
-restore_session_3_test('5.0' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+restore_session_3_test('5.0' = Version, Conn_config) -> {"Restore session 3 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrec},
@@ -299,7 +299,7 @@ restore_session_expiration_test('5.0' = Version, Conn_config) -> {"Restore sessi
 	?passed
 end}.
 
-disconnect_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+disconnect_test('3.1.1' = Version, Conn_config) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config#connect{properties = []}),
 %	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
@@ -320,7 +320,7 @@ disconnect_test('3.1.1' = Version, Conn_config) -> {"Restore session test [" ++ 
 
 	?passed
 end};
-disconnect_test('5.0' = Version, Conn_config) -> {"Restore session test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+disconnect_test('5.0' = Version, Conn_config) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config#connect{properties = [{?Topic_Alias_Maximum, 2},{?Receive_Maximum, 10}]}),
 %	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
