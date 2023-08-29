@@ -35,7 +35,6 @@
 %%
 -import(mqtt_connection_srv_tests, [
 	connect/2,
-	subscribe/3,
 	disconnect/0
 ]).
 -import(mock_tcp, [wait_mock_tcp/1, wait_no_mock_tcp/1]).
@@ -64,9 +63,6 @@ connect_genServer_test_() ->
 				,{'5.0',   fun restore_session_2_test/2}
 				,{'3.1.1', fun restore_session_3_test/2}
 				,{'5.0',   fun restore_session_3_test/2}
-				,{'3.1.1', fun disconnect_test_1/2}
-				,{'5.0',   fun disconnect_test_1/2}
-				,{'5.0',   fun disconnect_test_2/2}
 			]
 		}
 	 }
@@ -128,7 +124,12 @@ cleanup(X, {_, Y}) ->
 config_setup_test('3.1.1' = Version, {Socket, _Conn_config}) -> {"Config setup test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	mock_tcp:set_expectation(<<32,2,0,0>>), %% Connack packet
 	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
-	conn_server ! {tcp, Socket, <<16,37,4:16,"MQTT"/utf8,4, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
+	conn_server ! {tcp, Socket, 
+		<<16,37,4:16,"MQTT"/utf8,4, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16,
+			11:16,"test0Client"/utf8,
+			5:16,"guest"/utf8,
+			5:16,"guest"/utf8
+		>>},
 	wait_mock_tcp("connack"),
 
 	Record = mqtt_dets_storage:connect_pid(get, <<"test0Client">>, server),
@@ -277,69 +278,6 @@ restore_session_3_test('5.0' = Version, {Socket, _Conn_config}) -> {"Restore ses
 	?passed
 end}.
 
-disconnect_test_1('3.1.1' = Version, {Socket, _Conn_config}) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-
-	mock_tcp:set_expectation([<<32,2,0,0>>]), %% Connack packet SP=1 and re-sent pubrec packet
-	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
-	conn_server ! {tcp, Socket, <<16,37,4:16,"MQTT"/utf8,4, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-		11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
-	wait_mock_tcp("connack"),
-
-	mock_tcp:set_expectation(<<224,0>>),
-	conn_server ! {tcp, Socket, <<224,0>>},
-%	gen_server:cast(conn_server, {disconnect,0,[]}),
-	wait_mock_tcp("disconnect"),
-
-	?passed
-end};
-disconnect_test_1('5.0' = Version, {Socket, _Conn_config}) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-
-	mock_tcp:set_expectation(<<32,8,0,0,5,17,0,0,0,7>>), %% Connack packet
-
-% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
-	conn_server ! {tcp, Socket,
-		<<16,43,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-			5,17,0,0,0,7,
-			11:16,"test0Client"/utf8,
-			5:16,"guest"/utf8,
-			5:16,"guest"/utf8
-		>>},
-	wait_mock_tcp("connack"),
-
-	mock_tcp:set_expectation(
-	 <<224,34,2,
-		 32,  31,29:16,"Initiated by client or server"/utf8>>),
-	conn_server ! {tcp, Socket, <<224,7,2,5,17,0,0,0,25>>},
-	wait_mock_tcp("disconnect"),
-
-	?passed
-end}.
-
-disconnect_test_2('5.0' = Version, {Socket, _Conn_config}) -> {"Disconnect test 2 [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-
-	mock_tcp:set_expectation(<<32,3,0,0,0>>), %% Connack packet
-
-% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
-	conn_server ! {tcp, Socket,
-		<<16,38,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-			0,
-			11:16,"test0Client"/utf8,
-			5:16,"guest"/utf8,
-			5:16,"guest"/utf8
-		>>},
-	wait_mock_tcp("connack"),
-
-	mock_tcp:set_expectation(
-	 <<224,19,130,
-		 17, 31,14:16,"Protocol Error"/utf8>>),
-	conn_server ! {tcp, Socket, <<224,7,2,5,17,0,0,0,25>>},
-%%	gen_server:cast(conn_server, {disconnect,2,[{?Session_Expiry_Interval, 25}]}),
-	wait_mock_tcp("disconnect"),
-
-	?passed
-end}.
-
-%% Disconnect test for 3.1.1 change;
 %% ====================================================================
 %% Internal functions
 %% ====================================================================

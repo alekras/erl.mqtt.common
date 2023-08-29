@@ -249,24 +249,30 @@ handle_cast({reconnect, Callback, Socket_options},
 ?test_fragment_break_connection
 
 handle_cast({publish, #publish{qos = 0} = PubRec}, 
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+			#connection_state{
+				socket = Socket,
+				transport = Transport,
+				event_callback = Callback,
+				config = #connect{version = Version, client_id = Client_id}} = State) ->
 	try 
-		mqtt_data:validate_publish(Config#connect.version, PubRec),
-		case topic_alias_handle(Config#connect.version, PubRec#publish{dir=out}, State) of
+		mqtt_data:validate_publish(Version, PubRec),
+		case topic_alias_handle(Version, PubRec#publish{dir=out}, State) of
 			{#mqtt_error{} = Response, NewState} ->
-				do_callback(State#connection_state.event_callback, [onError, Response#mqtt_error{oper= publish}]),
+				do_callback(Callback, [onError, Response#mqtt_error{oper= publish}]),
 				{noreply, NewState};
 			{Params, NewState} ->
-				Transport:send(Socket, packet(publish, Config#connect.version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
-				lager:info([{endtype, NewState#connection_state.end_type}], "Process with ClientId= ~p published message to topic=~p:0~n", [Config#connect.client_id, Params#publish.topic]),
+				Transport:send(Socket, packet(publish, Version, {Params#publish{dup = 0}, 0}, [])), %% qos=0 and dup=0
+				lager:info([{endtype, NewState#connection_state.end_type}],
+									"Process with ClientId= ~p published message to topic=~p:0~n", 
+									[Client_id, Params#publish.topic]),
 				{noreply, NewState}
 		end
 	catch throw:E ->
 		case E of
 			#mqtt_error{} = Mqtt_error ->
-				do_callback(State#connection_state.event_callback, [onError, Mqtt_error#mqtt_error{oper= publish}]);
+				do_callback(Callback, [onError, Mqtt_error#mqtt_error{oper= publish}]);
 			_ ->
-				do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= publish, error_msg= E}])
+				do_callback(Callback, [onError, #mqtt_error{oper= publish, error_msg= E}])
 		end,
 		{noreply, State}
 	end;
@@ -445,6 +451,7 @@ handle_cast({disconnect, _, _}, #connection_state{event_callback = Callback, con
 handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
+
 handle_cast(disconnect, #connection_state{end_type = client} = State) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(disconnect, Processes, undefined),
@@ -456,20 +463,24 @@ handle_cast(disconnect, #connection_state{end_type = client} = State) ->
 
 %% Server side:
 handle_cast({disconnect, ReasonCode, Properties}, %% @todo add Reason code !!!
-						#connection_state{socket = Socket, transport = Transport, config = Config, end_type = server} = State) ->
-	lager:debug([{endtype, server}], "State: ~p", [State]),
-	case Transport:send(Socket, packet(disconnect, Config#connect.version, ReasonCode, Properties)) of
+						#connection_state{socket = Socket, transport = Transport, config = #connect{client_id = Client_id, version = '5.0'},  end_type = server} = State) ->
+	lager:debug([{endtype, server}], "Disconnect with State: ~p", [State]),
+	case Transport:send(Socket, packet(disconnect, '5.0', ReasonCode, Properties)) of
 		ok -> 
 			lager:info([{endtype, server}],
 						"Process ~p sent disconnect response to client with reason code:~p, and properties:~p.",
-						[Config#connect.client_id, ReasonCode, Properties]
+						[Client_id, ReasonCode, Properties]
 					),
 %			close_socket(State),
-			{stop, shutdown, State#connection_state{connected = 0}};
+			{stop, normal, State#connection_state{connected = 0}};
 		{error, _Reason} -> 
 %			close_socket(State),
 			{stop, shutdown, State#connection_state{connected = 0}}
 	end;
+handle_cast({disconnect, _ReasonCode, _Properties},
+						#connection_state{config = #connect{version = '3.1.1'}, end_type = server} = State) ->
+	lager:debug([{endtype, server}], "Disconnect with State: ~p", [State]),
+	{stop, normal, State#connection_state{connected = 0}};
 
 handle_cast(_Msg, State) ->
 		{noreply, State}.
@@ -705,14 +716,17 @@ topic_alias_handle(_, PubRec, State) ->
 will_publish_handle(Storage, Config) ->
 	Sess_Client_Id = Config#connect.client_id,
 	PubRec = Config#connect.will_publish,
+
 	List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
 	lager:debug([{endtype, server}], "Will matched Topic list = ~128p~n", [List]),
+
 	{WillDelayInt, Properties} =
-	case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
-		false -> {0, PubRec#publish.properties};
-		{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
-	end,
+		case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
+			false -> {0, PubRec#publish.properties};
+			{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
+		end,
 	Params = PubRec#publish{properties = Properties},
+
 	[
 		case Storage:connect_pid(get, Client_Id, server) of
 			undefined -> 
@@ -721,10 +735,9 @@ will_publish_handle(Storage, Config) ->
 				TopicQoS = TopicOptions#subscription_options.max_qos,
 				QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
 				{ok, _} = timer:apply_after(WillDelayInt * 1000,
-																		mqtt_socket_stream,
+																		mqtt_publish,
 																		server_send_publish,
 																		[Pid, Params#publish{qos = QoS}])
-%%					erlang:spawn(mqtt_socket_stream, server_send_publish, [Pid, Params])
 		end
 		|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
 	],

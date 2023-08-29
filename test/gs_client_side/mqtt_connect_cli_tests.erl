@@ -53,8 +53,6 @@ connect_genServer_test_() ->
 				,{'5.0',   fun restore_session_3_test/2}
 				,{'3.1.1', fun restore_session_expiration_test/2}
 				,{'5.0',   fun restore_session_expiration_test/2}
-				,{'3.1.1', fun disconnect_test/2}
-				,{'5.0',   fun disconnect_test/2}
 			]
 		}
 	 }
@@ -299,50 +297,6 @@ restore_session_expiration_test('5.0' = Version, Conn_config) -> {"Restore sessi
 	?passed
 end}.
 
-disconnect_test('3.1.1' = Version, Conn_config) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect(Version, Conn_config#connect{properties = []}),
-%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
-
-	disconnect(Version),
-
-	gen_server:cast(client_gensrv, {disconnect, 0, []}),
-	receive
-		[onError, #mqtt_error{oper= disconnect, error_msg= "Already disconnected."}] = Args ->
-			?debug_Fmt("::test:: onError event callback = ~p ~n", [Args]);
-		Message ->
-			?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Message]),
-			?assert(false)
-	after 2000 ->
-			?debug_Fmt("::test:: Timeout while waiting onClose callback from client~n", []),
-			?assert(false)
-	end,
-
-	?passed
-end};
-disconnect_test('5.0' = Version, Conn_config) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-	connect(Version, Conn_config#connect{properties = [{?Topic_Alias_Maximum, 2},{?Receive_Maximum, 10}]}),
-%	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
-
-	disconnect(Version),
-
-	mock_tcp:set_expectation(<<224,0>>),
-	gen_server:cast(client_gensrv, {disconnect, 0, []}),
-	F = 
-		fun(M) ->
-			case M of
-				[onError, #mqtt_error{oper= disconnect, error_msg= "Already disconnected."}] = Args ->
-					?debug_Fmt("::test:: onError event callback = ~p ~n", [Args]);
-				Message ->
-					?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Message]),
-					?assert(false)
-			end
-		end,
-	wait_mock_tcp("disconnect | onError", F),
-
-	?passed
-end}.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================

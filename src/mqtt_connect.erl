@@ -53,7 +53,7 @@ connect(State, Config) ->
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
 	ClientPid = Storage:connect_pid(get, Client_Id, server),
-	try 
+	try
 %% validate connect config.
 		mqtt_data:validate_config(Config),
 %% check credentials 
