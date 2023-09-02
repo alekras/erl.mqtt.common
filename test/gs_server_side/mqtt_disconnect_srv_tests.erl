@@ -137,7 +137,7 @@ cleanup('5.0'=X, {Y, Z}) ->
 			case gen_server:call(conn_server_subs, status) of
 				[{connected, 1},_,_] ->
 					mock_tcp:set_expectation(<<224,34,2, 32, 31,29:16,"Initiated by client or server"/utf8>>),
-					conn_server_subs ! {tcp, Z, <<224,7,2,5,17,0,0,0,25>>},
+					conn_server_subs ! {tcp, Z, <<224,2,2,0>>},
 					wait_mock_tcp("disconnect subs");
 				_ -> unregister(conn_server_subs)
 			end
@@ -166,11 +166,11 @@ disconnect_test_1('3.1.1' = Version, {Socket, _Socket_Subs}) -> {"Disconnect tes
 	?passed
 end};
 disconnect_test_1('5.0' = Version, {Socket, _Socket_Subs}) -> {"Disconnect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	mock_tcp:set_expectation(<<32,8,0,0,5,17,0,0,0,7>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,8,0,0,5,17,0,0,0,27>>), %% Connack packet
 % Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,43,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-			5,17,0,0,0,7,
+			5,17,0,0,0,27,
 			11:16,"test0Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8
@@ -241,11 +241,11 @@ disconnect_normal_no_will_test('3.1.1' = Version, {Socket, Socket_Subs}) -> {"Di
 end};
 disconnect_normal_no_will_test('5.0' = Version, {Socket, Socket_Subs}) -> {"Disconnect Will 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 %% ---- connect to main process ----
-	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,7,33,0,11>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,255,255,255,255,33,0,11>>), %% Connack packet
 % Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,75,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 1:1, 1:1, 0:1, 60000:16, 
-			8,17,0,0,0,7,33,11:16,
+			8,17,255,255,255,255,33,11:16,
 			11:16,"test0Client"/utf8,
 			2, 1, 0,
 			10:16, "Will_Topic"/utf8,
@@ -255,11 +255,11 @@ disconnect_normal_no_will_test('5.0' = Version, {Socket, Socket_Subs}) -> {"Disc
 		>>},
 	wait_mock_tcp("connack 1"),
 %% ---- connect to subscriber process ----
-	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,7,33,0,11>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,0,33,0,11>>), %% Connack packet
 % Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server_subs ! {tcp, Socket_Subs,
 		<<16,46,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-			8,17,0,0,0,7,33,11:16,
+			8,17,0,0,0,0,33,11:16,
 			11:16,"test1Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8
@@ -313,11 +313,11 @@ disconnect_shutdown_with_will_test('3.1.1' = Version, {Socket, Socket_Subs}) -> 
 end};
 disconnect_shutdown_with_will_test('5.0' = Version, {Socket, Socket_Subs}) -> {"Disconnect Will 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 %% ---- connect to main process ----
-	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,7,33,0,11>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,255,255,255,255,33,0,11>>), %% Connack packet
 % Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,75,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 1:1, 1:1, 0:1, 60000:16, 
-			8,17,0,0,0,7,33,11:16,
+			8,17,255,255,255,255,33,11:16,
 			11:16,"test0Client"/utf8,
 			2, 1, 0,
 			10:16, "Will_Topic"/utf8,
@@ -327,11 +327,11 @@ disconnect_shutdown_with_will_test('5.0' = Version, {Socket, Socket_Subs}) -> {"
 		>>},
 	wait_mock_tcp("connack 1"),
 %% ---- connect to subscriber process ----
-	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,7,33,0,11>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,0,33,0,11>>), %% Connack packet
 % Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server_subs ! {tcp, Socket_Subs,
 		<<16,46,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
-			8,17,0,0,0,7,33,11:16,
+			8,17,0,0,0,0,33,11:16,
 			11:16,"test1Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8

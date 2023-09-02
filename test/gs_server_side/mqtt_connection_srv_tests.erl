@@ -180,10 +180,11 @@ connection_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Connection te
 				5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
+	Will_publish_record = (mqtt_dets_storage:session_state(get, <<"test0Client"/utf8>>))#session_state.will_publish,
 	Conn_State = sys:get_state(conn_server),
-	?debug_Fmt("::test:: will properties = ~p ~n", [Conn_State#connection_state.config#connect.will_publish#publish.properties]),
+	?debug_Fmt("::test:: will properties = ~p ~n", [Will_publish_record#publish.properties]),
 	?debug_Fmt("::test:: properties = ~p ~n", [Conn_State#connection_state.config#connect.properties]),
-	?assertEqual([{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}], Conn_State#connection_state.config#connect.will_publish#publish.properties),
+	?assertEqual([{?Will_Delay_Interval, 6000},{?Response_Topic, <<"AfterClose/Will">>}], Will_publish_record#publish.properties),
 	?assertEqual([{?Maximum_Packet_Size, 65000}, {?Session_Expiry_Interval, 16#FFFFFFFF}], Conn_State#connection_state.config#connect.properties),
 
 	disconnect(),
@@ -494,6 +495,11 @@ subscribe('5.0', Socket, {Retain_handling,Retain_as_published,No_local,Max_qos})
 	wait_mock_tcp("suback").
 
 disconnect() ->
-	mock_tcp:set_expectation(<<224,0>>),
-	gen_server:cast(conn_server, {disconnect,0,[]}),
-	wait_mock_tcp("disconnect").
+	case ((sys:get_state(conn_server))#connection_state.config)#connect.version of
+		'5.0' ->
+			mock_tcp:set_expectation(<<224,0>>),
+			gen_server:cast(conn_server, {disconnect,0,[]}),
+			wait_mock_tcp("disconnect");
+		'3.1.1' ->
+			gen_server:cast(conn_server, {disconnect,0,[]})
+  end.

@@ -139,11 +139,11 @@ config_setup_test('3.1.1' = Version, {Socket, _Conn_config}) -> {"Config setup t
 	?passed
 end};
 config_setup_test('5.0' = Version, {Socket, _Conn_config}) -> {"Config setup test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,7,33,0,11>>), %% Connack packet
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,1,0,0,9,33,0,11>>), %% Connack packet
 	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,75,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 1:1, 1:1, 0:1, 60000:16, 
-			8,17,0,0,0,7,33,11:16,
+			8,17,1,0,0,9,33,11:16,
 			11:16,"test0Client"/utf8,
 			2, 1, 0,
 			10:16, "Will_Topic"/utf8,
@@ -160,7 +160,7 @@ config_setup_test('5.0' = Version, {Socket, _Conn_config}) -> {"Config setup tes
 	
 	Record_1 = mqtt_dets_storage:session_state(get, <<"test0Client">>),
 	?debug_Fmt("::test:: Record_1 = ~p ~n", [Record_1]),
-	?assertEqual(7, Record_1#session_state.session_expiry_interval),
+	?assertEqual(16777225, Record_1#session_state.session_expiry_interval),
 	?assertMatch(#publish{topic="Will_Topic", payload= <<"Will Payload">>, properties = [{?Payload_Format_Indicator, 0}]}, Record_1#session_state.will_publish),
 
 	State = sys:get_state(conn_server),
@@ -189,13 +189,13 @@ restore_session_1_test('5.0' = Version, {Socket, _Conn_config}) -> {"Restore ses
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
 	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, server),
 
-	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,7>>, %% Connack packet
+	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,11>>, %% Connack packet
 			<<56,15,0,5,"Topic"/utf8,0,"Payload"/utf8>> % re-published packet
 		]), 
 	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,43,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 0:1, 0:1, 60000:16, 
-			5,17,0,0,0,7,
+			5,17,0,0,0,11,
 			11:16,"test0Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8
@@ -225,13 +225,13 @@ restore_session_2_test('5.0' = Version, {Socket, _Conn_config}) -> {"Restore ses
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrel},
 	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, server),
 
-	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,7>>, %% Connack packet
+	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,15>>, %% Connack packet
 			<<98,2,0,100>> % re-sent pubrel packet
 		]), 
 	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,43,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 0:1, 0:1, 60000:16, 
-			5,17,0,0,0,7,
+			5,17,0,0,0,15,
 			11:16,"test0Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8
@@ -261,13 +261,13 @@ restore_session_3_test('5.0' = Version, {Socket, _Conn_config}) -> {"Restore ses
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrec},
 	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, server),
 
-	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,7>>, %% Connack packet
+	mock_tcp:set_expectation([<<32,8,1,0,5,17,0,0,0,17>>, %% Connack packet
 			<<80,2,0,100>> % re-sent pubrec packet
 		]), 
 	% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
 	conn_server ! {tcp, Socket,
 		<<16,43,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 0:1, 0:1, 60000:16, 
-			5,17,0,0,0,7,
+			5,17,0,0,0,17,
 			11:16,"test0Client"/utf8,
 			5:16,"guest"/utf8,
 			5:16,"guest"/utf8

@@ -382,7 +382,7 @@ retain(clean, _) ->
 retain(close, _) ->
 	dets:close(db_id(5, server)).
 
-cleanup(ClientId, End_Type) ->
+cleanup(ClientId, End_Type) -> %% @todo rename to session_cleanup
 	session(clean, ClientId, End_Type),
 	subscription(clean, ClientId, End_Type),
 	if End_Type =:= server ->

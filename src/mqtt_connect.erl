@@ -80,25 +80,32 @@ connect(State, Config) ->
 				 true -> 0
 			end,
 		if Resp_code =:= 0 ->
-				New_State = State#connection_state{config = Config, topic_alias_in_map = #{}, topic_alias_out_map = #{}},
-				New_State_2 =
+				New_State =
 				case Config#connect.clean_session of
 					1 -> 
 						Storage:cleanup(Client_Id, server),
-						New_State#connection_state{session_present = 0};
+						State#connection_state{session_present = 0};
 					0 ->	 
-						restore_session(New_State) 
+						restore_session(State#connection_state{config = Config}) 
 				end,
-%%				New_Client_Id = Config#connect.client_id,
 				Storage:connect_pid(save, #storage_connectpid{client_id = Client_Id, pid = self()}, server),
-				Storage:session_state(save, #session_state{client_id = Client_Id,
-						session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
-						will_publish = Config#connect.will_publish}),
-				New_State_3 = receive_max_set_handle(ConnVersion, New_State_2),
-				Packet = packet(connack, ConnVersion, {New_State_3#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
+				Session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
+				Will_publish = Config#connect.will_publish,
+				Session_state_new =
+				case Storage:session_state(get, Client_Id) of
+					undefined ->
+						#session_state{
+							client_id = Client_Id,
+							will_publish = Will_publish};
+					Session_state when Will_publish == undefined -> Session_state;
+					Session_state -> Session_state#session_state{will_publish = Will_publish}
+				end,
+				Storage:session_state(save, Session_state_new#session_state{session_expiry_interval = Session_expiry_interval}),
+				New_State_1 = receive_max_set_handle(ConnVersion, New_State#connection_state{config = Config#connect{will_publish = undefined}}),
+				Packet = packet(connack, ConnVersion, {New_State_1#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 				Transport:send(Socket, Packet),
 				lager:info([{endtype, server}], "Connection to client ~p is established~n", [Client_Id]),
-				New_State_3#connection_state{connected = 1};
+				New_State_1#connection_state{topic_alias_in_map = #{}, topic_alias_out_map = #{}, connected = 1};
 			true ->
 				Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
 				Transport:send(Socket, Packet),

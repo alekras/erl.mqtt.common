@@ -559,17 +559,18 @@ handle_info(Info, State) ->
 terminate(Reason, #connection_state{end_type = client} = State) ->
 	lager:notice([{endtype, client}], "Client TERMINATED, reason:~p, state:~p~n", [Reason, State]),
 	ok;
-terminate(Reason, #connection_state{config = Config, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
+terminate(Reason, #connection_state{config = #connect{client_id = Client_id}, socket = Socket, transport = Transport, storage = Storage, end_type = server} = State) ->
 	lager:notice([{endtype, server}], "Server process TERMINATED, reason:~p, state:~p~n", [Reason, State]),
-	if is_record(Config#connect.will_publish, publish) and (Reason =:= shutdown) ->
-			will_publish_handle(Storage, Config);
+	Session_state = Storage:session_state(get, Client_id),
+	if Reason =:= shutdown ->
+			will_publish_handle(Storage, Session_state);
 		 ?ELSE -> ok
 	end,
-	session_end_handle(Storage, Config),
+	session_end_handle(Storage, Session_state, State#connection_state.config),
 	MySelf = self(),
-	case Storage:connect_pid(get, Config#connect.client_id, server) of
+	case Storage:connect_pid(get, Client_id, server) of
 		MySelf ->
-			Storage:connect_pid(remove, Config#connect.client_id, server);
+			Storage:connect_pid(remove, Client_id, server);
 		_ ->
 			ok
 	end,
@@ -713,73 +714,68 @@ topic_alias_handle('5.0',
 topic_alias_handle(_, PubRec, State) ->
 	{PubRec, State}.
 
-will_publish_handle(Storage, Config) ->
-	Sess_Client_Id = Config#connect.client_id,
-	PubRec = Config#connect.will_publish,
+will_publish_handle(Storage, Session_state) ->
+	case Session_state of
+		undefined -> ok;
+		#session_state{will_publish = PubRec} ->
+			List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
+			lager:debug([{endtype, server}], "Will matched Topic list = ~128p~n", [List]),
 
-	List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
-	lager:debug([{endtype, server}], "Will matched Topic list = ~128p~n", [List]),
+			{WillDelayInt, Properties} =
+				case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
+					false -> {0, PubRec#publish.properties};
+					{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
+				end,
+			Params = PubRec#publish{properties = Properties},
 
-	{WillDelayInt, Properties} =
-		case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
-			false -> {0, PubRec#publish.properties};
-			{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
-		end,
-	Params = PubRec#publish{properties = Properties},
+			[
+				case Storage:connect_pid(get, Client_Id, server) of
+					undefined -> 
+						lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+					Pid ->
+						TopicQoS = TopicOptions#subscription_options.max_qos,
+						QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
+						{ok, _} = timer:apply_after(WillDelayInt * 1000,
+																				mqtt_publish,
+																				server_send_publish,
+																				[Pid, Params#publish{qos = QoS}])
+				end
+				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
+			],
 
-	[
-		case Storage:connect_pid(get, Client_Id, server) of
-			undefined -> 
-				lager:warning([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
-			Pid ->
-				TopicQoS = TopicOptions#subscription_options.max_qos,
-				QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
-				{ok, _} = timer:apply_after(WillDelayInt * 1000,
-																		mqtt_publish,
-																		server_send_publish,
-																		[Pid, Params#publish{qos = QoS}])
-		end
-		|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
-	],
+			case Session_state of
+				undefined -> skip;
+				Record -> Storage:session_state(save, Record#session_state{will_publish = undefined})
+			end,
 
-	case Storage:session_state(get, Sess_Client_Id) of
-		undefined -> skip;
-		Record -> Storage:session_state(save, Record#session_state{will_publish = undefined})
-	end,
-
-	if (PubRec#publish.retain =:= 1) ->
-			Storage:retain(save, Params); %% @todo avoid duplicates ???
-		 true -> ok
+			if (PubRec#publish.retain =:= 1) ->
+					Storage:retain(save, Params); %% @todo avoid duplicates ???
+		 		true -> ok
+			end
 	end.
 
-session_expire(Storage, SessionState, Config) ->
-	lager:debug([{endtype, server}], ">>> session_expire: SessionState=~p Config=~p~n", [SessionState,Config]),
-		Will_PubRec = SessionState#session_state.will_publish,
-		if Will_PubRec == undefined -> ok;
-			 ?ELSE ->
-				 will_publish_handle(Storage, Config)
-		end,
-		Storage:cleanup(Config#connect.client_id, server).
+session_expire(Storage, SessionState, Client_id) ->
+	lager:debug([{endtype, server}], ">>> session_expire: SessionState=~p; Client Id=~p~n", [SessionState, Client_id]),
+	will_publish_handle(Storage, SessionState),
+	Storage:cleanup(Client_id, server).
 
-session_end_handle(Storage, #connect{version= '5.0'} = Config) ->
-	Sess_Client_Id = Config#connect.client_id,
-	SSt = Storage:session_state(get, Sess_Client_Id),
-	lager:debug([{endtype, server}], ">>> session_end_handle: Client=~p SessionState=~p~n", [Sess_Client_Id,SSt]),
-	case SSt of
+session_end_handle(Storage, Session_state, #connect{version= '5.0', client_id = Sess_Client_Id}) ->
+	lager:debug([{endtype, server}], ">>> session_end_handle: Client=~p SessionState=~p~n", [Sess_Client_Id, Session_state]),
+	case Session_state of
 		undefined -> ok;
-		SessionState ->
-			Exp_Interval = SessionState#session_state.session_expiry_interval,
-			if Exp_Interval == 16#FFFFFFFF -> ok;
-				 Exp_Interval == 0 ->
+		#session_state{session_expiry_interval = Exp_Interval} ->
+			case Exp_Interval of 
+				16#FFFFFFFF -> ok;
+				0 ->
 					Storage:cleanup(Sess_Client_Id, server);
-				 ?ELSE ->
+				_ ->
 					{ok, _} = timer:apply_after(Exp_Interval * 1000,
 																			?MODULE,
 																			session_expire,
-																			[Storage, SessionState, Config])
+																			[Storage, Session_state, Sess_Client_Id])
 			end
 	end;
-session_end_handle(_Storage, _Config) ->
+session_end_handle(_Storage, _Session_state, _Config) ->
 	ok.
 
 clean_up_timeout(Processes) ->
