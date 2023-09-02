@@ -34,8 +34,10 @@ stop() ->
 	unregister(mock_tcp_srv).
 
 set_expectation(Expect) when is_list(Expect)->
+	clear_mailbox(),
 	mock_tcp_srv ! {expect, self(), Expect};
 set_expectation(Expect) ->
+	clear_mailbox(),
 	mock_tcp_srv ! {expect, self(), [Expect]}.
 
 connect(_Host, _Port, _Options, _Timeout) ->
@@ -109,7 +111,14 @@ wait_no_mock_tcp(R) ->
 		M ->
 			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
 			?assert(false)
-	after 1000 ->
+	after 200 ->
 			?debug_Fmt("::test:: mock_tcp ~p acknowledge (expected timeout)~n", [R]),
 			?assert(true)
+	end.
+
+clear_mailbox() ->
+	receive
+		_ ->
+			clear_mailbox()
+		after 0 -> ok
 	end.

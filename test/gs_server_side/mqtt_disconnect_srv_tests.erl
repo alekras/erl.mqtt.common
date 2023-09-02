@@ -60,7 +60,9 @@ connect_genServer_test_() ->
 				,{'3.1.1', fun disconnect_normal_no_will_test/2}
 				,{'5.0',   fun disconnect_normal_no_will_test/2}
 				,{'3.1.1', fun disconnect_shutdown_with_will_test/2}
-				,{'5.0', fun disconnect_shutdown_with_will_test/2}
+				,{'5.0',   fun disconnect_shutdown_with_will_test/2}
+				,{'5.0',   fun disconnect_session_expire_1_test/2}
+				,{'5.0',   fun disconnect_session_expire_2_test/2}
 			]
 		}
 	 }
@@ -344,6 +346,86 @@ disconnect_shutdown_with_will_test('5.0' = Version, {Socket, Socket_Subs}) -> {"
 	conn_server ! {tcp_closed, Socket},
 	wait_mock_tcp("will"),
 	wait_no_mock_tcp("disconnect"),
+
+	?passed
+end}.
+
+disconnect_session_expire_1_test('5.0' = Version, {Socket, Socket_Subs}) -> {"Session expire 1 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+%% ---- connect to main process ----
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,2,33,0,11>>), %% Connack packet
+% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
+	conn_server ! {tcp, Socket,
+		<<16,75,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 1:1, 1:1, 0:1, 60000:16, 
+			8,17,0,0,0,2,33,11:16,
+			11:16,"test0Client"/utf8,
+			2, 1, 0,
+			10:16, "Will_Topic"/utf8,
+			12:16, "Will Payload"/utf8,
+			5:16,"guest"/utf8,
+			5:16,"guest"/utf8
+		>>},
+	wait_mock_tcp("connack 1"),
+%% ---- connect to subscriber process ----
+	mock_tcp:set_expectation(<<32,6,0,0,3,33,0,11>>), %% Connack packet
+% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
+	conn_server_subs ! {tcp, Socket_Subs,
+		<<16,41,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
+			3,33,11:16,
+			11:16,"test1Client"/utf8,
+			5:16,"guest"/utf8,
+			5:16,"guest"/utf8
+		>>},
+	wait_mock_tcp("connack 2"),
+
+	subscribe(Version, Socket_Subs, {0,0,0,2}),
+
+	mock_tcp:set_expectation([
+		<<48,27,10:16,"Will_Topic"/utf8,2,1,0,"Will Payload"/utf8>>,
+		<<224,34,2, 32, 31,29:16,"Initiated by client or server"/utf8>>]),
+	conn_server ! {tcp, Socket, <<224,7,2,5,17,0,0,0,25>>},
+	wait_mock_tcp("disconnect"),
+	timer:sleep(1900),
+	wait_mock_tcp("will"),
+
+	?passed
+end}.
+
+disconnect_session_expire_2_test('5.0' = Version, {Socket, Socket_Subs}) -> {"\nSession expire 2 test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+%% ---- connect to main process ----
+	mock_tcp:set_expectation(<<32,11,0,0,8,17,0,0,0,1,33,0,11>>), %% Connack packet
+% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
+	conn_server ! {tcp, Socket,
+		<<16,75,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 1:1, 1:1, 0:1, 60000:16, 
+			8,17,0,0,0,1,33,11:16,
+			11:16,"test0Client"/utf8,
+			2, 1, 0,
+			10:16, "Will_Topic"/utf8,
+			12:16, "Will Payload"/utf8,
+			5:16,"guest"/utf8,
+			5:16,"guest"/utf8
+		>>},
+	wait_mock_tcp("connack 1"),
+%% ---- connect to subscriber process ----
+	mock_tcp:set_expectation(<<32,6,0,0,3,33,0,11>>), %% Connack packet
+% Conect Flags: UN:1, PW:1, WillRetain:1, WillQoS:2, WillFlag:1, Clear:1, 0:1
+	conn_server_subs ! {tcp, Socket_Subs,
+		<<16,41,4:16,"MQTT"/utf8,5, 1:1, 1:1, 0:1, 0:2, 0:1, 1:1, 0:1, 60000:16, 
+			3,33,11:16,
+			11:16,"test1Client"/utf8,
+			5:16,"guest"/utf8,
+			5:16,"guest"/utf8
+		>>},
+	wait_mock_tcp("connack 2"),
+
+	subscribe(Version, Socket_Subs, {0,0,0,2}),
+
+	mock_tcp:set_expectation([
+		<<224,34,2, 32, 31,29:16,"Initiated by client or server"/utf8>>]),
+	conn_server ! {tcp, Socket, <<224,7,2,5,17,0,0,0,25>>},
+	wait_mock_tcp("disconnect"),
+	timer:sleep(2900),
+	mock_tcp:set_expectation([]),
+	wait_no_mock_tcp("will"),
 
 	?passed
 end}.
