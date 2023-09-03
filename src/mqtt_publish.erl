@@ -241,14 +241,17 @@ get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
 	Topic_List = Storage:subscription(get_matched_topics, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, client),
 	[Options || #storage_subscription{options = Options} <- Topic_List].
 
-delivery_to_application(#connection_state{end_type = client, event_callback = Callback} = State,
+delivery_to_application(#connection_state{end_type = client, event_callback = Callback, config = #connect{version = Vrsn}} = State,
 												#publish{qos = QoS, dup = Dup, retain = Retain} = PubRecord) ->
-	Topic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubRecord, State),
+	Topic = handle_get_topic_from_alias(Vrsn, PubRecord, State),
 %%	NewPubRecord = PubRecord#publish{topic = Topic},
 	case get_topic_attributes(State, Topic) of
 		[] -> do_callback(Callback, [onReceive, {undefined, PubRecord}]);
 		List ->
-			[do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || SubsOption <- List]
+			case Vrsn of
+				'5.0' -> [do_callback(Callback, [onReceive, {SubsOption, PubRecord}]) || SubsOption <- List];
+				_     -> [do_callback(Callback, [onReceive, {SubsOption#subscription_options.max_qos, PubRecord}]) || SubsOption <- List]
+			end
 	end,
 	lager:info([{endtype, State#connection_state.end_type}], 
 						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
