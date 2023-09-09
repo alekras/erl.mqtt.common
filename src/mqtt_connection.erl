@@ -446,7 +446,7 @@ handle_cast({disconnect, ReasonCode, Properties},
 										?LOGGING_FORMAT ++ " process sent disconnect request to server with reason code:~p, and properties:~p.~n",
 										[Config#connect.client_id, none, disconnect, Config#connect.version, ReasonCode, Properties]
 								),
-					if State#connection_state.config#connect.version == '5.0' ->
+					if Config#connect.version == '5.0' ->
 							Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, disconnect}),
 							New_processes = Processes#{disconnect => Timeout_ref},
 							{noreply, State#connection_state{packet_id = 100, processes = New_processes}};
@@ -470,13 +470,14 @@ handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
 
-handle_cast(disconnect, #connection_state{end_type = client} = State) ->
+handle_cast(disconnect, #connection_state{event_callback = Callback, end_type = client} = State) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(disconnect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
 	close_socket(State),
+	do_callback(Callback, [onClose, {128, [{?Reason_String, "Unspecified error"}]}]),
 	{noreply, State#connection_state{connected = 0, packet_id = 100, processes = maps:remove(disconnect, Processes)}};
 
 %% Server side:
@@ -536,7 +537,7 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type =
 
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, config = #connect{client_id = Client_id, version = Ver}, end_type = client} = State) ->
 	lager:notice([{endtype, client}],
-							 ?LOGGING_FORMAT ++ " process receives tcp_closed while state:~s",
+							 ?LOGGING_FORMAT ++ " process receives tcp_closed:~s",
 							 [Client_id, none, tcp_closed, Ver, mqtt_data:state_to_string(State)]),
 	gen_server:cast(self(), disconnect),
 	{noreply, State#connection_state{connected = 0}};
