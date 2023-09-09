@@ -140,7 +140,15 @@ process_internal(State, Binary) ->
 			process(mqtt_connect:disconnect(State, DisconnectReasonCode, Properties), Tail);
 
 		M ->
-			lager:error([{endtype, State#connection_state.end_type}], "unparsed message: ~p, input binary: ~p Current State: ~p~n", [M, Binary, State]),
+			lager:error([{endtype, State#connection_state.end_type}],
+									?LOGGING_FORMAT ++ " process cannot parse message: ~p, input binary: ~p ~s",
+									[(State#connection_state.config)#connect.client_id,
+									 none,
+									 none,
+									 (State#connection_state.config)#connect.version,
+									 M,
+									 Binary,
+									 mqtt_data:state_to_string(State)]),
 			gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Protocol Error"}]}),
 			process(State, <<>>)
 	end.

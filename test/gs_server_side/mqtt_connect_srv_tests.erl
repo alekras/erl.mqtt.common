@@ -164,7 +164,7 @@ config_setup_test('5.0' = Version, {Socket, _Conn_config}) -> {"Config setup tes
 	?assertMatch(#publish{topic="Will_Topic", payload= <<"Will Payload">>, properties = [{?Payload_Format_Indicator, 0}]}, Record_1#session_state.will_publish),
 
 	State = sys:get_state(conn_server),
-	?debug_Fmt("::test:: State = ~p ~n", [State]),
+	?debug_Fmt("::test:: State = ~s", [mqtt_data:state_to_string(State)]),
 	?assertEqual(11, State#connection_state.receive_max),
 	?assertEqual(11, State#connection_state.send_quota),
 	?passed

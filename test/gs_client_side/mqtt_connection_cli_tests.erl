@@ -106,8 +106,9 @@ do_start() ->
 	Storage = mqtt_dets_storage,
 %	Socket = undefined,
 	State = #connection_state{storage = Storage, end_type = client},
-	{ok, Pid} = gen_server:start_link({local, client_gensrv}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
-	?debug_Fmt("::test:: <<< do_start() Pid of client_gensrv = ~p~n", [Pid]),
+	Timeout = application:get_env(mqtt_common, timeout, ?MQTT_GEN_SERVER_TIMEOUT),
+	{ok, Pid} = gen_server:start_link({local, client_gensrv}, mqtt_connection, State, [{timeout, Timeout}]),
+	?debug_Fmt("::test:: <<< do_start() Pid of client_gensrv = ~p~n    Timeout: ~p~n", [Pid, Timeout]),
 	Pid.
 
 do_stop(Pid) ->
@@ -134,7 +135,7 @@ cleanup(X, Y) ->
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config),
-	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
+	?debug_Fmt("::test:: State = ~s", [mqtt_data:state_to_string(sys:get_state(client_gensrv))]),
 
 	ping_pong(),
 	disconnect(Version),
@@ -462,8 +463,7 @@ publish_1_test('5.0' = Version, Conn_config) -> {"Publish 1 test [" ++ atom_to_l
 
 	mock_tcp:set_expectation(<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
-	Conn_State = sys:get_state(client_gensrv),
-	?debug_Fmt("::test:: State = ~p ~n", [Conn_State]),
+	?debug_Fmt("::test:: State = ~s", [mqtt_data:state_to_string(sys:get_state(client_gensrv))]),
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:
@@ -488,7 +488,7 @@ publish_1_timeout_test('5.0' = Version, Conn_config) -> {"Publish 1 Timeout test
 
 	mock_tcp:set_expectation(<<50,17,0,5,84,111,112,105,99,100:16, 0,80,97,121,108,111,97,100>>),
 	gen_server:cast(client_gensrv, {publish, #publish{qos = 1, topic = <<"Topic">>, payload = <<"Payload">>}}),
-	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
+	?debug_Fmt("::test:: State = ~s", [mqtt_data:state_to_string(sys:get_state(client_gensrv))]),
 	wait_mock_tcp("publish<1> packet"),
 
 %% from server:

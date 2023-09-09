@@ -45,7 +45,8 @@
 	validate_config/1,
 	validate_publish/2,
 	binary_to_hex/1,
-	hex_to_binary/1
+	hex_to_binary/1,
+	state_to_string/1
 ]).
 
 %% Variable byte Integer:
@@ -218,6 +219,44 @@ validate_publish(_, #publish{topic= Topic}) ->
 		_ -> ok
 	end,
 	true.
+
+state_to_string(#connection_state{
+		transport = Trt, storage = Stg, end_type = Entp, connected = Cnd,
+		session_present = Sespr, packet_id = PkId, timeout = To, test_flag = Tstf,
+		topic_alias_in_map = Talin, topic_alias_out_map = Talout, processes = Pr,
+		processes_ext = Prex, tail = Tail,
+		config = #connect{
+			version = Vrsn, conn_type = Cnntp, client_id = ClId, user_name = Usr, host = Host, port = Port,
+			will_publish = Wpbh, clean_session = Clss, keep_alive = Kal, properties = Props
+		}
+	}) ->
+	lists:concat([
+		"\n--- Process state ="
+		, "\n       Transport: ", Trt
+		, "\n         Storage: ", Stg
+		, "\n        End Type: ", Entp
+		, "\n       Connected: ", Cnd 
+		, "\n Session present: ", Sespr
+		, "\n         Timeout: ", To
+		, "\n       Test flag: ", Tstf
+		, "\n       Packet Id: ", PkId
+		, "\n  Topic Alias In: ", io_lib:format("~100p", [Talin])
+		, "\n Topic Alias Out: ", io_lib:format("~100p", [Talout])
+		, "\n       Processes: ", io_lib:format("~100p", [Pr])
+		, "\n   Processes Ext: ", io_lib:format("~100p", [Prex])
+		, "\n            Tail: <<", binary_to_list(Tail), ">>"
+		, "\n----- Config ="
+		, "\n          Version: ", Vrsn
+		, "\n  Connection Type: ", Cnntp
+		, "\n        Host.port: ", Host, ":", Port
+		, "\n        Client Id: ", binary_to_list(ClId)
+		, "\n        User Name: ", Usr
+		, "\n    Clean Session: ", Clss
+		, "\n       Keep alive: ", Kal
+		, "\n     Will publish: ", io_lib:format("~100p", [Wpbh])
+		, "\n       Properties: ", io_lib:format("~100p", [Props])
+		, "\n"
+	]).
 
 binary_to_hex(Binary) -> [conv(N) || <<N:4>> <= Binary].
 

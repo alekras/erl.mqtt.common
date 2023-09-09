@@ -84,21 +84,28 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 	Packet = packet(suback, Version, {Return_Codes, Packet_Id}, []), %% TODO now just return empty properties
 	case Transport:send(Socket, Packet) of
 		ok -> 
-			lager:info([{endtype, server}], "Subscribe for client: ~p is completed. Subscriptions: ~p Return codes: ~p~n", [Client_Id, Subscriptions, Return_Codes]);
+			lager:info([{endtype, server}],
+								 ?LOGGING_FORMAT ++ " process completed subscriptions: ~128p Return codes: ~p.~n",
+								 [Client_Id, Packet_Id, subscribe, Version, Subscriptions, Return_Codes]);
 		{error, Reason} -> 
-			lager:error([{endtype, server}], "Cannot send Suback packet with reason: ~p for client: ~p~n", [Reason, Client_Id])
+			lager:error([{endtype, server}], 
+									?LOGGING_FORMAT ++ " process failed to send suback packet with reason: ~p~n",
+									[Client_Id, Packet_Id, subscribe, Version, Reason])
 	end,
 	State.
 
 %% client side only
 suback(State, Packet_Id, Return_codes, Properties) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
+	Ver = (State#connection_state.config)#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined ->
-			lager:error([{endtype, client}], "Processing Suback for client '~p' is failed. PI:~p Processes: ~p~n", [Client_Id, Packet_Id, Processes]),
+			lager:error([{endtype, client}],
+									?LOGGING_FORMAT ++ " process is failed during suback. ~s",
+									[Client_Id, Packet_Id, suback, Ver, mqtt_data:state_to_string(State)]),
 			State;
 		{Timeout_ref, Subscriptions} when is_list(Subscriptions) ->
 			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
@@ -116,7 +123,9 @@ suback(State, Packet_Id, Return_codes, Properties) ->
 				end
 				|| {{Topic, Options}, Return_code} <- lists:zip(Subscriptions, Return_codes)], %% @TODO check clean_session flag
 			do_callback(State#connection_state.event_callback, [onSubscribe, {Return_codes, Properties}]),
-			lager:info([{endtype, client}], "Client ~p is subscribed to topics ~p with return codes: ~p~n", [Client_Id, Subscriptions, Return_codes]),
+			lager:info([{endtype, client}],
+								 ?LOGGING_FORMAT ++ " process subscribed to topics ~p with return codes: ~p~n",
+								 [Client_Id, Packet_Id, suback, Ver, Subscriptions, Return_codes]),
 			State#connection_state{
 				processes = maps:remove(Packet_Id, Processes)
 			}
@@ -141,17 +150,22 @@ unsubscribe(State, Packet_Id, Topics, _Properties) ->
 		end || Topic <- Topics],
 	Packet = packet(unsuback, Version, {ReasonCodeList, Packet_Id}, []), %% @TODO now just return empty properties
 	Transport:send(Socket, Packet),
-	lager:info([{endtype, State#connection_state.end_type}], "Unsubscription(s) ~p is completed for client: ~p~n", [Topics, Client_Id]),
+	lager:info([{endtype, server}],
+						 ?LOGGING_FORMAT ++ " process unsubscribed from topics: ~p~n", 
+						 [Client_Id, Packet_Id, unsubscribe, Version, Topics]),
 	State.
 
 %% client side only
 unsuback(State, {Packet_Id, Return_codes}, Properties) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
+	Version = (State#connection_state.config)#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> 
-			lager:error([{endtype, client}], "Processing Unsuback for client '~p' is failed. PI:~p Processes: ~p~n", [Client_Id, Packet_Id, Processes]),
+			lager:error([{endtype, client}],
+									?LOGGING_FORMAT ++ " process is failed during unsuback. ~s",
+									[Client_Id, Packet_Id, unsuback, Version, mqtt_data:state_to_string(State)]),
 			State;
 		{Timeout_ref, Topics} when is_list(Topics) ->
 			if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
@@ -159,9 +173,11 @@ unsuback(State, {Packet_Id, Return_codes}, Properties) ->
 			end,
 %% discard session subscriptions
 			[ begin
-					Storage:subscription(remove, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, State#connection_state.end_type)
+					Storage:subscription(remove, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, client)
 				end || Topic <- Topics], %% TODO check clean_session flag
-			lager:info([{endtype, State#connection_state.end_type}], "Client ~p is unsubscribed from topics ~p with returns codes: ~p~n", [Client_Id, Topics, Return_codes]),
+			lager:info([{endtype, client}],
+								 ?LOGGING_FORMAT ++ " process unsubscribed from topics ~p with return codes: ~p~n",
+								 [Client_Id, Packet_Id, unsuback, Version, Topics, Return_codes]),
 			do_callback(State#connection_state.event_callback, [onUnsubscribe, {Return_codes, Properties}]),
 			State#connection_state{
 				processes = maps:remove(Packet_Id, Processes)
@@ -180,12 +196,14 @@ unsuback(State, {Packet_Id, Return_codes}, Properties) ->
 
 handle_retain_msg_after_subscribe('5.0', _State, #subscription_options{retain_handling = 2}, _Key) ->
 	ok;
-handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage} = State, 
+handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage, config = #connect{client_id = Client_id}} = State, 
 																	Options, 
 																	#subs_primary_key{topicFilter = TopicFilter, shareName = undefined} = Key) ->
 	Retain_Messages = Storage:retain(get, TopicFilter),
 	Exist = Storage:subscription(exist, Key, server),
-	lager:debug([{endtype, State#connection_state.end_type}], "Retain messages=~p~n   Exist=~p~n", [Retain_Messages, Exist]),
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " retain messages=~128p subscription exists=~p~n",
+							[Client_id, none, retain_publish, '5.0', Retain_Messages, Exist]),
 	QoS = Options#subscription_options.max_qos,
 	Retain_handling = Options#subscription_options.retain_handling,
 	if (Retain_handling == 0) or ((Retain_handling == 1) and (not Exist)) ->
@@ -193,20 +211,23 @@ handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage} = 
 					QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
 					erlang:spawn(mqtt_publish, 
 												server_send_publish, 
-												[self(), 
-												Params#publish{qos = QoS_4_Retain}])
+												[self(), Params#publish{qos = QoS_4_Retain}])
 				end || #publish{qos = Params_QoS} = Params <- Retain_Messages];
 		 true -> ok
 	end;
 handle_retain_msg_after_subscribe('5.0', _State, _Options, _Key) ->
 	ok;
-handle_retain_msg_after_subscribe(_, #connection_state{storage = Storage} = State, 
+handle_retain_msg_after_subscribe(_, #connection_state{storage = Storage, config = #connect{client_id = Client_id, version = Version}} = State, 
 																	Options,
 																	#subs_primary_key{topicFilter = TopicFilter} = _Key) ->
 	Retain_Messages = Storage:retain(get, TopicFilter),
-	lager:debug([{endtype, State#connection_state.end_type}], "Topic= ~p has retain messages= ~p~n", [TopicFilter, Retain_Messages]),
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " retain messages=~128p~n",
+							[Client_id, none, retain_publish, Version, Retain_Messages]),
 	QoS = Options#subscription_options.max_qos,
 	[ begin
 			QoS_4_Retain = if Params_QoS > QoS -> QoS; true -> Params_QoS end,
-			erlang:spawn(mqtt_publish, server_send_publish, [self(), Params#publish{qos = QoS_4_Retain}])
+			erlang:spawn(mqtt_publish,
+									 server_send_publish,
+									 [self(), Params#publish{qos = QoS_4_Retain}])
 		end || #publish{qos = Params_QoS} = Params <- Retain_Messages].

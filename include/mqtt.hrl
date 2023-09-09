@@ -49,7 +49,7 @@
 %% }).
 -record(connect,
 	{
-		client_id = undefined :: atom(),
+		client_id = undefined :: atom() | binary() | string(),
 		user_name :: string(),
 		password :: binary(),
 		host = [] :: string(),
@@ -58,7 +58,7 @@
 		clean_session = 1 :: 0 | 1,
 		keep_alive :: integer(),
 		properties = [] :: list(),
-		version :: '3.1' | '3.1.1' | '5.0',
+		version = '5.0' :: '3.1' | '3.1.1' | '5.0',
 		conn_type = clear :: clear | ssl | tls | web_socket | web_sec_socket
 	}
 ).
@@ -75,7 +75,7 @@
 
 -record(primary_key,
 	{
-		client_id :: string(),
+		client_id :: binary(),
 		packet_id = 0 :: integer()
 	}
 ).
@@ -98,7 +98,7 @@
 	{
 		topicFilter :: string(),
 		shareName = undefined :: undefined | string(),
-		client_id :: string()
+		client_id :: binary()
 	}
 ).
 
@@ -126,7 +126,7 @@
 
 -record(session_state,
 	{
-		client_id :: string(),
+		client_id :: binary(),
 		session_expiry_interval = 0 :: integer(),
 		end_time = 0 :: integer(),
 		will_publish = undefined :: #publish{}
@@ -197,3 +197,4 @@
 -define(AUTH_PACK_TYPE, 16#F0:8).
 
 -define(ELSE, true).
+-define(LOGGING_FORMAT, "[ClId:~p PkId:~p Op:~p Vrs:~p]").

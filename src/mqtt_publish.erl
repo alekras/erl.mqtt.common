@@ -55,7 +55,9 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	Storage = State#connection_state.storage,
 
 	Record = msg_experation_handle(Version, PubRec),
-	lager:info([{endtype, State#connection_state.end_type}], "Publish packet for client ~p received [topic ~p:~p]~n", [Client_Id, Topic, QoS]),
+	lager:info([{endtype, State#connection_state.end_type}],
+						 " process receives Publish packet from network [topic ~p:~p]~n",
+						 [Client_Id, Packet_Id, publish, Version, Topic, QoS]),
 	case mqtt_connection:topic_alias_handle(Version, Record, State) of
 		{#mqtt_error{oper = publish, errno = ErrNo, error_msg = Msg}, NewState} ->
 			if State#connection_state.end_type == server ->
@@ -97,7 +99,9 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 							NewState1 = 
 							case maps:is_key(Packet_Id, ProcessesExt) of
 								true when Dup =:= 0 -> 
-									lager:warning([{endtype, VeryNewState#connection_state.end_type}], " >>> incoming PI = ~p, already exists Record = ~p Prosess List = ~p~n", [Packet_Id, NewRecord, VeryNewState#connection_state.processes]),
+									lager:warning([{endtype, VeryNewState#connection_state.end_type}],
+																" process received message with PacketId that already exists. ~s",
+																[Client_Id, Packet_Id, publish, Version, mqtt_data:state_to_string(VeryNewState)]),
 									VeryNewState;
 								_ ->
 									case VeryNewState#connection_state.end_type of 
@@ -180,8 +184,9 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	Processes = State#connection_state.processes,
 	ProcessesExt = State#connection_state.processes_ext,
 	Storage = State#connection_state.storage,
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubrel arrived PI: ~p Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
-							[Packet_Id, Processes, ProcessesExt, _ReasonCode, Properties]),
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " process receives Pubrel packet from network Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
+							[Client_Id, Packet_Id, pubrel, Processes, ProcessesExt, _ReasonCode, Properties]),
 	case maps:get(Packet_Id, ProcessesExt, undefined) of
 		undefined -> State;
 		{_, _Params} ->
@@ -217,7 +222,9 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> pubcomp arrived PI: ~p. Processes-~p~n", [Packet_Id, Processes]),
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " process receives Pubrel packet from network. Processes-~p~n",
+							[Client_Id, Packet_Id, pubcomp, Version, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
 		{Timeout_ref, _Params} ->
@@ -253,9 +260,9 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 				_     -> [do_callback(Callback, [onReceive, {SubsOption#subscription_options.max_qos, PubRecord}]) || SubsOption <- List]
 			end
 	end,
-	lager:info([{endtype, State#connection_state.end_type}], 
-						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
-						 [(State#connection_state.config)#connect.client_id, Topic, QoS, Dup, Retain]);
+	lager:info([{endtype, client}], 
+						 ?LOGGING_FORMAT ++ " process send publish message to client application [topic ~p:~p, dup=~p, retain=~p]~n", 
+						 [(State#connection_state.config)#connect.client_id, none, publish, Vrsn, Topic, QoS, Dup, Retain]);
 
 delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, 
 												#publish{payload = <<>>, retain = 1} = PubParam) ->
@@ -298,26 +305,32 @@ handle_retain_msg_during_publish(_,
 
 handle_server_publish(
 		'5.0',
-		#connection_state{storage = Storage} = State,
-		#publish{qos = Params_QoS, payload = Payload, expiration_time = ExpT, retain = Retain, dup = Dup} = Param,
+		#connection_state{storage = Storage, config = #connect{client_id = State_client_id}} = State,
+		#publish{qos = Params_QoS, expiration_time = ExpT, retain = Retain, dup = Dup} = Param,
 		PubTopic) ->
 	RemainedTime =
-	case ExpT of
-		infinity -> 1;
-		_ -> ExpT - erlang:system_time(millisecond)
-	end,
+		case ExpT of
+			infinity -> 1;
+			_ -> ExpT - erlang:system_time(millisecond)
+		end,
 	if RemainedTime > 0 ->
 			case Storage:subscription(get_matched_topics, PubTopic, server) of
 				[] when Retain =:= 1 -> ok;
 				[] ->
-					lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [PubTopic, Params_QoS, Payload]);
+					lager:notice([{endtype, server}],
+											 ?LOGGING_FORMAT ++ " process received publish message with topic ~p that does not exist in storage.~n",
+											 [State_client_id, none, publish, '5.0', PubTopic]);
 				List ->
-					lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+					lager:debug([{endtype, server}], 
+											?LOGGING_FORMAT ++ " topic list=~128p~n", 
+											[State_client_id, none, publish, '5.0', List]),
 					%% TODO if Client_Id topic matches multi subscriptions then create one message with multiple subscription identifier.
 					[
 						case Storage:connect_pid(get, Client_Id, server) of
 							undefined -> 
-								lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+								lager:warning([{endtype, server}],
+															?LOGGING_FORMAT ++ " process cannot find connection PID for client id=~p~n",
+															[State_client_id, none, publish, '5.0', Client_Id]);
 							Pid ->
 								NoLocal = Options#subscription_options.nolocal,
 								ProcessCliD = State#connection_state.config#connect.client_id,
@@ -356,11 +369,15 @@ handle_server_publish(
 					[ begin
 							GroupSize = length(GroupList),
 							N = rand:uniform(GroupSize),
-							lager:debug([{endtype, server}], "Shared subscription:: GroupList=~p~n     Random N=~p~n", [GroupList, N]),
+							lager:debug([{endtype, server}],
+													?LOGGING_FORMAT ++ " shared subscription:: GroupList=~128p Random N=~p~n",
+													[State_client_id, none, publish_shared, '5.0', GroupList, N]),
 							#storage_subscription{key = #subs_primary_key{client_id = CliId}, options = Opts} = lists:nth(N, GroupList),
 							case Storage:connect_pid(get, CliId, server) of
 								undefined ->
-									lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [CliId]);
+								lager:warning([{endtype, server}],
+															?LOGGING_FORMAT ++ " process cannot find connection PID for client id=~p~n",
+															[State_client_id, none, publish_shared, '5.0', CliId]);
 								Pid ->
 %							NoLocal = Opts#subscription_options.nolocal,
 %							ProcessCliD = State#connection_state.config#connect.client_id,
@@ -377,27 +394,33 @@ handle_server_publish(
 						|| {_ShareName, GroupList} <- maps:to_list(ShNamesMap)]
 			end,
 			lager:info([{endtype, server}], 
-								 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
-								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]);
+								 ?LOGGING_FORMAT ++ " process sent publish message to corresponded topics [topic ~p:~p, dup=~p, retain=~p]~n", 
+								 [State_client_id, none, publish, '5.0', PubTopic, Params_QoS, Dup, Retain]);
 		?ELSE ->
 			lager:info([{endtype, server}], 
-								 "Message for client ~p is expired [topic ~p:~p, dup=~p, retain=~p]~n", 
-								 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain])
+								 " process did not send message because it is expired [topic ~p:~p, dup=~p, retain=~p]~n", 
+								 [State_client_id, none, publish, '5.0', PubTopic, Params_QoS, Dup, Retain])
 	end;
 handle_server_publish(
-		_, %% versions 3.1 and 3.1.1
-		#connection_state{storage = Storage} = State,
-		#publish{qos = Params_QoS, payload = Payload, retain = Retain, dup = Dup} = Param, PubTopic) ->
+		Version, %% versions 3.1 and 3.1.1
+		#connection_state{storage = Storage, config = #connect{client_id = State_client_id}},
+		#publish{qos = Params_QoS, retain = Retain, dup = Dup} = Param, PubTopic) ->
 	case Storage:subscription(get_matched_topics, PubTopic, server) of
 		[] when Retain =:= 1 -> ok;
 		[] ->
-			lager:notice([{endtype, server}], "There is no the topic in DB. Publish came: Topic=~p QoS=~p Payload=~p~n", [PubTopic, Params_QoS, Payload]);
+			lager:notice([{endtype, server}],
+									 ?LOGGING_FORMAT ++ " process received publish message with topic ~p that does not exist in storage.~n",
+									 [State_client_id, none, publish, Version, PubTopic]);
 		List ->
-			lager:debug([{endtype, server}], "Topic list=~128p~n", [List]),
+					lager:debug([{endtype, server}], 
+											?LOGGING_FORMAT ++ " topic list=~128p~n", 
+											[State_client_id, none, publish, Version, List]),
 			[
 				case Storage:connect_pid(get, Client_Id, server) of
 					undefined -> 
-						lager:debug([{endtype, server}], "Cannot find connection PID for client id=~p~n", [Client_Id]);
+						lager:warning([{endtype, server}],
+													?LOGGING_FORMAT ++ " process cannot find connection PID for client id=~p~n",
+													[State_client_id, none, publish, Version, Client_Id]);
 					Pid ->
 						TopicQoS = Options#subscription_options.max_qos,
 						QoS = if Params_QoS > TopicQoS -> TopicQoS; true -> Params_QoS end,
@@ -406,15 +429,16 @@ handle_server_publish(
 				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = Options} <- List
 			]
 	end,
-	lager:info([{endtype, server}], 
-						 "Published message for client ~p delivered [topic ~p:~p, dup=~p, retain=~p]~n", 
-						 [(State#connection_state.config)#connect.client_id, PubTopic, Params_QoS, Dup, Retain]).
+		lager:info([{endtype, server}], 
+							 ?LOGGING_FORMAT ++ " process sent publish message to corresponded topics [topic ~p:~p, dup=~p, retain=~p]~n", 
+							 [State_client_id, none, publish, Version, PubTopic, Params_QoS, Dup, Retain]).
 
 server_send_publish(Pid, Params) -> 
-	lager:info([{endtype, server}], "Pid=~p Params=~128p~n", [Pid, Params]),
 %% TODO process look up topic alias for the Pid client/session and update #publish record
 	gen_server:cast(Pid, {publish, Params#publish{dir=out}}), %% @todo callback for timeout or error in self process connection_state
-	lager:info([{endtype, server}], "Server has successfuly published message to subscriber.~n", []).
+	lager:info([{endtype, server}],
+						 " process has successfuly published message to subscriber with PID:~p.~n",
+						 [Pid]).
 
 msg_experation_handle('5.0', #publish{properties = Props} = PubRec) ->
 	Msg_Exp_Interval = proplists:get_value(?Message_Expiry_Interval, Props, infinity),

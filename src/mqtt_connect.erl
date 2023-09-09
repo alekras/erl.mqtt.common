@@ -52,10 +52,11 @@ connect(State, Config) ->
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
-	ClientPid = Storage:connect_pid(get, Client_Id, server),
+	ConnVersion = Config#connect.version,
 	try
 %% validate connect config.
 		mqtt_data:validate_config(Config),
+
 %% check credentials 
 		Encrypted_password_db =
 			case Storage:user(get, Config#connect.user_name) of
@@ -63,31 +64,35 @@ connect(State, Config) ->
 				#{password := Password_db} -> Password_db
 			end,
 		Encrypted_password_cli = list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, Config#connect.password))),
-		lager:debug([{endtype, server}], "Previous Client PID = ~p~n", [ClientPid]),
-		ConnVersion = Config#connect.version,
-		if ClientPid =:= undefined -> ok;
-			 is_pid(ClientPid) -> %%% @TODO: Check this !!!
-%					throw(#mqtt_error{oper = session, error_msg = lists:concat(["Process with Client Id: '", Client_Id, "' already exists."])});
-					try 
-						gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]})
-					catch _:_ -> ok
-					end;
-			 true -> ok
-		end,
 		Resp_code =
 			if Encrypted_password_db =/= Encrypted_password_cli -> 5;
 				 Encrypted_password_db == <<>> -> 5;
 				 true -> 0
 			end,
 		if Resp_code =:= 0 ->
-				New_State =
-				case Config#connect.clean_session of
-					1 -> 
-						Storage:cleanup(Client_Id, server),
-						State#connection_state{session_present = 0};
-					0 ->	 
-						restore_session(State#connection_state{config = Config}) 
+%% check if client Id already taken
+				ClientPid = Storage:connect_pid(get, Client_Id, server),
+				lager:debug([{endtype, server}],
+										?LOGGING_FORMAT ++ " previous Client PID = ~p~n",
+										[Client_Id, none, connect, ConnVersion, ClientPid]),
+				if ClientPid =:= undefined -> ok;
+					 is_pid(ClientPid) -> %%% @TODO: Check this !!!
+%					throw(#mqtt_error{oper = session, error_msg = lists:concat(["Process with Client Id: '", Client_Id, "' already exists."])});
+							try 
+								gen_server:cast(ClientPid, {disconnect, 16#8e, [{?Reason_String, "Session taken over"}]})
+							catch _:_ -> ok
+							end;
+					 ?ELSE -> ok
 				end,
+
+				New_State =
+					case Config#connect.clean_session of
+						1 -> 
+							Storage:cleanup(Client_Id, server),
+							State#connection_state{session_present = 0};
+						0 ->	 
+							restore_session(State#connection_state{config = Config}) 
+					end,
 				Storage:connect_pid(save, #storage_connectpid{client_id = Client_Id, pid = self()}, server),
 				Session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
 				Will_publish = Config#connect.will_publish,
@@ -104,12 +109,16 @@ connect(State, Config) ->
 				New_State_1 = receive_max_set_handle(ConnVersion, New_State#connection_state{config = Config#connect{will_publish = undefined}}),
 				Packet = packet(connack, ConnVersion, {New_State_1#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 				Transport:send(Socket, Packet),
-				lager:info([{endtype, server}], "Connection to client ~p is established~n", [Client_Id]),
+				lager:info([{endtype, server}],
+									?LOGGING_FORMAT++" connection to client is established~n",
+									[Client_Id, none, connect, ConnVersion]),
 				New_State_1#connection_state{topic_alias_in_map = #{}, topic_alias_out_map = #{}, connected = 1};
-			true ->
+			?ELSE ->
 				Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
 				Transport:send(Socket, Packet),
-				lager:warning([{endtype, server}], "Connection to client ~p is closed by reason: ~p~n", [Config#connect.client_id, Resp_code]),
+				lager:error([{endtype, server}],
+										?LOGGING_FORMAT ++ " connection to client is closed by reason: ~p~n",
+										[Client_Id, none, connect, ConnVersion, Resp_code]),
 				gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Error reason: " ++ Resp_code}]}),
 				State
 		end
@@ -133,16 +142,22 @@ connack(State, SessionPresant, CRC, Msg, Properties) ->
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
 	{Host, Port} = get_peername(Transport, Socket),
-	lager:debug([{endtype, client}], "SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", [SessionPresant, CRC, Msg, Properties]),
+	lager:debug([{endtype, client}],
+							?LOGGING_FORMAT ++ " connection acknowledged with SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", 
+							[Client_Id, none, connack, Version, SessionPresant, CRC, Msg, Properties]),
 	if SessionPresant == 0 -> Storage:cleanup(Client_Id, client);
 		 ?ELSE -> ok
 	end,
 	IsConnected = if CRC == 0 -> %% TODO process all codes for v5.0
-			lager:info([{endtype, client}], "Client ~p is successfuly connected to ~p:~p, version=~p", [Client_Id, Host, Port, Version]),
+			lager:info([{endtype, client}],
+								?LOGGING_FORMAT ++ " client is successfuly connected to ~p:~p~n",
+								[Client_Id, none, connack, Version, Host, Port]),
 			do_callback(State#connection_state.event_callback, [onConnect, {CRC, Msg, Properties}]),
 			1;
 		?ELSE ->
-			lager:info([{endtype, client}], "Client ~p is failed to connect to ~p:~p, version=~p, reason=~p", [Client_Id, Host, Port, Version, Msg]),
+			lager:info([{endtype, client}],
+								 ?LOGGING_FORMAT ++ " client is failed to connect to ~p:~p, reason=~p~n",
+								 [Client_Id, none, connack, Version, Host, Port, Msg]),
 			do_callback(State#connection_state.event_callback, [onError, #mqtt_error{oper= connect, errno= CRC, error_msg= Msg}]),
 			0
 		end,
@@ -159,20 +174,18 @@ connack(State, SessionPresant, CRC, Msg, Properties) ->
 														connected = IsConnected,
 														processes = maps:remove(connect, Processes)}.
 
-disconnect(#connection_state{end_type = client} = State, DisconnectReasonCode, Properties) ->
+disconnect(#connection_state{config = #connect{client_id = Client_Id, version = Version}, end_type = client} = State, DisconnectReasonCode, Properties) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(disconnect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
-% Common values:
-	Client_Id = (State#connection_state.config)#connect.client_id,
 %%			Storage:connection_state(remove, Client_Id),
 	gen_server:cast(self(), disconnect),
 	do_callback(State#connection_state.event_callback, [onClose, {DisconnectReasonCode, Properties}]),
-	lager:info([{endtype, State#connection_state.end_type}],
-		"Client ~p is disconnecting with reason ~p and Props=~p~n",
-		[Client_Id, DisconnectReasonCode, Properties]
+	lager:info([{endtype, client}],
+		?LOGGING_FORMAT ++ " client is disconnecting with reason ~p and Props=~p~n",
+		[Client_Id, none, disconnect, Version, DisconnectReasonCode, Properties]
 	),
 	State#connection_state{connected = 0, processes = maps:remove(disconnect, Processes)};
 disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, Properties) ->
@@ -192,7 +205,9 @@ disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, P
 			gen_server:cast(self(), {disconnect, DisconnectReasonCode, []})
 	end,
 %%			Storage:connection_state(remove, Client_Id),
-	lager:info([{endtype, State#connection_state.end_type}], "Process ~p is disconnecting with reason ~p and Props=~p~n", [Client_Id, DisconnectReasonCode, Properties]),
+	lager:info([{endtype, server}],
+						 ?LOGGING_FORMAT ++ "Process ~p is disconnecting with reason ~p and Props=~p~n",
+						 [Client_Id, none, disconnect, Version, DisconnectReasonCode, Properties]),
 	State#connection_state{connected = 0}.
 
 %% ====================================================================
@@ -204,33 +219,24 @@ restore_session(#connection_state{config = #connect{client_id = Client_Id, versi
 		undefined ->
 			State#connection_state{session_present= 0};
 		_ ->
-%% 			Records = Storage:session(get_all, Client_Id, server),
-%% 			MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-%% 			lager:debug([{endtype, server}], "In restore session: MessageList = ~128p~n", [MessageList]),
-%% 			lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList)
 			run_restore_session(State)
 	end;
-%% restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = client} = State) ->
-%% 	Records = Storage:session(get_all, Client_Id, client),
-%% 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-%% 	lager:debug([{endtype, client}], "In restore session: MessageList = ~128p~n", [MessageList]),
-%% 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList);
 restore_session(State) ->
 	run_restore_session(State).
-%% 	Records = Storage:session(get_all, Client_Id, EndType),
-%% 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-%% 	lager:debug([{endtype, EndType}], "In restore session for client:~p MessageList = ~128p~n", [Client_Id, MessageList]),
-%% 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
 
-run_restore_session(#connection_state{config = #connect{client_id = Client_Id}, storage = Storage, end_type = EndType} = State) ->
+run_restore_session(#connection_state{config = #connect{client_id = Client_Id, version = Version}, storage = Storage, end_type = EndType} = State) ->
 	Records = Storage:session(get_all, Client_Id, EndType),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
-	lager:debug([{endtype, EndType}], "In restore session for client: ~p MessageList = ~128p~n", [Client_Id, MessageList]),
+	lager:debug([{endtype, EndType}],
+							?LOGGING_FORMAT ++ " in restore session, message list = ~128p~n",
+							[Client_Id, none, restore_session, Version, MessageList]),
 	Storage:session(clean, Client_Id, EndType),
 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
 
-restore_state({Packet_Id, Params}, State) ->
-	lager:debug([{endtype, State#connection_state.end_type}], " >>> restore_state request ~p, PI: ~p.~n", [Params, Packet_Id]),
+restore_state({Packet_Id, Params}, #connection_state{config = #connect{client_id = Client_id, version = Version}} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " in restore session, publish msg ~p.~n",
+							[Client_id, Packet_Id, restore_session, Version, Params]),
 	spawn(gen_server, cast, [self(), {republish, Params, Packet_Id}]),
 	New_processes = (State#connection_state.processes)#{Packet_Id => Params},
 	State#connection_state{processes = New_processes, packet_id= mqtt_connection:next(Packet_Id, State)}.
