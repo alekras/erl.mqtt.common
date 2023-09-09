@@ -763,7 +763,8 @@ topic_alias_handle(_, PubRec, State) ->
 will_publish_handle(Storage, #session_state{client_id = ClId} = Session_state) ->
 	case Session_state of
 		undefined -> ok;
-		#session_state{will_publish = PubRec} ->
+		#session_state{will_publish = #publish{}} ->
+			PubRec = Session_state#session_state.will_publish,
 			List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
 			lager:debug([{endtype, server}],
 									?LOGGING_FORMAT ++ " will has matched topics list = ~128p~n", 
@@ -801,7 +802,8 @@ will_publish_handle(Storage, #session_state{client_id = ClId} = Session_state) -
 			if (PubRec#publish.retain =:= 1) ->
 					Storage:retain(save, Params); %% @todo avoid duplicates ???
 		 		true -> ok
-			end
+			end;
+		_ -> ok
 	end.
 
 session_expire(Storage, #session_state{client_id = Client_id} = SessionState) ->

@@ -56,7 +56,7 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 
 	Record = msg_experation_handle(Version, PubRec),
 	lager:info([{endtype, State#connection_state.end_type}],
-						 " process receives Publish packet from network [topic ~p:~p]~n",
+						 ?LOGGING_FORMAT ++ " process receives Publish packet from network [topic ~p:~p]~n",
 						 [Client_Id, Packet_Id, publish, Version, Topic, QoS]),
 	case mqtt_connection:topic_alias_handle(Version, Record, State) of
 		{#mqtt_error{oper = publish, errno = ErrNo, error_msg = Msg}, NewState} ->
@@ -100,7 +100,7 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 							case maps:is_key(Packet_Id, ProcessesExt) of
 								true when Dup =:= 0 -> 
 									lager:warning([{endtype, VeryNewState#connection_state.end_type}],
-																" process received message with PacketId that already exists. ~s",
+																?LOGGING_FORMAT ++ " process received message with PacketId that already exists. ~s",
 																[Client_Id, Packet_Id, publish, Version, mqtt_data:state_to_string(VeryNewState)]),
 									VeryNewState;
 								_ ->
@@ -186,7 +186,7 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}],
 							?LOGGING_FORMAT ++ " process receives Pubrel packet from network Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
-							[Client_Id, Packet_Id, pubrel, Processes, ProcessesExt, _ReasonCode, Properties]),
+							[Client_Id, Packet_Id, pubrel, Version, Processes, ProcessesExt, _ReasonCode, Properties]),
 	case maps:get(Packet_Id, ProcessesExt, undefined) of
 		undefined -> State;
 		{_, _Params} ->

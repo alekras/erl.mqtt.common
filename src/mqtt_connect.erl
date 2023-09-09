@@ -206,7 +206,7 @@ disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, P
 	end,
 %%			Storage:connection_state(remove, Client_Id),
 	lager:info([{endtype, server}],
-						 ?LOGGING_FORMAT ++ "Process ~p is disconnecting with reason ~p and Props=~p~n",
+						 ?LOGGING_FORMAT ++ " process is disconnecting with reason ~p and Props=~p~n",
 						 [Client_Id, none, disconnect, Version, DisconnectReasonCode, Properties]),
 	State#connection_state{connected = 0}.
 
