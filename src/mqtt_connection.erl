@@ -583,8 +583,9 @@ handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, #connec
 	Pr1 = maps:remove(connect, Processes),
 	Pr2 = maps:remove(disconnect, Pr1),
 	{noreply, State#connection_state{processes = Pr2}};
-handle_info([Event, Args] = Info, #connection_state{config = #connect{client_id = Client_id, version = Ver}} = State) ->
-	lager:debug([{endtype, State#connection_state.end_type}],
+
+handle_info([Event, Args], #connection_state{config = #connect{client_id = Client_id, version = Ver}, end_type = server} = State) ->
+	lager:debug([{endtype, server}],
 							?LOGGING_FORMAT ++ " process receives callback event: ~p args: ~p state:~s",
 							[Client_id, none, callback_event, Ver, Event, Args, mqtt_data:state_to_string(State)]),
 	{noreply, State};

@@ -191,11 +191,11 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 	ProcessesExt = State#connection_state.processes_ext,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}],
-							?LOGGING_FORMAT ++ " process receives Pubrel packet from network Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
+							?LOGGING_FORMAT ++ " process receives pubrel packet from network Pr:~p PrExt:~p reason Code=~p, Props=~p~n",
 							[Client_Id, Packet_Id, pubrel, Version, Processes, ProcessesExt, _ReasonCode, Properties]),
-	case maps:get(Packet_Id, ProcessesExt, undefined) of
-		undefined -> State;
-		{_, _Params} ->
+%	case maps:get(Packet_Id, ProcessesExt, undefined) of
+%		undefined -> State;
+%		{_, _Params} ->
 			Prim_key = #primary_key{client_id = Client_Id, packet_id = Packet_Id},
 			if
 				State#connection_state.end_type =:= server ->
@@ -220,8 +220,8 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 					inc_send_quote_handle(Version, VeryNewState);
 				{error, _Reason} -> State
 			end,
-			New_State
-	end.
+			New_State.
+%	end.
 
 pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 	Client_Id = (State#connection_state.config)#connect.client_id,
