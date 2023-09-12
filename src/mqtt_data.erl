@@ -224,7 +224,7 @@ state_to_string(#connection_state{
 		transport = Trt, storage = Stg, end_type = Entp, connected = Cnd,
 		session_present = Sespr, packet_id = PkId, timeout = To, test_flag = Tstf,
 		topic_alias_in_map = Talin, topic_alias_out_map = Talout, processes = Pr,
-		processes_ext = Prex, tail = Tail,
+		processes_ext = Prex, tail = Tail, event_callback = Callback,
 		config = #connect{
 			version = Vrsn, conn_type = Cnntp, client_id = ClId, user_name = Usr, host = Host, port = Port,
 			will_publish = Wpbh, clean_session = Clss, keep_alive = Kal, properties = Props
@@ -244,6 +244,7 @@ state_to_string(#connection_state{
 		, "\n Topic Alias Out: ", io_lib:format("~100p", [Talout])
 		, "\n       Processes: ", io_lib:format("~100p", [Pr])
 		, "\n   Processes Ext: ", io_lib:format("~100p", [Prex])
+		, "\n  Event callback: ", io_lib:format("~100p", [Callback])
 		, "\n            Tail: <<", binary_to_list(Tail), ">>"
 		, "\n----- Config ="
 		, "\n          Version: ", Vrsn

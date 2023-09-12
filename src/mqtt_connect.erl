@@ -112,7 +112,7 @@ connect(State, Config) ->
 				lager:info([{endtype, server}],
 									?LOGGING_FORMAT++" connection to client is established~n",
 									[Client_Id, none, connect, ConnVersion]),
-				New_State_1#connection_state{topic_alias_in_map = #{}, topic_alias_out_map = #{}, connected = 1};
+				New_State_1#connection_state{topic_alias_in_map = #{}, topic_alias_out_map = #{}, event_callback = self(), connected = 1};
 			?ELSE ->
 				Packet = packet(connack, ConnVersion, {0, Resp_code}, []),
 				Transport:send(Socket, Packet),

@@ -314,7 +314,7 @@ handle_cast({publish, #publish{qos = QoS} = PubRec},
 								Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, publish}),
 								New_processes = (VeryNewState#connection_state.processes)#{Packet_Id => {Timeout_ref, Params2Save}},
 								lager:info([{endtype, VeryNewState#connection_state.end_type}],
-													 ?LOGGING_FORMAT ++ "process published message to topic=~p:~p send_quota:~p~n",
+													 ?LOGGING_FORMAT ++ " process sent publish message to network for topic=~p:~p send_quota:~p~n",
 													 [Config#connect.client_id, Packet_Id, publish, Config#connect.version, Params#publish.topic, QoS, State#connection_state.send_quota]),
 								{noreply, VeryNewState#connection_state{packet_id = next(Packet_Id, VeryNewState), processes = New_processes}};
 							{error, _Reason} -> {noreply, NewState} %% @todo: process error, do not update State!
@@ -583,6 +583,11 @@ handle_info({timeout, _TimerRef, {operation_timeout, Operation}} = Info, #connec
 	Pr1 = maps:remove(connect, Processes),
 	Pr2 = maps:remove(disconnect, Pr1),
 	{noreply, State#connection_state{processes = Pr2}};
+handle_info([Event, Args] = Info, #connection_state{config = #connect{client_id = Client_id, version = Ver}} = State) ->
+	lager:debug([{endtype, State#connection_state.end_type}],
+							?LOGGING_FORMAT ++ " process receives callback event: ~p args: ~p state:~s",
+							[Client_id, none, callback_event, Ver, Event, Args, mqtt_data:state_to_string(State)]),
+	{noreply, State};
 handle_info(Info, #connection_state{config = #connect{client_id = Client_id, version = Ver}} = State) ->
 	lager:error([{endtype, State#connection_state.end_type}],
 							?LOGGING_FORMAT ++ " process receives unexpected message: ~p state:~s",

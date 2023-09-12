@@ -55,8 +55,8 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	Storage = State#connection_state.storage,
 
 	Record = msg_experation_handle(Version, PubRec),
-	lager:info([{endtype, State#connection_state.end_type}],
-						 ?LOGGING_FORMAT ++ " process receives Publish packet from network [topic ~p:~p]~n",
+	lager:debug([{endtype, State#connection_state.end_type}],
+						 ?LOGGING_FORMAT ++ " process receives publish packet from network [topic ~p:~p]~n",
 						 [Client_Id, Packet_Id, publish, Version, Topic, QoS]),
 	case mqtt_connection:topic_alias_handle(Version, Record, State) of
 		{#mqtt_error{oper = publish, errno = ErrNo, error_msg = Msg}, NewState} ->
@@ -134,6 +134,9 @@ puback(State, {Packet_Id, ReasonCode}, Properties) ->
 	Version = State#connection_state.config#connect.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
+	lager:debug([{endtype, State#connection_state.end_type}],
+						 ?LOGGING_FORMAT ++ " process receives puback packet from network~n",
+						 [Client_Id, Packet_Id, puback, Version]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
 		{Timeout_ref, _Params} ->
@@ -155,6 +158,9 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 	Transport = State#connection_state.transport,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
+	lager:debug([{endtype, State#connection_state.end_type}],
+						 ?LOGGING_FORMAT ++ " process receives pubrec packet from network~n",
+						 [Client_Id, Packet_Id, pubrec, Version]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
 		{Timeout_ref, Params} ->
@@ -223,7 +229,7 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}],
-							?LOGGING_FORMAT ++ " process receives Pubrel packet from network. Processes-~p~n",
+							?LOGGING_FORMAT ++ " process receives pubcomp packet from network. Processes-~p~n",
 							[Client_Id, Packet_Id, pubcomp, Version, Processes]),
 	case maps:get(Packet_Id, Processes, undefined) of
 		undefined -> State;
