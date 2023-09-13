@@ -767,51 +767,48 @@ topic_alias_handle('5.0',
 topic_alias_handle(_, PubRec, State) ->
 	{PubRec, State}.
 
-will_publish_handle(Storage, #session_state{client_id = ClId} = Session_state) ->
+will_publish_handle(Storage, #session_state{client_id = ClId, will_publish = #publish{}} = Session_state) ->
+	PubRec = Session_state#session_state.will_publish,
+	List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
+	lager:debug([{endtype, server}],
+							?LOGGING_FORMAT ++ " will has matched topics list = ~128p~n", 
+							[ClId, none, will_publish, '5.0', List]),
+
+	{WillDelayInt, Properties} =
+		case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
+			false -> {0, PubRec#publish.properties};
+			{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
+		end,
+	Params = PubRec#publish{properties = Properties},
+
+	[
+		case Storage:connect_pid(get, Client_Id, server) of
+			undefined -> 
+				lager:warning([{endtype, server}],
+											?LOGGING_FORMAT ++ "Cannot find connection PID for client id=~p~n",
+											[ClId, none, will_publish, '5.0', Client_Id]);
+			Pid ->
+				TopicQoS = TopicOptions#subscription_options.max_qos,
+				QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
+				{ok, _} = timer:apply_after(WillDelayInt * 1000,
+																		mqtt_publish,
+																		server_send_publish,
+																		[Pid, Params#publish{qos = QoS}])
+		end
+		|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
+	],
+
 	case Session_state of
-		undefined -> ok;
-		#session_state{will_publish = #publish{}} ->
-			PubRec = Session_state#session_state.will_publish,
-			List = Storage:subscription(get_matched_topics, PubRec#publish.topic, server),
-			lager:debug([{endtype, server}],
-									?LOGGING_FORMAT ++ " will has matched topics list = ~128p~n", 
-									[ClId, none, will_publish, '5.0', List]),
+		undefined -> skip;
+		Record -> Storage:session_state(save, Record#session_state{will_publish = undefined})
+	end,
 
-			{WillDelayInt, Properties} =
-				case lists:keytake(?Will_Delay_Interval, 1, PubRec#publish.properties) of
-					false -> {0, PubRec#publish.properties};
-					{value, {?Will_Delay_Interval, WillDelay}, Props} -> {WillDelay, Props}
-				end,
-			Params = PubRec#publish{properties = Properties},
-
-			[
-				case Storage:connect_pid(get, Client_Id, server) of
-					undefined -> 
-						lager:warning([{endtype, server}],
-													?LOGGING_FORMAT ++ "Cannot find connection PID for client id=~p~n",
-													[ClId, none, will_publish, '5.0', Client_Id]);
-					Pid ->
-						TopicQoS = TopicOptions#subscription_options.max_qos,
-						QoS = if PubRec#publish.qos > TopicQoS -> TopicQoS; true -> PubRec#publish.qos end, 
-						{ok, _} = timer:apply_after(WillDelayInt * 1000,
-																				mqtt_publish,
-																				server_send_publish,
-																				[Pid, Params#publish{qos = QoS}])
-				end
-				|| #storage_subscription{key = #subs_primary_key{client_id = Client_Id}, options = TopicOptions} <- List
-			],
-
-			case Session_state of
-				undefined -> skip;
-				Record -> Storage:session_state(save, Record#session_state{will_publish = undefined})
-			end,
-
-			if (PubRec#publish.retain =:= 1) ->
-					Storage:retain(save, Params); %% @todo avoid duplicates ???
-		 		true -> ok
-			end;
-		_ -> ok
-	end.
+	if (PubRec#publish.retain =:= 1) ->
+			Storage:retain(save, Params); %% @todo avoid duplicates ???
+ 		true -> ok
+	end;
+will_publish_handle(_, _) ->
+	ok.
 
 session_expire(Storage, #session_state{client_id = Client_id} = SessionState) ->
 	lager:debug([{endtype, server}],
