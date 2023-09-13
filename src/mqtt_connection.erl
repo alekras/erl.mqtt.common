@@ -535,11 +535,12 @@ handle_info({ssl, Socket, Binary}, #connection_state{socket = Socket, end_type =
 	New_State = mqtt_socket_stream:process(State,<<(State#connection_state.tail)/binary, Binary/binary>>),
 	{noreply, New_State};
 
-handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, config = #connect{client_id = Client_id, version = Ver}, end_type = client} = State) ->
+handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, config = #connect{client_id = Client_id, version = Ver}, end_type = client, event_callback = _Callback} = State) ->
 	lager:notice([{endtype, client}],
 							 ?LOGGING_FORMAT ++ " process receives tcp_closed:~s",
 							 [Client_id, none, tcp_closed, Ver, mqtt_data:state_to_string(State)]),
 	gen_server:cast(self(), disconnect),
+	do_callback(_Callback, [onClose, {128, [{?Reason_String, "Unspecified error"}]}]),
 	{noreply, State#connection_state{connected = 0}};
 handle_info({tcp_closed, Socket}, #connection_state{socket = Socket, config = #connect{client_id = Client_id, version = Ver}, connected = 0, end_type = server} = State) ->
 	lager:notice([{endtype, server}],
