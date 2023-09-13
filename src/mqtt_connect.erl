@@ -184,7 +184,7 @@ disconnect(#connection_state{config = #connect{client_id = Client_Id, version = 
 	gen_server:cast(self(), disconnect),
 	do_callback(State#connection_state.event_callback, [onClose, {DisconnectReasonCode, Properties}]),
 	lager:info([{endtype, client}],
-		?LOGGING_FORMAT ++ " client is disconnecting with reason ~p and Props=~p~n",
+		?LOGGING_FORMAT ++ " process receives disconnect packet with reason ~p and Props=~p~n",
 		[Client_Id, none, disconnect, Version, DisconnectReasonCode, Properties]
 	),
 	State#connection_state{connected = 0, processes = maps:remove(disconnect, Processes)};
@@ -206,7 +206,7 @@ disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, P
 	end,
 %%			Storage:connection_state(remove, Client_Id),
 	lager:info([{endtype, server}],
-						 ?LOGGING_FORMAT ++ " process is disconnecting with reason ~p and Props=~p~n",
+						 ?LOGGING_FORMAT ++ " process receives disconnect packet with reason ~p and Props=~p~n",
 						 [Client_Id, none, disconnect, Version, DisconnectReasonCode, Properties]),
 	State#connection_state{connected = 0}.
 

@@ -470,14 +470,14 @@ handle_cast({disconnect, _, _}, #connection_state{end_type = client} = State) ->
 	close_socket(State),
 	{noreply, State#connection_state{connected = 0, packet_id = 100}};
 
-handle_cast(disconnect, #connection_state{event_callback = Callback, end_type = client} = State) ->
+handle_cast(disconnect, #connection_state{event_callback = _Callback, end_type = client} = State) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(disconnect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
 	close_socket(State),
-	do_callback(Callback, [onClose, {128, [{?Reason_String, "Unspecified error"}]}]),
+%	do_callback(_Callback, [onClose, {128, [{?Reason_String, "Unspecified error"}]}]),
 	{noreply, State#connection_state{connected = 0, packet_id = 100, processes = maps:remove(disconnect, Processes)}};
 
 %% Server side:
