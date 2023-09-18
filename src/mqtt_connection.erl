@@ -351,7 +351,7 @@ handle_cast({republish, #publish{last_sent = pubrec}, Packet_Id},
 		{error, _Reason} -> {noreply, State} %% @todo process error
 	end;
 handle_cast({republish, #publish{last_sent = publish, expiration_time= ExpT} = Params, Packet_Id},
-						#connection_state{socket = Socket, transport = Transport, config = Config} = State) ->
+						#connection_state{socket = Socket, transport = Transport, processes = Processes, config = Config} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}],
 							?LOGGING_FORMAT ++ " process republish message (last_sent = publish).~n",
 							[Config#connect.client_id, Packet_Id, republish, Config#connect.version]),
@@ -365,7 +365,7 @@ handle_cast({republish, #publish{last_sent = publish, expiration_time= ExpT} = P
 			case Transport:send(Socket, Packet) of
 				ok -> 
 					Timeout_ref = erlang:start_timer(State#connection_state.timeout, self(), {operation_timeout, publish}),
-					New_processes = (State#connection_state.processes)#{Packet_Id => {Timeout_ref, Params}},
+					New_processes = Processes#{Packet_Id => {Timeout_ref, Params}},
 					{noreply, State#connection_state{processes = New_processes}};
 				{error, _Reason} -> {noreply, State} %% @todo process error
 			end;
@@ -373,7 +373,7 @@ handle_cast({republish, #publish{last_sent = publish, expiration_time= ExpT} = P
 			lager:debug([{endtype, State#connection_state.end_type}],
 									?LOGGING_FORMAT ++ " republishing message is expired.~n",
 									[Config#connect.client_id, Packet_Id, republish, Config#connect.version]),
-			{noreply, State} %% @todo process error
+			{noreply, State#connection_state{processes = maps:remove(Packet_Id, Processes)}} %% @todo process error???
 	end;
 
 %% Client side:
