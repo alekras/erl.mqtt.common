@@ -85,13 +85,18 @@ connect(State, Config) ->
 					 ?ELSE -> ok
 				end,
 
+				State1 = State#connection_state{
+						client_id = Client_Id,
+						version = Config#connect.version,
+						keep_alive = Config#connect.keep_alive,
+						properties = Config#connect.properties},
 				New_State =
 					case Config#connect.clean_session of
 						1 -> 
 							Storage:cleanup(Client_Id, server),
-							State#connection_state{session_present = 0};
+							State1#connection_state{session_present = 0};
 						0 ->	 
-							restore_session(State#connection_state{config = Config}) 
+							restore_session(State1) 
 					end,
 				Storage:connect_pid(save, #storage_connectpid{client_id = Client_Id, pid = self()}, server),
 				Session_expiry_interval = proplists:get_value(?Session_Expiry_Interval, Config#connect.properties, 0),
@@ -106,7 +111,7 @@ connect(State, Config) ->
 					Session_state -> Session_state#session_state{will_publish = Will_publish}
 				end,
 				Storage:session_state(save, Session_state_new#session_state{session_expiry_interval = Session_expiry_interval}),
-				New_State_1 = receive_max_set_handle(ConnVersion, New_State#connection_state{config = Config#connect{will_publish = undefined}}),
+				New_State_1 = receive_max_set_handle(ConnVersion, New_State),
 				Packet = packet(connack, ConnVersion, {New_State_1#connection_state.session_present, Resp_code}, Config#connect.properties), %% now just return connect properties TODO
 				Transport:send(Socket, Packet),
 				lager:info([{endtype, server}],
@@ -129,23 +134,23 @@ connect(State, Config) ->
 	end.
 
 %% client side only
-connack(State, SessionPresant, CRC, Msg, Properties) ->
+connack(State, SessionPresent, CRC, Msg, Properties) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(connect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
 		 ?ELSE -> ok
 	end,
 % Common values:
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
 	{Host, Port} = get_peername(Transport, Socket),
 	lager:debug([{endtype, client}],
 							?LOGGING_FORMAT ++ " connection acknowledged with SessionPresent=~p, CRC=~p, Msg=~p, Properties=~128p", 
-							[Client_Id, none, connack, Version, SessionPresant, CRC, Msg, Properties]),
-	if SessionPresant == 0 -> Storage:cleanup(Client_Id, client);
+							[Client_Id, none, connack, Version, SessionPresent, CRC, Msg, Properties]),
+	if SessionPresent == 0 -> Storage:cleanup(Client_Id, client);
 		 ?ELSE -> ok
 	end,
 	IsConnected = if CRC == 0 -> %% TODO process all codes for v5.0
@@ -162,7 +167,7 @@ connack(State, SessionPresant, CRC, Msg, Properties) ->
 			0
 		end,
 	NewState =
-		case SessionPresant of
+		case SessionPresent of
 			0 ->
 				Storage:cleanup(Client_Id, State#connection_state.end_type),
 				State;
@@ -170,11 +175,11 @@ connack(State, SessionPresant, CRC, Msg, Properties) ->
 				restore_session(State) 
 		end,
 	NewState1 = handle_conack_properties(Version, NewState, Properties),
-	NewState1#connection_state{session_present = SessionPresant,
+	NewState1#connection_state{session_present = SessionPresent,
 														connected = IsConnected,
 														processes = maps:remove(connect, Processes)}.
 
-disconnect(#connection_state{config = #connect{client_id = Client_Id, version = Version}, end_type = client} = State, DisconnectReasonCode, Properties) ->
+disconnect(#connection_state{client_id = Client_Id, version = Version, end_type = client} = State, DisconnectReasonCode, Properties) ->
 	Processes = State#connection_state.processes,
 	Timeout_ref = maps:get(disconnect, Processes, undefined),
 	if is_reference(Timeout_ref) -> erlang:cancel_timer(Timeout_ref);
@@ -190,9 +195,9 @@ disconnect(#connection_state{config = #connect{client_id = Client_Id, version = 
 	State#connection_state{connected = 0, processes = maps:remove(disconnect, Processes)};
 disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, Properties) ->
 % Common values:
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
-	ConfProps = (State#connection_state.config)#connect.properties,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
+	ConfProps = State#connection_state.properties,
 	if Version == '5.0' ->
 			SessExpCnfg = proplists:get_value(?Session_Expiry_Interval, ConfProps, 0),
 			SessExpDscn = proplists:get_value(?Session_Expiry_Interval, Properties, 0),
@@ -214,7 +219,7 @@ disconnect(#connection_state{end_type = server} = State, DisconnectReasonCode, P
 %% Internal functions
 %% ====================================================================
 
-restore_session(#connection_state{config = #connect{client_id = Client_Id, version= '5.0'}, storage = Storage, end_type = server} = State) ->
+restore_session(#connection_state{client_id = Client_Id, version= '5.0', storage = Storage, end_type = server} = State) ->
 	case Storage:session_state(get, Client_Id) of
 		undefined ->
 			State#connection_state{session_present= 0};
@@ -224,7 +229,7 @@ restore_session(#connection_state{config = #connect{client_id = Client_Id, versi
 restore_session(State) ->
 	run_restore_session(State).
 
-run_restore_session(#connection_state{config = #connect{client_id = Client_Id, version = Version}, storage = Storage, end_type = EndType} = State) ->
+run_restore_session(#connection_state{client_id = Client_Id, version = Version, storage = Storage, end_type = EndType} = State) ->
 	Records = Storage:session(get_all, Client_Id, EndType),
 	MessageList = [{PI, Doc} || #storage_publish{key = #primary_key{packet_id = PI}, document = Doc} <- Records],
 	lager:debug([{endtype, EndType}],
@@ -233,7 +238,7 @@ run_restore_session(#connection_state{config = #connect{client_id = Client_Id, v
 	Storage:session(clean, Client_Id, EndType),
 	lists:foldl(fun restore_state/2, State#connection_state{session_present= 1}, MessageList).
 
-restore_state({Packet_Id, Params}, #connection_state{config = #connect{client_id = Client_id, version = Version}} = State) ->
+restore_state({Packet_Id, Params}, #connection_state{client_id = Client_id, version = Version} = State) ->
 	lager:debug([{endtype, State#connection_state.end_type}],
 							?LOGGING_FORMAT ++ " in restore session, publish msg ~p.~n",
 							[Client_id, Packet_Id, restore_session, Version, Params]),
@@ -241,28 +246,28 @@ restore_state({Packet_Id, Params}, #connection_state{config = #connect{client_id
 	New_processes = (State#connection_state.processes)#{Packet_Id => Params},
 	State#connection_state{processes = New_processes, packet_id= mqtt_connection:next(Packet_Id, State)}.
 
-handle_conack_properties('5.0', #connection_state{config = Config} = State, Properties) ->
+handle_conack_properties('5.0', #connection_state{properties = Props} = State, Properties) ->
 	NewState =
 	case proplists:get_value(?Topic_Alias_Maximum, Properties, undefined) of
 		undefined -> State;
 		TAMaximum ->
-			ConfProps1 = lists:keystore(?Topic_Alias_Maximum, 1, Config#connect.properties, {?Topic_Alias_Maximum, TAMaximum}),
-			State#connection_state{config = Config#connect{properties = ConfProps1}}
+			ConfProps1 = lists:keystore(?Topic_Alias_Maximum, 1, Props, {?Topic_Alias_Maximum, TAMaximum}),
+			State#connection_state{properties = ConfProps1}
 	end,
 	case proplists:get_value(?Receive_Maximum, Properties, -1) of
 		-1 -> NewState#connection_state{receive_max = 65535, send_quota = 65535};
 		 0 -> NewState; %% TODO protocol_error;
 		 N ->
-			ConfProps2 = proplists:delete(?Receive_Maximum, Config#connect.properties),
+			ConfProps2 = proplists:delete(?Receive_Maximum, Props),
 			NewState#connection_state{
 				receive_max = N + 1, send_quota = N + 1, %% it allows server side to treat the number publish proceses
-				config = Config#connect{properties = ConfProps2}
+				properties = ConfProps2
 			}
 	end;
 handle_conack_properties(_, State, _) ->
 	State.
 
-receive_max_set_handle('5.0', #connection_state{config = #connect{properties = Props}} = State) ->
+receive_max_set_handle('5.0', #connection_state{properties = Props} = State) ->
 	case proplists:get_value(?Receive_Maximum, Props, -1) of
 		-1 -> State#connection_state{receive_max = 65535, send_quota = 65535};
 		 0 -> State; %% TODO protocol_error;

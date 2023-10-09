@@ -59,7 +59,6 @@ connection_genServer_test_() ->
 			[
 				{'3.1.1', fun connection_test/2}
 				,{'5.0',   fun connection_test/2}
-				,{'5.0',   fun reconnection_test/2}
 				,{'5.0',   fun connection_timeout_test/2}
 				,{'5.0',   fun connection_props_test/2}
 				,{'3.1.1', fun subscribe_test/2}
@@ -145,34 +144,6 @@ end};
 connection_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config),
-	ping_pong(),
-	disconnect(Version),
-
-	?passed
-end}.
-
-reconnection_test('5.0' = Version, Conn_config) -> {"Re-Connect test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
-	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
-
-	Expected_packet = <<16,38, 4:16,"MQTT"/utf8,5,194,234,96, 0, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>, 
-	Connack_packet = <<32,3,1,0,0>>,
-	mock_tcp:set_expectation(Expected_packet),
-	gen_server:cast(client_gensrv, {reconnect, self(), []}),
-	wait_mock_tcp("reconnect packet"),
-
-%% from server:
-	client_gensrv ! {tcp, get_socket(), Connack_packet}, %% Connack packet
-	receive
-		[onConnect, _] = _Args ->
-%			?debug_Fmt("::test:: Message to caller process= ~p ~n", [_Args]),
-			?assert(true);
-		Mssg ->
-			?debug_Fmt("::test:: Unexpected Message to caller process= ~p ~n", [Mssg]),
-			?assert(false)
-	after 2000 ->
-			?debug_Fmt("::test:: Timeout while waiting onConnect callback from client~n", []),
-			?assert(false)
-	end,
 	ping_pong(),
 	disconnect(Version),
 

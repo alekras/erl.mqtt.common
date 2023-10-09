@@ -44,8 +44,8 @@
 
 %% server side only
 subscribe(State, Packet_Id, Subscriptions, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
@@ -96,8 +96,8 @@ subscribe(State, Packet_Id, Subscriptions, Properties) ->
 
 %% client side only
 suback(State, Packet_Id, Return_codes, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Ver = (State#connection_state.config)#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Ver = State#connection_state.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 
@@ -133,8 +133,8 @@ suback(State, Packet_Id, Return_codes, Properties) ->
 
 %% server side only
 unsubscribe(State, Packet_Id, Topics, _Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
@@ -157,8 +157,8 @@ unsubscribe(State, Packet_Id, Topics, _Properties) ->
 
 %% client side only
 unsuback(State, {Packet_Id, Return_codes}, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = (State#connection_state.config)#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	case maps:get(Packet_Id, Processes, undefined) of
@@ -196,7 +196,7 @@ unsuback(State, {Packet_Id, Return_codes}, Properties) ->
 
 handle_retain_msg_after_subscribe('5.0', _State, #subscription_options{retain_handling = 2}, _Key) ->
 	ok;
-handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage, config = #connect{client_id = Client_id}} = State, 
+handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage, client_id = Client_id} = State, 
 																	Options, 
 																	#subs_primary_key{topicFilter = TopicFilter, shareName = undefined} = Key) ->
 	Retain_Messages = Storage:retain(get, TopicFilter),
@@ -217,7 +217,7 @@ handle_retain_msg_after_subscribe('5.0', #connection_state{storage = Storage, co
 	end;
 handle_retain_msg_after_subscribe('5.0', _State, _Options, _Key) ->
 	ok;
-handle_retain_msg_after_subscribe(_, #connection_state{storage = Storage, config = #connect{client_id = Client_id, version = Version}} = State, 
+handle_retain_msg_after_subscribe(_, #connection_state{storage = Storage, client_id = Client_id, version = Version} = State, 
 																	Options,
 																	#subs_primary_key{topicFilter = TopicFilter} = _Key) ->
 	Retain_Messages = Storage:retain(get, TopicFilter),

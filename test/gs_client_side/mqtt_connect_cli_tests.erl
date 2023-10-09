@@ -87,8 +87,8 @@ setup('5.0') ->
 	#connect{client_id = <<"test0Client">>, user_name = ?TEST_USER, password = ?TEST_PASSWORD,
 					keep_alive = 60000, version = '5.0', conn_type = mock_tcp}.
 
-cleanup(X, Y) ->
-%	?debug_Fmt("::test:: >>> cleanup(~p,~p) PID:~p~n", [X, Y#connect.client_id, self()]),
+cleanup(_X, _Y) ->
+%	?debug_Fmt("::test:: >>> cleanup(~p,~p) PID:~p~n", [_X, _Y#connect.client_id, self()]),
 	mqtt_dets_storage:session(clean, <<"test0Client">>, client).
 
 %% ====================================================================
@@ -102,7 +102,7 @@ config_setup_test('5.0' = Version, Conn_config) -> {"Config setup test [" ++ ato
 	?debug_Fmt("::test:: State = ~p ~n", [State]),
 	?assertEqual(11, State#connection_state.receive_max),
 	?assertEqual(11, State#connection_state.send_quota),
-	?assertEqual(2, proplists:get_value(?Topic_Alias_Maximum, (State#connection_state.config)#connect.properties)),
+	?assertEqual(2, proplists:get_value(?Topic_Alias_Maximum, State#connection_state.properties)),
 
 	disconnect(Version),
 

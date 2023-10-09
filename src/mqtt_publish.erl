@@ -47,8 +47,8 @@
 
 publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props} = PubRec, Packet_Id) ->
 % Common values:
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	ProcessesExt = State#connection_state.processes_ext,
@@ -130,8 +130,8 @@ publish(State, #publish{qos = QoS, topic = Topic, dup = Dup, properties = _Props
 	end.
 
 puback(State, {Packet_Id, ReasonCode}, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}],
@@ -152,8 +152,8 @@ puback(State, {Packet_Id, ReasonCode}, Properties) ->
 	end.
 
 pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Processes = State#connection_state.processes,
@@ -183,8 +183,8 @@ pubrec(State, {Packet_Id, ResponseCode}, _Properties) ->
 	end.
 
 pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
 	Processes = State#connection_state.processes,
@@ -224,8 +224,8 @@ pubrel(State, {Packet_Id, _ReasonCode}, Properties) ->
 %	end.
 
 pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Processes = State#connection_state.processes,
 	Storage = State#connection_state.storage,
 	lager:debug([{endtype, State#connection_state.end_type}],
@@ -250,11 +250,11 @@ pubcomp(State, {Packet_Id, ReasonCode}, Properties) ->
 %% ====================================================================
 
 get_topic_attributes(#connection_state{storage = Storage} = State, Topic) ->
-	Client_Id = (State#connection_state.config)#connect.client_id,
+	Client_Id = State#connection_state.client_id,
 	Topic_List = Storage:subscription(get_matched_topics, #subs_primary_key{topicFilter = Topic, client_id = Client_Id}, client),
 	[Options || #storage_subscription{options = Options} <- Topic_List].
 
-delivery_to_application(#connection_state{end_type = client, event_callback = Callback, config = #connect{version = Vrsn}} = State,
+delivery_to_application(#connection_state{end_type = client, event_callback = Callback, version = Vrsn} = State,
 												#publish{qos = QoS, dup = Dup, retain = Retain} = PubRecord) ->
 	Topic = handle_get_topic_from_alias(Vrsn, PubRecord, State),
 %%	NewPubRecord = PubRecord#publish{topic = Topic},
@@ -268,17 +268,17 @@ delivery_to_application(#connection_state{end_type = client, event_callback = Ca
 	end,
 	lager:info([{endtype, client}], 
 						 ?LOGGING_FORMAT ++ " process send publish message to client application [topic ~p:~p, dup=~p, retain=~p]~n", 
-						 [(State#connection_state.config)#connect.client_id, none, publish, Vrsn, Topic, QoS, Dup, Retain]);
+						 [State#connection_state.client_id, none, publish, Vrsn, Topic, QoS, Dup, Retain]);
 
 delivery_to_application(#connection_state{end_type = server, storage = Storage} = State, 
 												#publish{payload = <<>>, retain = 1} = PubParam) ->
-	PublishTopic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubParam, State),
+	PublishTopic = handle_get_topic_from_alias(State#connection_state.version, PubParam, State),
 	Storage:retain(remove, PublishTopic);
 delivery_to_application(#connection_state{end_type = server} = State, 
 												#publish{} = PubParam) ->
-	PublishTopic = handle_get_topic_from_alias(State#connection_state.config#connect.version, PubParam, State),
-	handle_retain_msg_during_publish(State#connection_state.config#connect.version, State, PubParam, PublishTopic),
-	handle_server_publish(State#connection_state.config#connect.version, State, PubParam, PublishTopic).
+	PublishTopic = handle_get_topic_from_alias(State#connection_state.version, PubParam, State),
+	handle_retain_msg_during_publish(State#connection_state.version, State, PubParam, PublishTopic),
+	handle_server_publish(State#connection_state.version, State, PubParam, PublishTopic).
 
 do_callback(Callback, Args) ->
 	case Callback of
@@ -311,7 +311,7 @@ handle_retain_msg_during_publish(_,
 
 handle_server_publish(
 		'5.0',
-		#connection_state{storage = Storage, config = #connect{client_id = State_client_id}} = State,
+		#connection_state{storage = Storage, client_id = State_client_id} = State,
 		#publish{qos = Params_QoS, expiration_time = ExpT, retain = Retain, dup = Dup} = Param,
 		PubTopic) ->
 	RemainedTime =
@@ -339,7 +339,7 @@ handle_server_publish(
 															[State_client_id, none, publish, '5.0', Client_Id]);
 							Pid ->
 								NoLocal = Options#subscription_options.nolocal,
-								ProcessCliD = State#connection_state.config#connect.client_id,
+								ProcessCliD = State#connection_state.client_id,
 								if (NoLocal =:= 1) and (ProcessCliD =:= Client_Id) -> ok;
 									 ?ELSE ->
 										TopicQoS = Options#subscription_options.max_qos,
@@ -386,7 +386,7 @@ handle_server_publish(
 															[State_client_id, none, publish_shared, '5.0', CliId]);
 								Pid ->
 %							NoLocal = Opts#subscription_options.nolocal,
-%							ProcessCliD = State#connection_state.config#connect.client_id,
+%							ProcessCliD = State#connection_state.client_id,
 %							if (NoLocal =:= 1) and (ProcessCliD =:= CliId) -> ok;
 %								 true ->
 											ShTopicQoS = Opts#subscription_options.max_qos,
@@ -409,7 +409,7 @@ handle_server_publish(
 	end;
 handle_server_publish(
 		Version, %% versions 3.1 and 3.1.1
-		#connection_state{storage = Storage, config = #connect{client_id = State_client_id}},
+		#connection_state{storage = Storage, client_id = State_client_id},
 		#publish{qos = Params_QoS, retain = Retain, dup = Dup} = Param, PubTopic) ->
 	case Storage:subscription(get_matched_topics, PubTopic, server) of
 		[] when Retain =:= 1 -> ok;

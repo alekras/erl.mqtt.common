@@ -60,8 +60,8 @@ process(State, <<_PacketType:8, Bin/binary>> = Binary) ->
 
 process_internal(State, Binary) ->
 % Common values:
-	Client_Id = (State#connection_state.config)#connect.client_id,
-	Version = State#connection_state.config#connect.version,
+	Client_Id = State#connection_state.client_id,
+	Version = State#connection_state.version,
 	Processes = State#connection_state.processes,
 	Socket = State#connection_state.socket,
 	Transport = State#connection_state.transport,
@@ -142,10 +142,10 @@ process_internal(State, Binary) ->
 		M ->
 			lager:error([{endtype, State#connection_state.end_type}],
 									?LOGGING_FORMAT ++ " process cannot parse message: ~p, input binary: ~p ~s",
-									[(State#connection_state.config)#connect.client_id,
+									[State#connection_state.client_id,
 									 none,
 									 none,
-									 (State#connection_state.config)#connect.version,
+									 State#connection_state.version,
 									 M,
 									 Binary,
 									 mqtt_data:state_to_string(State)]),
