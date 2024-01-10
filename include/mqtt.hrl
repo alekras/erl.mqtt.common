@@ -56,7 +56,7 @@
 		port = 0 :: integer(),
 		will_publish = undefined :: #publish{},
 		clean_session = 1 :: 0 | 1,
-		keep_alive :: integer(),
+		keep_alive = 6000 :: integer(),
 		properties = [] :: list(),
 		version = '5.0' :: '3.1' | '3.1.1' | '5.0',
 		conn_type = clear :: clear | ssl | tls | web_socket | web_sec_socket
