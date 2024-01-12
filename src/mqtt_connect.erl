@@ -124,7 +124,7 @@ connect(State, Config) ->
 				lager:error([{endtype, server}],
 										?LOGGING_FORMAT ++ " connection to client is closed by reason: ~p~n",
 										[Client_Id, none, connect, ConnVersion, Resp_code]),
-				gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Error reason: " ++ Resp_code}]}),
+				gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Error reason: " ++ integer_to_list(Resp_code)}]}),
 				State
 		end
 	catch

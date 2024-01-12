@@ -231,7 +231,7 @@ state_to_string(#connection_state{
 		"\n--- Process state ="
 		, "\n         Version: ", Vrsn
 		, "\n        End Type: ", Entp
-		, "\n       Client Id: ", binary_to_list(ClId)
+		, "\n       Client Id: ", io_lib:format("~p", [ClId])
 		, "\n       Transport: ", Trt
 		, "\n         Storage: ", Stg
 		, "\n       Connected: ", Cnd 
