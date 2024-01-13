@@ -53,6 +53,12 @@ connect(State, Config) ->
 	Transport = State#connection_state.transport,
 	Storage = State#connection_state.storage,
 	ConnVersion = Config#connect.version,
+	State1 = State#connection_state{
+		client_id = Client_Id,
+		version = Config#connect.version,
+		keep_alive = Config#connect.keep_alive,
+		properties = Config#connect.properties
+	},
 	try
 %% validate connect config.
 		mqtt_data:validate_config(Config),
@@ -85,11 +91,6 @@ connect(State, Config) ->
 					 ?ELSE -> ok
 				end,
 
-				State1 = State#connection_state{
-						client_id = Client_Id,
-						version = Config#connect.version,
-						keep_alive = Config#connect.keep_alive,
-						properties = Config#connect.properties},
 				New_State =
 					case Config#connect.clean_session of
 						1 -> 
@@ -125,12 +126,12 @@ connect(State, Config) ->
 										?LOGGING_FORMAT ++ " connection to client is closed by reason: ~p~n",
 										[Client_Id, none, connect, ConnVersion, Resp_code]),
 				gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Error reason: " ++ integer_to_list(Resp_code)}]}),
-				State
+				State1
 		end
 	catch
 		throw:#mqtt_error{error_msg = Msg} -> 
 			gen_server:cast(self(), {disconnect, 16#82, [{?Reason_String, "Protocol Error: " ++ Msg}]}),
-			State
+			State1
 	end.
 
 %% client side only
