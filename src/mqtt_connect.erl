@@ -55,7 +55,7 @@ connect(State, Config) ->
 	ConnVersion = Config#connect.version,
 	State1 = State#connection_state{
 		client_id = Client_Id,
-		version = Config#connect.version,
+		version = ConnVersion,
 		keep_alive = Config#connect.keep_alive,
 		properties = Config#connect.properties
 	},
@@ -71,8 +71,11 @@ connect(State, Config) ->
 			end,
 		Encrypted_password_cli = list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, Config#connect.password))),
 		Resp_code =
-			if Encrypted_password_db =/= Encrypted_password_cli -> 5;
-				 Encrypted_password_db == <<>> -> 5;
+			if (Encrypted_password_db =/= Encrypted_password_cli) or (Encrypted_password_db == <<>>) ->
+						case ConnVersion of
+							'5.0' -> 135;
+							_ -> 5
+						end;
 				 true -> 0
 			end,
 		if Resp_code =:= 0 ->
