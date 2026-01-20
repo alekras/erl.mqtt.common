@@ -51,15 +51,22 @@ subscribe_genServer_test_() ->
 	 }
 	].
 
+storage_module(dets) ->
+	mqtt_dets_storage;
+storage_module(mnesia) ->
+	mqtt_mnesia_storage;
+storage_module(mysql) ->
+	mqtt_mysql_storage.
+
 do_start() ->
 	application:start(mqtt_common),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	lager:start(),
 
-	mqtt_dets_storage:start(client),
-	mqtt_dets_storage:cleanup(client),
+	Storage:start(client),
+	Storage:cleanup(client),
 %	Transport = mock_tcp,
 	mock_tcp:start(),
-	Storage = mqtt_dets_storage,
 %	Socket = undefined,
 	State = #connection_state{storage = Storage, end_type = client},
 	{ok, Pid} = gen_server:start_link({local, client_gensrv}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
@@ -72,8 +79,9 @@ do_stop(Pid) ->
 %%	client_gensrv ! {tcp, undefined, <<224,0>>}, %% Disconnect packet
 	unregister(client_gensrv),
 	mock_tcp:stop(),
-	mqtt_dets_storage:cleanup(client),	
-	mqtt_dets_storage:close(client).	
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:cleanup(client),	
+	Storage:close(client).	
 
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1') ~n", []),
@@ -91,15 +99,16 @@ storage_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_li
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	connect(Version, Conn_config),
 	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	
 	subscribe(Version, 2),
-%	?debug_Fmt("::test:: Records = ~p ~n", [mqtt_dets_storage:subscription(get_client_topics,<<"test0Client">>,client)]),
-	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
+%	?debug_Fmt("::test:: Records = ~p ~n", [Storage:subscription(get_client_topics,<<"test0Client">>,client)]),
+	[Record] = Storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
 %	?debug_Fmt("::test:: Record = ~p ~n", [Record]),
 	?assertEqual(2, (Record#storage_subscription.options)#subscription_options.max_qos),
 	
 	unsubscribe(Version),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
+	Record1 = Storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
 	?assertEqual([], Record1),
 
 	disconnect(Version),
@@ -111,11 +120,12 @@ storage_test('5.0' = Version, Conn_config) -> {"Connection test [" ++ atom_to_li
 	connect(Version, Conn_config),
 	?debug_Fmt("::test:: State = ~p ~n", [sys:get_state(client_gensrv)]),
 	subscribe(Version, #subscription_options{max_qos=2, nolocal=0, retain_as_published=1, retain_handling=2}),
-	[Record] = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	[Record] = Storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
 	?assertEqual(#subscription_options{max_qos=2, nolocal=0, retain_as_published=1, retain_handling=2}, Record#storage_subscription.options),
 	
 	unsubscribe(Version),
-	Record1 = mqtt_dets_storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
+	Record1 = Storage:subscription(get, #subs_primary_key{client_id= <<"test0Client">>, topicFilter= "Topic"}, client),
 	?assertEqual([], Record1),
 
 	disconnect(Version),

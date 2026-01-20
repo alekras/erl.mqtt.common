@@ -68,21 +68,28 @@ connect_genServer_test_() ->
 	 }
 	].
 
+storage_module(dets) ->
+	mqtt_dets_storage;
+storage_module(mnesia) ->
+	mqtt_mnesia_storage;
+storage_module(mysql) ->
+	mqtt_mysql_storage.
+
 do_start() ->
 	?debug_Fmt("::test:: >>> do_start() ~n", []),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	lager:start(),
 
-	mqtt_dets_storage:start(server),
-	mqtt_dets_storage:cleanup(server),
+	Storage:start(server),
+	Storage:cleanup(server),
 
-	Storage = mqtt_dets_storage,
 	Storage:user(save, #user{user_id = <<"guest">>, password = <<"guest">>}),
 
 	self().
 
 create_server_process() ->
 	Transport = mock_tcp,
-	Storage = mqtt_dets_storage,
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	Socket = list_to_port("#Port<0.7>"),
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},
 	Pid = proc_lib:spawn(fun() -> mqtt_connection:init(State) end),
@@ -92,7 +99,7 @@ create_server_process() ->
 
 create_server_subsc_process() ->
 	Transport = mock_tcp,
-	Storage = mqtt_dets_storage,
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	Socket = list_to_port("#Port<0.8>"),
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},
 	Pid = proc_lib:spawn(fun() -> mqtt_connection:init(State) end),
@@ -102,8 +109,9 @@ create_server_subsc_process() ->
 
 do_stop(Pid) ->
 	?debug_Fmt("::test:: >>> do_stop(~p) ~n", [Pid]),
-	mqtt_dets_storage:cleanup(server),	
-	mqtt_dets_storage:close(server).	
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:cleanup(server),	
+	Storage:close(server).	
 
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1')~n", []),
@@ -126,8 +134,9 @@ cleanup('3.1.1'=X, {Y, Z}) ->
 				_ -> unregister(conn_server_subs)
 			end
 	end,
-	mqtt_dets_storage:connect_pid(remove, <<"test0Client"/utf8>>, server),
-	mqtt_dets_storage:retain(clean, server),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:connect_pid(remove, <<"test0Client"/utf8>>, server),
+	Storage:retain(clean, server),
 
 	mock_tcp:stop();
 cleanup('5.0'=X, {Y, Z}) ->
@@ -144,8 +153,9 @@ cleanup('5.0'=X, {Y, Z}) ->
 				_ -> unregister(conn_server_subs)
 			end
 	end,
-	mqtt_dets_storage:connect_pid(remove, <<"test0Client"/utf8>>, server),
-	mqtt_dets_storage:retain(clean, server),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:connect_pid(remove, <<"test0Client"/utf8>>, server),
+	Storage:retain(clean, server),
 
 	mock_tcp:stop().
 

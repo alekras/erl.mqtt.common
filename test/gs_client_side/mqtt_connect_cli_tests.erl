@@ -58,14 +58,21 @@ connect_genServer_test_() ->
 	 }
 	].
 
+storage_module(dets) ->
+	mqtt_dets_storage;
+storage_module(mnesia) ->
+	mqtt_mnesia_storage;
+storage_module(mysql) ->
+	mqtt_mysql_storage.
+
 do_start() ->
 	application:start(mqtt_common),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	lager:start(),
 
-	mqtt_dets_storage:start(client),
-	mqtt_dets_storage:cleanup(client),
+	Storage:start(client),
+	Storage:cleanup(client),
 	mock_tcp:start(),
-	Storage = mqtt_dets_storage,
 	State = #connection_state{storage = Storage, end_type = client},
 	{ok, Pid} = gen_server:start_link({local, client_gensrv}, mqtt_connection, State, [{timeout, ?MQTT_GEN_SERVER_TIMEOUT}]),
 	?debug_Fmt("::test:: <<< do_start() Pid of client_gensrv = ~p~n", [Pid]),
@@ -77,8 +84,9 @@ do_stop(Pid) ->
 %%	client_gensrv ! {tcp, undefined, <<224,0>>}, %% Disconnect packet
 	unregister(client_gensrv),
 	mock_tcp:stop(),
-	mqtt_dets_storage:cleanup(client),	
-	mqtt_dets_storage:close(client).	
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:cleanup(client),	
+	Storage:close(client).	
 
 setup('3.1.1') ->
 	#connect{client_id = <<"test0Client">>, user_name = ?TEST_USER, password = ?TEST_PASSWORD, 
@@ -89,7 +97,8 @@ setup('5.0') ->
 
 cleanup(_X, _Y) ->
 %	?debug_Fmt("::test:: >>> cleanup(~p,~p) PID:~p~n", [_X, _Y#connect.client_id, self()]),
-	mqtt_dets_storage:session(clean, <<"test0Client">>, client).
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(clean, <<"test0Client">>, client).
 
 %% ====================================================================
 %% API functions
@@ -113,8 +122,9 @@ restore_session_1_test('3.1.1' = Version, Conn_config) -> {"Restore session 1 te
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
-	?debug_Fmt("::test:: Records : ~p~n", [mqtt_dets_storage:session(get_all, <<"test0Client">>, client)]),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	?debug_Fmt("::test:: Records : ~p~n", [Storage:session(get_all, <<"test0Client">>, client)]),
 %%	connect(Version, Conn_config#connect{properties = []}),
 	mock_tcp:set_expectation(
 		<<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -137,7 +147,8 @@ restore_session_1_test('5.0' = Version, Conn_config) -> {"Restore session 1 test
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 %	connect(Version, Conn_config#connect{properties = [{?Topic_Alias_Maximum, 2},{?Receive_Maximum, 10}]}),
 	mock_tcp:set_expectation(
@@ -162,7 +173,8 @@ restore_session_2_test('3.1.1' = Version, Conn_config) -> {"Restore session 2 te
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrel},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -185,7 +197,8 @@ restore_session_2_test('5.0' = Version, Conn_config) -> {"Restore session 2 test
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrel},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,44, 4:16,"MQTT"/utf8,5,194,234,96, 6,33,10:16,34,2:16, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -209,7 +222,8 @@ restore_session_3_test('3.1.1' = Version, Conn_config) -> {"Restore session 3 te
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrec},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -232,7 +246,8 @@ restore_session_3_test('5.0' = Version, Conn_config) -> {"Restore session 3 test
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=pubrec},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,44, 4:16,"MQTT"/utf8,5,194,234,96, 6,33,10:16,34,2:16, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -256,7 +271,8 @@ restore_session_expiration_test('3.1.1' = Version, Conn_config) -> {"Restore ses
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=0},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,37, 4:16,"MQTT"/utf8,4,194,234,96, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>
@@ -278,7 +294,8 @@ restore_session_expiration_test('5.0' = Version, Conn_config) -> {"Restore sessi
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
 	Key = #primary_key{client_id = <<"test0Client">>, packet_id = 100},
 	PublishDoc = #publish{topic="Topic", qos=0, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=0},
-	mqtt_dets_storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:session(save, #storage_publish{key = Key, document = PublishDoc}, client),
 
 	mock_tcp:set_expectation(
 		<<16,44, 4:16,"MQTT"/utf8,5,194,234,96, 6,33,10:16,34,2:16, 11:16,"test0Client"/utf8, 5:16,"guest"/utf8, 5:16,"guest"/utf8>>

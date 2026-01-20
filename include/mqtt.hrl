@@ -134,7 +134,7 @@
 
 -record(sslsocket, {fd = nil, pid = nil}).
 -record(connection_state, 
-  { socket :: pid() | port() | #sslsocket{},
+	{ socket :: pid() | port() | #sslsocket{},
 		transport :: ssl | gen_tcp | mqtt_ws_client_handler,
 		client_id = undefined :: atom() | binary(),
 		keep_alive :: integer(),

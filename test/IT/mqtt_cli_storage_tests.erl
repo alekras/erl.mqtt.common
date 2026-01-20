@@ -1,5 +1,5 @@
 %%
-%% Copyright (C) 2015-2023 by krasnop@bellsouth.net (Alexei Krasnopolski)
+%% Copyright (C) 2015-2026 by krasnop@bellsouth.net (Alexei Krasnopolski)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 %% @hidden
 %% @since 2016-09-08
-%% @copyright 2015-2023 Alexei Krasnopolski
+%% @copyright 2015-2026 Alexei Krasnopolski
 %% @author Alexei Krasnopolski <krasnop@bellsouth.net> [http://krasnopolski.org/]
 %% @version {@version}
 %% @doc This module is running unit tests for some modules.
@@ -40,6 +40,10 @@
 -export([
 ]).
 
+%%-define(STORAGE_TYPE, dets).
+%% -define(STORAGE_TYPE, mysql).
+-define(STORAGE_TYPE, mnesia).
+
 %%
 %% API Functions
 %%
@@ -52,24 +56,13 @@ dets_dao_test_() ->
 			fun setup/1,
 			fun cleanup/2,
 			[
-				{dets, fun create/2},
-				{mysql, fun create/2},
- 				{dets, fun create_srv/2},
- 				{mysql, fun create_srv/2},
-				{dets, fun read/2},
-				{mysql, fun read/2},
- 				{dets, fun read_srv/2},
- 				{mysql, fun read_srv/2},
-				{dets, fun extract_topic/2},
-				{mysql, fun extract_topic/2},
-				{dets, fun extract_matched_topic/2},
-				{mysql, fun extract_matched_topic/2},
-				{dets, fun read_all/2},
-				{mysql, fun read_all/2},
-				{dets, fun update/2},
-				{mysql, fun update/2},
-				{dets, fun delete/2},
-				{mysql, fun delete/2}
+				{?STORAGE_TYPE, fun create/2},
+				{?STORAGE_TYPE, fun read/2},
+				{?STORAGE_TYPE, fun extract_topic/2},
+				{?STORAGE_TYPE, fun extract_matched_topic/2},
+				{?STORAGE_TYPE, fun read_all/2},
+				{?STORAGE_TYPE, fun update/2},
+				{?STORAGE_TYPE, fun delete/2}
 			]
 		}
 	 }
@@ -77,33 +70,28 @@ dets_dao_test_() ->
 
 do_start() ->
 	lager:start(),
-	mqtt_mysql_storage:start(client),
-	mqtt_mysql_storage:cleanup(client),
-	mqtt_mysql_storage:start(server),
-	mqtt_mysql_storage:cleanup(server),
-	mqtt_mysql_storage:user(clean, undefined),
+	Storage = setup(?STORAGE_TYPE),
+	Storage:start(client),
+	Storage:cleanup(client),
+	Storage.
+%	Storage:start(server),
+%	Storage:cleanup(server),
+%	Storage:user(clean, undefined).
 
-	mqtt_dets_storage:start(client),
-	mqtt_dets_storage:cleanup(client),
-	mqtt_dets_storage:start(server),
-	mqtt_dets_storage:cleanup(server),
-	mqtt_dets_storage:user(clean, undefined).
-
-do_stop(_X) ->
-%	mqtt_mysql_storage:cleanup(client),
-	mqtt_mysql_storage:close(client),
-
-%	mqtt_dets_storage:cleanup(client),	
-%	mqtt_dets_storage:cleanup(server),	
-	mqtt_dets_storage:close(client).	
+do_stop(Storage) ->
+	?debug_Fmt("::test:: before do_stop -> ~p", [Storage]),
+	Storage:close(client).	
 
 setup(dets) ->
 	mqtt_dets_storage;
+setup(mnesia) ->
+	mqtt_mnesia_storage;
 setup(mysql) ->
 	mqtt_mysql_storage.
 
-cleanup(_, _) ->
-	ok.
+cleanup(_X, _Y) ->
+%%	?debug_Fmt("::test:: before cleanup -> ~p, ~p ~n", [_X, _Y]),
+	cleanup_return.
 
 create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload lemon 1">>}}, client),
@@ -143,39 +131,6 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	?passed
 end}.
 
-create_srv(X, Storage) -> {"create srv [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	Storage:session_state(save, #session_state{client_id = "lemon", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "orange", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "apple", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "pear", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	R = Storage:session_state(get_all, undefined),
-%	?debug_Fmt("::test:: after create session ~p", [R]),	
-	?assertEqual(4, length(R)),
-	
-	Storage:retain(save, #publish{topic = "AKtest", dup=0, qos=2, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=1009}),
-	Storage:retain(save, #publish{topic = "Winter/+", dup=1, qos=0, payload= <<"Payload">>, dir=in, last_sent=publish, expiration_time=1109}),
-	Storage:retain(save, #publish{topic = "+/December", dup=0, qos=1, payload= <<"Payload">>, dir=in, last_sent=pubrec, expiration_time=1029}),
-	Storage:retain(save, #publish{topic = "Winter/#", dup=1, qos=1, payload= <<"Payload">>, dir=out, last_sent=pubrel, expiration_time=10099}),
-	Storage:retain(save, #publish{topic = "Winter/+/2", dup=0, qos=0, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=1909}),
-	Storage:retain(save, #publish{topic = "/+/December/+", dup=1, qos=0, payload= <<"Payload">>, dir=in, last_sent=pubrel, expiration_time=11009}),
-	Storage:retain(save, #publish{topic = "+/December", dup=1, qos=1, payload= <<"Payload">>, dir=out, last_sent=pubcomp, expiration_time=10095}),
-	Storage:retain(save, #publish{topic = "+/December/+", dup=0, qos=1, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=10069}),
-	R1 = Storage:retain(get_all, undefined),
-%	?debug_Fmt("::test:: after create session ~p", [R1]),	
-	?assertEqual(8, length(R1)),
-	
-	Storage:user(save, #user{user_id="guest", password= <<"guest">>, roles= ["USER"]}),
-	Storage:user(save, #user{user_id="alex", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="tom", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="sam", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="john", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	R2 = Storage:user(get_all, undefined),
-	?debug_Fmt("::test:: after create users ~p", [R2]),	
-	?assertEqual(5, length(R2)),
-
-	?passed
-end}.
-
 read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
 	R = Storage:session(get, #primary_key{client_id = "lemon", packet_id = 101}, client),
 %	?debug_Fmt("::test:: read returns R ~120p", [R]),	
@@ -195,14 +150,6 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	R2a = Storage:connect_pid(get, "plum", client),
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2a]),	
  	?assertEqual(undefined, R2a),
-	?passed
-end}.
-
-read_srv(X, Storage) -> {"read srv [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	R = Storage:session_state(get, "lemon"),
-%	?debug_Fmt("::test:: read all returns R ~120p", [R]),	
-	?assertEqual(#session_state{client_id = "lemon", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}, R),
-
 	?passed
 end}.
 

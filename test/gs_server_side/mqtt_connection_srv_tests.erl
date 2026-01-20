@@ -80,21 +80,28 @@ connection_genServer_test_() ->
 	 }
 	].
 
+storage_module(dets) ->
+	mqtt_dets_storage;
+storage_module(mnesia) ->
+	mqtt_mnesia_storage;
+storage_module(mysql) ->
+	mqtt_mysql_storage.
+
 do_start() ->
 	?debug_Fmt("::test:: >>> do_start() ~n", []),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	lager:start(),
 
-	mqtt_dets_storage:start(server),
-	mqtt_dets_storage:cleanup(server),
+	Storage:start(server),
+	Storage:cleanup(server),
 
-	Storage = mqtt_dets_storage,
 	Storage:user(save, #user{user_id = <<"guest">>, password = <<"guest">>}),
 
 	self().
 
 create_server_process() ->
 	Transport = mock_tcp,
-	Storage = mqtt_dets_storage,
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
 	Socket = list_to_port("#Port<0.7>"),
 	State = #connection_state{socket = Socket, transport = Transport, storage = Storage, end_type = server},
 	Pid = proc_lib:spawn(fun() -> mqtt_connection:init(State) end),
@@ -104,8 +111,9 @@ create_server_process() ->
 	
 do_stop(Pid) ->
 	?debug_Fmt("::test:: >>> do_stop(~p) ~n", [Pid]),
-	mqtt_dets_storage:cleanup(server),	
-	mqtt_dets_storage:close(server).	
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:cleanup(server),	
+	Storage:close(server).	
 
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1')~n", []),
@@ -123,7 +131,8 @@ cleanup(X, {_, Y}) ->
 		undefined -> ok;
 		_ -> unregister(conn_server)
 	end,
-	mqtt_dets_storage:connect_pid(remove, Y#connect.client_id, server),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:connect_pid(remove, Y#connect.client_id, server),
 
 	mock_tcp:stop().
 
@@ -180,7 +189,8 @@ connection_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Connection te
 				5:16,"guest"/utf8, 5:16,"guest"/utf8>>},
 	wait_mock_tcp("connack"),
 
-	Will_publish_record = (mqtt_dets_storage:session_state(get, <<"test0Client"/utf8>>))#session_state.will_publish,
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Will_publish_record = (Storage:session_state(get, <<"test0Client"/utf8>>))#session_state.will_publish,
 	Conn_State = sys:get_state(conn_server),
 	?debug_Fmt("::test:: will properties = ~p ~n", [Will_publish_record#publish.properties]),
 	?debug_Fmt("::test:: properties = ~p ~n", [Conn_State#connection_state.properties]),
@@ -271,7 +281,8 @@ unsubscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe 
 	mock_tcp:set_expectation(<<144,4, 0,100, 0, 2>>), %% Suback packet
 	conn_server ! {tcp, Socket, <<130,11,0,100,0,0,5,"Topic"/utf8,2>>}, %% Subscription request
 	wait_mock_tcp("suback"),
-	SubList = mqtt_dets_storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = <<"test0Client">>}, server),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	SubList = Storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = <<"test0Client">>}, server),
 	?debug_Fmt("Subscription from DB: ~128p ~n", [SubList]),
 	?assertEqual(length(SubList), 1),
 	
@@ -280,7 +291,7 @@ unsubscribe_props_test('5.0' = Version, {Socket, Conn_config}) -> {"Unsubscribe 
 										13, 38,3:16,"Key"/utf8, 5:16,"Value"/utf8,
 										0,5,"Topic"/utf8>>}, %% Unsubscription request
 	wait_mock_tcp("unsuback"),
-	UnList = mqtt_dets_storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = <<"test0Client">>}, server),
+	UnList = Storage:subscription(get, #subs_primary_key{topicFilter = "Topic", client_id = <<"test0Client">>}, server),
 	?debug_Fmt("Subscription from DB: ~128p ~n", [UnList]),
 	?assertEqual(length(UnList), 0),
 

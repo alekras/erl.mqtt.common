@@ -94,15 +94,23 @@ connection_genServer_test_() ->
 	 }
 	].
 
+storage_module(dets) ->
+	mqtt_dets_storage;
+storage_module(mnesia) ->
+	mqtt_mnesia_storage;
+storage_module(mysql) ->
+	mqtt_mysql_storage.
+
 do_start() ->
 	application:start(mqtt_common),
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+
 	lager:start(),
 
-	mqtt_dets_storage:start(client),
-	mqtt_dets_storage:cleanup(client),
+	Storage:start(client),
+	Storage:cleanup(client),
 %	Transport = mock_tcp,
 	mock_tcp:start(),
-	Storage = mqtt_dets_storage,
 %	Socket = undefined,
 	State = #connection_state{storage = Storage, end_type = client},
 	Timeout = application:get_env(mqtt_common, timeout, ?MQTT_GEN_SERVER_TIMEOUT),
@@ -116,8 +124,9 @@ do_stop(Pid) ->
 %% 	client_gensrv ! {tcp, undefined, <<224,0>>}, %% Disconnect packet
 	unregister(client_gensrv),
 	mock_tcp:stop(),
-	mqtt_dets_storage:cleanup(client),	
-	mqtt_dets_storage:close(client).	
+	Storage = storage_module(application:get_env(mqtt_common, storage, dets)),
+	Storage:cleanup(client),	
+	Storage:close(client).	
 
 setup('3.1.1') ->
 	?debug_Fmt("::test:: >>> setup('3.1.1') ~n", []),
