@@ -180,6 +180,12 @@ handle_cast({connect, Conn_config, Callback, Socket_options},
 			do_callback(Callback, [onError, #mqtt_error{oper= connect, error_msg= "Already received connection request."}]),
 			{noreply, State}
 	end;
+handle_cast({update_callback, Callback}, #connection_state{connected = 1, end_type = client} = State) ->
+	do_callback(Callback, [onUpdate, Callback]),
+	{noreply, State#connection_state{event_callback = Callback}};
+handle_cast({update_callback, Callback}, #connection_state{connected = 0, end_type = client} = State) ->
+	do_callback(Callback, [onError, #mqtt_error{oper= update_callback, error_msg= "Client does not connected."}]),
+	{noreply, State};
 
 ?test_fragment_break_connection
 

@@ -57,7 +57,8 @@ connection_genServer_test_() ->
 			fun setup/1,
 			fun cleanup/2,
 			[
-				{'3.1.1', fun connection_test/2}
+				{'3.1.1',  fun set_callback_test/2}
+				,{'3.1.1', fun connection_test/2}
 				,{'5.0',   fun connection_test/2}
 				,{'5.0',   fun connection_timeout_test/2}
 				,{'5.0',   fun connection_props_test/2}
@@ -139,6 +140,28 @@ setup('5.0') ->
 
 cleanup(X, Y) ->
 	?debug_Fmt("::test:: >>> cleanup(~p,~p) PID:~p~n", [X, Y#connect.client_id, self()]).
+
+set_callback_test(Version, Conn_config) -> {"Set Callback test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
+	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),
+	connect(Version, Conn_config),
+	?debug_Fmt("::test:: State = ~s", [mqtt_data:state_to_string(sys:get_state(client_gensrv))]),
+
+%	mock_tcp:set_expectation([onUpdate, self()]),
+	ok = gen_server:cast(client_gensrv, {update_callback, fail}),
+%	wait_mock_tcp("update_callback packet"),
+	receive 
+		_M -> 
+			?assert(false)
+	after 200 ->
+			?assert(true)
+	end,
+	?assertEqual(fail, (sys:get_state(client_gensrv))#connection_state.event_callback),
+	ok = gen_server:cast(client_gensrv, {update_callback, self()}),
+
+	disconnect(Version),
+
+	?passed
+end}.
 
 connection_test('3.1.1'=Version, Conn_config) -> {"Connection test [" ++ atom_to_list(Version) ++ "]", timeout, 5, fun() ->
 	?debug_Fmt("::test:: >>> test(~p, ~p) test process PID=~p~n", [Version, Conn_config, self()]),

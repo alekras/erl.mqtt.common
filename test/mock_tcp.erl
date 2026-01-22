@@ -81,7 +81,7 @@ loop({Pid, ExpList}) ->
 
 wait_mock_tcp(R) ->
 	wait_mock_tcp(R, fun(M) ->
-			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~p~n", [R, M]),
+			?debug_Fmt("**test** while waiting ~p mock_tcp got unexpected msg = ~256p~n", [R, M]),
 			?assert(false) end
 	).
 
