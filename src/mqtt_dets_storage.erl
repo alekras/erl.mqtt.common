@@ -46,33 +46,32 @@
 ]).
 
 db_id(client) ->
-	[session_db_cli, subscription_db_cli, connectpid_db_cli];
+	[session_db_cli, subscription_db_cli];
 db_id(server) ->
 	[session_db_srv, subscription_db_srv, connectpid_db_srv, users_db_srv, retain_db_srv, session_state_db_srv].
 
-db_type(client) -> [set, set, set];
+db_type(client) -> [set, set];
 db_type(server) -> [set, set, set, set, duplicate_bag, set].
 
 db_id(1, client) -> session_db_cli;
 db_id(1, server) -> session_db_srv;
 db_id(2, client) -> subscription_db_cli;
 db_id(2, server) -> subscription_db_srv;
-db_id(3, client) -> connectpid_db_cli;
 db_id(3, server) -> connectpid_db_srv;
 db_id(4, server) -> users_db_srv;
 db_id(5, server) -> retain_db_srv;
 db_id(6, server) -> session_state_db_srv.
 
 db_file(client) ->
-	["session-db-cli.bin", "subscription-db-cli.bin", "connectpid-db-cli.bin"];
+	["session-db-cli.bin", "subscription-db-cli.bin"];
 db_file(server) ->
 	["session-db-srv.bin", "subscription-db-srv.bin", "connectpid-db-srv.bin", "users-db-srv.bin", "retain-db-srv.bin", "session_state_db_srv.bin"].
 
-end_type_2_name(client) -> mqtt_client;
-end_type_2_name(server) -> mqtt_server.
+% end_type_2_name(client) -> mqtt_client;
+% end_type_2_name(server) -> mqtt_server.
 
 start(End_Type) ->
-	DB_Folder = application:get_env(end_type_2_name(End_Type), dets_home_folder, "dets-storage"),
+	DB_Folder = application:get_env(mqtt_common, dets_home_folder, "dets-storage"),
 	L = lists:zip3(db_id(End_Type), db_file(End_Type), db_type(End_Type)),
 	L1 = [ 
 		case dets:open_file(DB_ID, [{file, filename:join(DB_Folder, DB_File)}, {type, DB_Type}, {auto_save, 60000}, {keypos, 2}]) of
@@ -269,41 +268,41 @@ subscription(clean, ClientId, End_Type) ->
 subscription(close, _, End_Type) ->
 	dets:close(db_id(2, End_Type)).
 
-connect_pid(save, #storage_connectpid{client_id = Key} = Document, End_Type) ->
-	case dets:insert(db_id(3, End_Type), Document) of
+connect_pid(save, #storage_connectpid{client_id = Key} = Document, _) ->
+	case dets:insert(db_id(3, server), Document) of
 		{error, Reason} ->
-			lager:error([{endtype, End_Type}], "connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
+			lager:error([{endtype, server}], "connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false;
 		ok ->
 			true
 	end;
-connect_pid(exist, _Key, _End_Type) -> false;
-connect_pid(get, Client_id, End_Type) ->
-	case dets:match_object(db_id(3, End_Type), #storage_connectpid{client_id = Client_id, _ = '_'}) of
+connect_pid(exist, _Key, _) -> false;
+connect_pid(get, Client_id, _) ->
+	case dets:match_object(db_id(3, server), #storage_connectpid{client_id = Client_id, _ = '_'}) of
 		{error, Reason} ->
-			lager:error([{endtype, End_Type}], "Get failed: key=~p reason=~p~n", [Client_id, Reason]),
+			lager:error([{endtype, server}], "Get failed: key=~p reason=~p~n", [Client_id, Reason]),
 			undefined;
 		[#storage_connectpid{pid = Pid}] -> Pid;
 		_ -> undefined
 	end;
-connect_pid(get_all, _, End_Type) ->
-	case dets:match_object(db_id(3, End_Type), #storage_connectpid{_='_'}) of 
+connect_pid(get_all, _, _) ->
+	case dets:match_object(db_id(3, server), #storage_connectpid{_='_'}) of 
 		{error, Reason} -> 
-			lager:error([{endtype, End_Type}], "match_object failed: ~p~n", [Reason]),
+			lager:error([{endtype, server}], "match_object failed: ~p~n", [Reason]),
 			[];
 		R -> R
 	end;
-connect_pid(remove, Client_id, End_Type) ->
-	case dets:match_delete(db_id(3, End_Type), #storage_connectpid{client_id = Client_id, _ = '_'}) of
+connect_pid(remove, Client_id, _) ->
+	case dets:match_delete(db_id(3, server), #storage_connectpid{client_id = Client_id, _ = '_'}) of
 		{error, Reason} ->
-			lager:error([{endtype, End_Type}], "Delete is failed for key: ~p with error code: ~p~n", [Client_id, Reason]),
+			lager:error([{endtype, server}], "Delete is failed for key: ~p with error code: ~p~n", [Client_id, Reason]),
 			false;
 		ok -> true
 	end;
-connect_pid(clean, Client_id, End_Type) ->
-	connect_pid(remove, Client_id, End_Type);
-connect_pid(close, _, End_Type) ->
-	dets:close(db_id(3, End_Type)).
+connect_pid(clean, Client_id, _) ->
+	connect_pid(remove, Client_id, server);
+connect_pid(close, _, _) ->
+	dets:close(db_id(3, server)).
 
 user(save, #user{user_id = Key, password = Pswd} = Doc) ->
 	User_name = if is_binary(Key) -> Key; true -> list_to_binary(Key) end,
@@ -393,8 +392,8 @@ cleanup(ClientId, End_Type) -> %% @todo rename to session_cleanup
 cleanup(End_Type) ->
 	dets:delete_all_objects(db_id(1, End_Type)),
 	dets:delete_all_objects(db_id(2, End_Type)),
-	dets:delete_all_objects(db_id(3, End_Type)),
 	if End_Type =:= server ->
+			dets:delete_all_objects(db_id(3, End_Type)),
 			dets:delete_all_objects(db_id(5, server)),
 			dets:delete_all_objects(db_id(6, server));
 		true -> ok

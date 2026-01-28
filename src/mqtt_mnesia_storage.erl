@@ -47,18 +47,17 @@
 ]).
 
 %% db_id(client) ->
-%%	[session_cli, subscription_cli, connectpid_cli];
+%%	[session_cli, subscription_cli];
 %% db_id(server) ->
 %%	[session, subscription, connectpid, users, retain, session_state].
 
-%% db_type(client) -> [set, set, set];
+%% db_type(client) -> [set, set];
 %% db_type(server) -> [set, set, set, set, bag, set].
 
 db_id(1, client) -> session_cli;
 db_id(1, server) -> session;
 db_id(2, client) -> subscription_cli;
 db_id(2, server) -> subscription;
-db_id(3, client) -> connectpid_cli;
 db_id(3, server) -> connectpid;
 db_id(4, server) -> users;
 db_id(5, server) -> retain;
@@ -89,16 +88,7 @@ init(Nodes, client) ->
 			{type, set},
 			{local_content, true}
 		]),
-	lager:info([{endtype, client}], "Create table: ~p~n", [CT2]),
-	CT3 = mnesia:create_table(connectpid_cli,
-		[
-			{disc_copies, TNodes},
-			{record_name, storage_connectpid},
-			{attributes, record_info(fields, storage_connectpid)},
-			{type, set},
-			{local_content, true}
-		]),
-	lager:info([{endtype, client}], "Create table: ~p~n", [CT3]);
+	lager:info([{endtype, client}], "Create table: ~p~n", [CT2]);
 init(Nodes, server) ->
 	CS = mnesia:create_schema(Nodes),
 	lager:info([{endtype, server}], "Create schema: ~p~n", [CS]),
@@ -354,17 +344,17 @@ subscription(clean, ClientId, End_Type) ->
 	end;
 subscription(close, _, _) -> ok.
 
-connect_pid(save, #storage_connectpid{client_id = Key} = Document, End_Type) ->
-	Fun = fun() -> mnesia:write(db_id(3, End_Type), Document, write) end,
+connect_pid(save, #storage_connectpid{client_id = Key} = Document, _) ->
+	Fun = fun() -> mnesia:write(db_id(3, server), Document, write) end,
 	case mnesia:transaction(Fun) of
 		{atomic, _Res} -> true;
 		{aborted, Reason} -> 
 			lager:error([{endtype, server}], "connectpid_db: Insert failed: ~p; reason ~p~n", [Key, Reason]),
 			false
 	end;
-connect_pid(exist, _Key, _End_Type) -> false;
-connect_pid(get, Client_id, End_Type) ->
-	Fun = fun() -> mnesia:read(db_id(3, End_Type), Client_id) end,
+connect_pid(exist, _Key, _) -> false;
+connect_pid(get, Client_id, _) ->
+	Fun = fun() -> mnesia:read(db_id(3, server), Client_id) end,
 	case mnesia:transaction(Fun) of
 		{atomic, [#storage_connectpid{pid = Pid}]} -> Pid;
 		{aborted, Reason} -> 
@@ -372,26 +362,26 @@ connect_pid(get, Client_id, End_Type) ->
 			undefined;
 		_ -> undefined
 	end;
-connect_pid(get_all, _, End_Type) ->
-	Fun = fun() -> mnesia:match_object(db_id(3, End_Type), #storage_connectpid{_='_'}, read) end,
+connect_pid(get_all, _, _) ->
+	Fun = fun() -> mnesia:match_object(db_id(3, server), #storage_connectpid{_='_'}, read) end,
 	case mnesia:transaction(Fun) of
 		{atomic, Res} when is_list(Res) -> Res;
 		{aborted, Reason} -> 
-			lager:error([{endtype, End_Type}], "Get_all failed: reason=~p~n", [Reason]),
+			lager:error([{endtype, server}], "Get_all failed: reason=~p~n", [Reason]),
 			undefined;
 		_ -> undefined
 	end;
-connect_pid(remove, Client_id, End_Type) ->
+connect_pid(remove, Client_id, _) ->
 	Fun = fun() -> mnesia:delete(db_id(3, server), Client_id, write) end,
 	case mnesia:transaction(Fun) of
 		{atomic, ok} -> true;
 		{aborted, Reason} -> 
-			lager:error([{endtype, End_Type}], "Delete connection_pid is failed: key=~p reason=~p~n", [Client_id, Reason]),
+			lager:error([{endtype, server}], "Delete connection_pid is failed: key=~p reason=~p~n", [Client_id, Reason]),
 			false;
 		_ -> false
 	end;
-connect_pid(clean, Client_id, End_Type) ->
-	connect_pid(remove, Client_id, End_Type);
+connect_pid(clean, Client_id, _) ->
+	connect_pid(remove, Client_id, server);
 connect_pid(close, _, _) -> ok.
 
 user(save, #user{user_id = Key, password = Pswd} = Doc) ->
@@ -502,17 +492,17 @@ cleanup(ClientId, End_Type) -> %% @todo rename to session_cleanup
 cleanup(End_Type) ->
 	mnesia:clear_table(db_id(1, End_Type)),
 	mnesia:clear_table(db_id(2, End_Type)),
-	mnesia:clear_table(db_id(3, End_Type)),
 	if End_Type =:= server ->
+			mnesia:clear_table(db_id(3, End_Type)),
 			mnesia:clear_table(db_id(5, End_Type)),
 			mnesia:clear_table(db_id(6, End_Type));
 		true -> ok
 	end.
 
 close(_) ->
-	mnesia:stop(),
-	R = mnesia:delete_schema([node()]),
-	lager:info([{endtype, server}], "Delete schema: ~p~n", [R]).
+	mnesia:stop().
+%	R = mnesia:delete_schema([node()]),
+%	lager:info([{endtype, server}], "Delete schema: ~p~n", [R]).
 
 %% ====================================================================
 %% Internal functions

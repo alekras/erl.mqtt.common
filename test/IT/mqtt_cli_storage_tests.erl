@@ -73,7 +73,8 @@ do_start() ->
 	Storage = setup(?STORAGE_TYPE),
 	Storage:start(client),
 	Storage:cleanup(client),
-	Storage.
+	Storage,
+	?debug_Fmt("::test:: after do_start -> ~p", [Storage]).
 %	Storage:start(server),
 %	Storage:cleanup(server),
 %	Storage:user(clean, undefined).
@@ -108,9 +109,9 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "orange"}, options = #subscription_options{max_qos=0}}, client),
  	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December/+", shareName = "A", client_id = "apple"}, options = #subscription_options{max_qos=0}}, client),
  
- 	Storage:connect_pid(save, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}, client),
- 	Storage:connect_pid(save, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}, client),
- 	Storage:connect_pid(save, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}, client),
+% 	Storage:connect_pid(save, #storage_connectpid{client_id = "lemon", pid = list_to_pid("<0.4.1>")}, client),
+% 	Storage:connect_pid(save, #storage_connectpid{client_id = "orange", pid = list_to_pid("<0.4.2>")}, client),
+% 	Storage:connect_pid(save, #storage_connectpid{client_id = "apple", pid = list_to_pid("<0.4.3>")}, client),
 
 	R = Storage:session(get_all, "lemon", client),
 %	?debug_Fmt("::test:: after create session ~p", [R]),	
@@ -125,9 +126,9 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 %	?debug_Fmt("::test:: after create topic ~p", [R3]),	
 	?assertEqual(8, length(R3)),
 
-	R4 = Storage:connect_pid(get_all, undefined, client),
-%% %	?debug_Fmt("::test:: after create ~p", [R4]),	
- 	?assertEqual(3, length(R4)),
+%%	R4 = Storage:connect_pid(get_all, undefined, client),
+%%	?debug_Fmt("::test:: after create ~p", [R4]),	
+%%	?assertEqual(3, length(R4)),
 	?passed
 end}.
 
@@ -144,12 +145,12 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	R1a = Storage:subscription(get, #subs_primary_key{topicFilter = "AK_Test", client_id = "lemon"}, client),
 %	?debug_Fmt("::test:: read returns R1a ~120p", [R1a]),	
  	?assertEqual([], R1a),
- 	R2 = Storage:connect_pid(get, "apple", client),
+% 	R2 = Storage:connect_pid(get, "apple", client),
 %	?debug_Fmt("::test:: read returns R2 ~120p", [R2]),	
- 	?assertEqual(list_to_pid("<0.4.3>"), R2),
- 	R2a = Storage:connect_pid(get, "plum", client),
+% 	?assertEqual(list_to_pid("<0.4.3>"), R2),
+% 	R2a = Storage:connect_pid(get, "plum", client),
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2a]),	
- 	?assertEqual(undefined, R2a),
+%	?assertEqual(undefined, R2a),
 	?passed
 end}.
 
