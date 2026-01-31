@@ -46,13 +46,20 @@
 	retain/2
 ]).
 
-%% db_id(client) ->
-%%	[session_cli, subscription_cli];
-%% db_id(server) ->
-%%	[session, subscription, connectpid, users, retain, session_state].
-
-%% db_type(client) -> [set, set];
-%% db_type(server) -> [set, set, set, set, bag, set].
+-ifdef(TEST).
+-define(test_code_to_add_tables, 
+%% This code is for testing only. Creates clients and servers tables
+%% in the same mnesia directory and schema
+				Tables_number = length(mnesia:system_info(tables)),
+				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [mnesia:system_info(tables)]),
+				if  (End_Type == client) and (Tables_number == 7) -> init(Nodes, client);
+						(End_Type == server) and (Tables_number == 3) -> init(Nodes, server);
+						true -> ok
+				end,
+).
+-else.
+-define(test_code_to_add_tables, ).
+-endif.
 
 db_id(1, client) -> session_cli;
 db_id(1, server) -> session;
@@ -63,14 +70,8 @@ db_id(4, server) -> users;
 db_id(5, server) -> retain;
 db_id(6, server) -> session_state.
 
-%% end_type_2_name(client) -> mqtt_client;
-%% end_type_2_name(server) -> mqtt_server.
-
 init(Nodes, client) ->
-	CS = mnesia:create_schema(Nodes),
-	lager:info([{endtype, client}], "Create schema: ~p~n", [CS]),
-%%	mnesia:start(),
-	TNodes = if length(Nodes) == 1 -> []; ?ELSE -> Nodes end,
+	TNodes = if length(Nodes) =< 1 -> []; ?ELSE -> Nodes end, %% ???
 	CT1 = mnesia:create_table(session_cli,
 		[
 			{disc_copies, TNodes},
@@ -79,7 +80,7 @@ init(Nodes, client) ->
 			{type, set},
 			{local_content, true}
 		]),
-	lager:info([{endtype, client}], "Create table: ~p~n", [CT1]),
+	lager:info([{endtype, client}], "Create table return: ~p~n", [CT1]),
 	CT2 = mnesia:create_table(subscription_cli,
 		[
 			{disc_copies, TNodes},
@@ -88,12 +89,9 @@ init(Nodes, client) ->
 			{type, set},
 			{local_content, true}
 		]),
-	lager:info([{endtype, client}], "Create table: ~p~n", [CT2]);
+	lager:info([{endtype, client}], "Create table return: ~p~n", [CT2]);
 init(Nodes, server) ->
-	CS = mnesia:create_schema(Nodes),
-	lager:info([{endtype, server}], "Create schema: ~p~n", [CS]),
-%%	mnesia:start(),
-	TNodes = if length(Nodes) == 1 -> []; ?ELSE -> Nodes end,
+	TNodes = if length(Nodes) =< 1 -> []; ?ELSE -> Nodes end,
 	CT1 = mnesia:create_table(session,
 		[
 			{disc_copies, TNodes},
@@ -150,24 +148,42 @@ init(Nodes, server) ->
 		lager:info([{endtype, server}], "Create table: ~p~n", [CT6]).
 
 start(End_Type) ->
-	mnesia:start(),
-	Nodes = [node()],
-	lager:info([{endtype, End_Type}], "Nodes: ~p~n", [Nodes]),
-	Mnesia_dir = application:get_env(mnesia, dir, "mnesia-storage"),
-	lager:info([{endtype, End_Type}], "Mnesia dir (Env): ~p~n", [Mnesia_dir]),
+%%	mnesia:start(),
+	Nodes = application:get_env(mqtt_common, cluster_nodes, [node()]),
+	lager:debug([{endtype, End_Type}], "Nodes: ~p~n", [Nodes]),
 
 	lager:info([{endtype, End_Type}], "Mnesia directory: ~p~n", [mnesia:system_info(directory)]),
-	lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [mnesia:system_info(tables)]),
-	case mnesia:system_info(use_dir) of
-		true -> 
-			Schema_location = mnesia:system_info(schema_location),
-			lager:info([{endtype, End_Type}], "Mnesia is already initialized with schema location: ~p~n", [Schema_location]);
-		false -> 
-			init(Nodes, End_Type),
-			lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [mnesia:system_info(tables)]),
-			Schema_location = mnesia:system_info(schema_location),
-			lager:info([{endtype, End_Type}], "Mnesia schema is created in location: ~p~n", [Schema_location])	
-	end.
+	lager:info([{endtype, End_Type}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
+	lager:info([{endtype, End_Type}], "Mnesia schema location: ~p~n", [mnesia:system_info(schema_location)]),
+	Is_master = application:get_env(mqtt_common, mnesia_master, false),
+	lager:info([{endtype, End_Type}], "Is mnesia master: ~p~n", [Is_master]),
+	if Is_master ->
+		case mnesia:create_schema(Nodes) of
+			{error, {_, {already_exists, _}}} ->
+				mnesia:start(),
+
+?test_code_to_add_tables
+
+				Tables = mnesia:system_info(tables),
+				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
+				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", []);
+			ok ->
+				mnesia:start(),
+				init(Nodes, End_Type),
+				Tables = mnesia:system_info(tables),
+				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
+				lager:info([{endtype, End_Type}], "Mnesia schema is created. ~n", []);
+			Error -> 	
+				lager:error([{endtype, End_Type}], "Mnesia create schema throws error: ~p~n", [Error]),
+				Tables = []
+		end;
+		 ?ELSE ->
+				mnesia:start(),
+				Tables = mnesia:system_info(tables),
+				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
+				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", [])
+	end,
+	mnesia:wait_for_tables(Tables, 1000).
 
 session(save, #storage_publish{key = Key} = Document, End_Type) ->
 	Fun = fun() -> mnesia:write(db_id(1, End_Type), Document, write) end,

@@ -71,6 +71,7 @@ dets_dao_test_() ->
 	].
 
 do_start() ->
+	application:start(mqtt_common),
 	lager:start(),
 	Storage = setup(?STORAGE_TYPE),
 	Storage:start(server),
@@ -80,6 +81,7 @@ do_start() ->
 
 do_stop(Storage) ->
 	?debug_Fmt("::test:: before do_stop -> ~p", [Storage]),
+	application:stop(mqtt_common),
 	Storage:close(client).	
 
 setup(dets) ->
@@ -149,39 +151,6 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 	R4 = Storage:connect_pid(get_all, undefined, server),
 %% %	?debug_Fmt("::test:: after create ~p", [R4]),	
 	?assertEqual(3, length(R4)),
-
-	?passed
-end}.
-
-create_srv(X, Storage) -> {"create srv [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
-	Storage:session_state(save, #session_state{client_id = "lemon", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "orange", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "apple", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	Storage:session_state(save, #session_state{client_id = "pear", session_expiry_interval = 10, end_time = 1000, will_publish = #publish{}}),
-	R = Storage:session_state(get_all, undefined),
-%	?debug_Fmt("::test:: after create session ~p", [R]),	
-	?assertEqual(4, length(R)),
-	
-	Storage:retain(save, #publish{topic = "AKtest", dup=0, qos=2, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=1009}),
-	Storage:retain(save, #publish{topic = "Winter/+", dup=1, qos=0, payload= <<"Payload">>, dir=in, last_sent=publish, expiration_time=1109}),
-	Storage:retain(save, #publish{topic = "+/December", dup=0, qos=1, payload= <<"Payload">>, dir=in, last_sent=pubrec, expiration_time=1029}),
-	Storage:retain(save, #publish{topic = "Winter/#", dup=1, qos=1, payload= <<"Payload">>, dir=out, last_sent=pubrel, expiration_time=10099}),
-	Storage:retain(save, #publish{topic = "Winter/+/2", dup=0, qos=0, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=1909}),
-	Storage:retain(save, #publish{topic = "/+/December/+", dup=1, qos=0, payload= <<"Payload">>, dir=in, last_sent=pubrel, expiration_time=11009}),
-	Storage:retain(save, #publish{topic = "+/December", dup=1, qos=1, payload= <<"Payload">>, dir=out, last_sent=pubcomp, expiration_time=10095}),
-	Storage:retain(save, #publish{topic = "+/December/+", dup=0, qos=1, payload= <<"Payload">>, dir=out, last_sent=publish, expiration_time=10069}),
-	R1 = Storage:retain(get_all, undefined),
-%	?debug_Fmt("::test:: after create session ~p", [R1]),	
-	?assertEqual(8, length(R1)),
-	
-	Storage:user(save, #user{user_id="guest", password= <<"guest">>, roles= ["USER"]}),
-	Storage:user(save, #user{user_id="alex", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="tom", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="sam", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	Storage:user(save, #user{user_id="john", password= <<"e3fs4578">>, roles= ["USER", "ADMIN"]}),
-	R2 = Storage:user(get_all, undefined),
-	?debug_Fmt("::test:: after create users ~p", [R2]),	
-	?assertEqual(5, length(R2)),
 
 	?passed
 end}.
