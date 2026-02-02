@@ -61,6 +61,11 @@
 -define(test_code_to_add_tables, ).
 -endif.
 
+db_id(client) ->
+	[session_cli, subscription_cli];
+db_id(server) ->
+	[session, subscription, connectpid, users, retain, session_state].
+
 db_id(1, client) -> session_cli;
 db_id(1, server) -> session;
 db_id(2, client) -> subscription_cli;
@@ -166,7 +171,13 @@ start(End_Type) ->
 
 				Tables = mnesia:system_info(tables),
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
-				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", []);
+				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", []),
+				case length(Tables) < length(db_id(End_Type)) of
+					true ->
+						lager:info([{endtype, End_Type}], "Mnesia schema is empty. ~n", []),
+						init(Nodes, End_Type);
+					false -> ok
+				end;
 			ok ->
 				mnesia:start(),
 				init(Nodes, End_Type),
@@ -183,7 +194,7 @@ start(End_Type) ->
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", [])
 	end,
-	case mnesia:wait_for_tables(Tables, 5000) of
+	case mnesia:wait_for_tables(db_id(End_Type), 5000) of
 		ok -> ok;
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Wait tables to ready returns ~p. ~n", [Reason]),
