@@ -96,6 +96,7 @@ init(Nodes, client) ->
 		]),
 	lager:info([{endtype, client}], "Create table return: ~p~n", [CT2]);
 init(Nodes, server) ->
+	lager:info([{endtype, server}], "init() =: running mnesia nodes: ~p~n", [mnesia:system_info(running_db_nodes)]),
 	TNodes = if length(Nodes) =< 1 -> []; ?ELSE -> Nodes end,
 	CT1 = mnesia:create_table(session,
 		[
@@ -155,7 +156,10 @@ init(Nodes, server) ->
 start(End_Type) ->
 %%	mnesia:start(),
 	Nodes = application:get_env(mqtt_common, cluster_nodes, [node()]),
-	lager:debug([{endtype, End_Type}], "Nodes: ~p~n", [Nodes]),
+	lager:debug([{endtype, End_Type}], "start() =: Nodes from sys.config: ~p~n", [Nodes]),
+	[net_adm:ping(N) || N <- Nodes],
+	lager:info([{endtype, server}], "start() =: current node: ~p~n", [node()]),
+	lager:info([{endtype, server}], "start() =: visible nodes: ~p~n", [nodes()]),
 
 	lager:info([{endtype, End_Type}], "Mnesia directory: ~p~n", [mnesia:system_info(directory)]),
 	lager:info([{endtype, End_Type}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
@@ -164,14 +168,14 @@ start(End_Type) ->
 	lager:info([{endtype, End_Type}], "Is mnesia master: ~p~n", [Is_master]),
 	if Is_master ->
 		case mnesia:create_schema(Nodes) of
-			{error, {_, {already_exists, _}}} ->
+			{error, {_, {already_exists, _}}} = Err ->
+				lager:info([{endtype, End_Type}], "Mnesia was already initialized: ~p.~n", [Err]),
 				mnesia:start(),
 
 ?test_code_to_add_tables
 
 				Tables = mnesia:system_info(tables),
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
-				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", []),
 				case length(Tables) < length(db_id(End_Type)) of
 					true ->
 						lager:info([{endtype, End_Type}], "Mnesia schema is empty. ~n", []),
@@ -185,8 +189,7 @@ start(End_Type) ->
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				lager:info([{endtype, End_Type}], "Mnesia schema is created. ~n", []);
 			Error -> 	
-				lager:error([{endtype, End_Type}], "Mnesia create schema throws error: ~p~n", [Error]),
-				Tables = []
+				lager:error([{endtype, End_Type}], "Mnesia create schema throws error: ~p~n", [Error])
 		end;
 		 ?ELSE ->
 				mnesia:start(),
@@ -194,10 +197,11 @@ start(End_Type) ->
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", [])
 	end,
-	case mnesia:wait_for_tables(db_id(End_Type), 5000) of
+	case mnesia:wait_for_tables(db_id(End_Type), 10000) of
 		ok -> ok;
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Wait tables to ready returns ~p. ~n", [Reason]),
+			timer:sleep(10000),
 			start(End_Type);
 		{timeout, Tbls} -> 
 			lager:error([{endtype, End_Type}], "Wait tables completes with timeout. Tables: ~p. ~n", [Tbls]),
