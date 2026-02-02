@@ -183,7 +183,15 @@ start(End_Type) ->
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				lager:info([{endtype, End_Type}], "Mnesia was already initialized. ~n", [])
 	end,
-	mnesia:wait_for_tables(Tables, 1000).
+	case mnesia:wait_for_tables(Tables, 5000) of
+		ok -> ok;
+		{error, Reason} ->
+			lager:error([{endtype, End_Type}], "Wait tables to ready returns ~p. ~n", [Reason]),
+			start(End_Type);
+		{timeout, Tbls} -> 
+			lager:error([{endtype, End_Type}], "Wait tables completes with timeout. Tables: ~p. ~n", [Tbls]),
+			start(End_Type)
+	end.
 
 session(save, #storage_publish{key = Key} = Document, End_Type) ->
 	Fun = fun() -> mnesia:write(db_id(1, End_Type), Document, write) end,
