@@ -179,13 +179,13 @@ start(End_Type) ->
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				case length(Tables) < length(db_id(End_Type)) of
 					true ->
-						lager:info([{endtype, End_Type}], "Mnesia schema is empty. ~n", []),
-						init(Nodes, End_Type);
+						lager:info([{endtype, End_Type}], "Mnesia schema is empty. ~n", []);
+%%						init(Nodes, End_Type);
 					false -> ok
 				end;
 			ok ->
 				mnesia:start(),
-				init(Nodes, End_Type),
+%%				init(Nodes, End_Type),
 				Tables = mnesia:system_info(tables),
 				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [Tables]),
 				lager:info([{endtype, End_Type}], "Mnesia schema is created. ~n", []);
