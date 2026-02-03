@@ -160,6 +160,7 @@ start(End_Type) ->
 	[net_adm:ping(N) || N <- Nodes],
 	lager:info([{endtype, server}], "start() =: current node: ~p~n", [node()]),
 	lager:info([{endtype, server}], "start() =: visible nodes: ~p~n", [nodes()]),
+	lager:info([{endtype, server}], "start() =: running mnesia nodes: ~p~n", [mnesia:system_info(running_db_nodes)]),
 
 	lager:info([{endtype, End_Type}], "Mnesia directory: ~p~n", [mnesia:system_info(directory)]),
 	lager:info([{endtype, End_Type}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
@@ -201,11 +202,11 @@ start(End_Type) ->
 		ok -> ok;
 		{error, Reason} ->
 			lager:error([{endtype, End_Type}], "Wait tables to ready returns ~p. ~n", [Reason]),
-			timer:sleep(10000),
-			start(End_Type);
+			timer:sleep(10000);
+%%			start(End_Type);
 		{timeout, Tbls} -> 
-			lager:error([{endtype, End_Type}], "Wait tables completes with timeout. Tables: ~p. ~n", [Tbls]),
-			start(End_Type)
+			lager:error([{endtype, End_Type}], "Wait tables completes with timeout. Tables: ~p. ~n", [Tbls])
+%%			start(End_Type)
 	end.
 
 session(save, #storage_publish{key = Key} = Document, End_Type) ->
