@@ -81,7 +81,8 @@ init_tables(Nodes, client) ->
 	lager:info([{endtype, client}], "Create table 'subscription_cli' returns: ~p~n", [CT2]);
 init_tables(Nodes, server) ->
 	lager:info([{endtype, server}], "init_tables() =: running mnesia nodes: ~p~n", [mnesia:system_info(running_db_nodes)]),
-	TNodes = if length(Nodes) =< 1 -> []; ?ELSE -> Nodes end,
+%%	TNodes = if length(Nodes) =< 1 -> []; ?ELSE -> Nodes end,
+	TNodes = Nodes,
 	CT1 = mnesia:create_table(session,
 		[
 			{disc_copies, TNodes},
@@ -169,7 +170,7 @@ start(client) ->
 			mnesia:start();
 		ok ->
 			mnesia:start(),
-			init_tables([], client);
+			init_tables([node()], client);
 		Error -> 	
 			lager:error([{endtype, client}], "Mnesia create schema throws error: ~p~n", [Error])
 	end,
@@ -183,16 +184,27 @@ start(server) ->
 start(server, []) ->
 	start(server, [node()]);
 %% standalone server (one node) :
-start(server, [Node]) ->
+start(server, [Node] = N) ->
 	lager:info([{endtype, server}], "current node: ~p; ~p~n", [node(), Node]),
+	lager:info([{endtype, server}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
+	lager:info([{endtype, server}], "Mnesia is running: ~p~n", [mnesia:system_info(is_running)]),
 
-	case mnesia:create_schema([Node]) of
+	case mnesia:create_schema(N) of
 		{error, {_, {already_exists, _}}} = Err ->
 			lager:warning([{endtype, server}], "Mnesia was already initialized: ~p.~n", [Err]),
-			mnesia:start();
+			lager:debug([{endtype, server}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
+			case mnesia:system_info(use_dir) of
+				false ->
+					stopped = mnesia:stop(),
+					ok = mnesia:delete_schema(N),
+					ok = mnesia:create_schema(N),
+					mnesia:start(),
+					init_tables(N, server);
+				true -> mnesia:start()
+			end;
 		ok ->
 			mnesia:start(),
-			init_tables([], server);
+			init_tables(N, server);
 		Error -> 	
 			lager:error([{endtype, server}], "Mnesia create schema throws error: ~p~n", [Error])
 	end,
