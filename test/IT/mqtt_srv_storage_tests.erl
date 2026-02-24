@@ -82,7 +82,9 @@ do_start() ->
 do_stop(Storage) ->
 	?debug_Fmt("::test:: before do_stop -> ~p", [Storage]),
 	application:stop(mqtt_common),
-	Storage:close(client).	
+	Storage:close(client),
+	ok = mnesia:delete_schema([node()]),
+	ok.
 
 setup(dets) ->
 	mqtt_dets_storage;
@@ -177,12 +179,14 @@ read(X, Storage) -> {"read [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() ->
  	R2b = Storage:connect_pid(get, "plum", server),
 %	?debug_Fmt("::test:: read returns R2a ~120p", [R2b]),	
  	?assertEqual(undefined, R2b),
+
 	R3 = Storage:user(get, "alex"),
 	?debug_Fmt("::test:: read get User Info returns R3 ~120p", [R3]),	
 	?assertEqual(#{password => list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, <<"aaaaaaa">>))), roles => ["USER", "ADMIN", "OWNER"]}, R3),
 	R3a = Storage:user(get, <<"alex">>),
 	?debug_Fmt("::test:: read get User Info returns R3a ~120p", [R3a]),	
 	?assertEqual(#{password => list_to_binary(mqtt_data:binary_to_hex(crypto:hash(md5, <<"aaaaaaa">>))), roles => ["USER", "ADMIN", "OWNER"]}, R3a),
+
 	R4a = Storage:retain(get, "AK"),
 %	?debug_Fmt("::test:: read returns R4a ~120p", [R4a]),	
 	?assertEqual([#publish{topic = "AK", payload = <<"Payload A">>}], R4a),
@@ -253,6 +257,9 @@ read_all(X, Storage) -> {"read all [" ++ atom_to_list(X) ++ "]", timeout, 1, fun
 	?assertEqual(3, length(R)),
 	R1 = Storage:session_state(get_all, server),
 	?assertEqual(3, length(R1)),
+	R2 = Storage:user(get_all, server),
+	?assertEqual(3, length(R2)),
+	
 	?passed
 end}.
 	
