@@ -67,7 +67,7 @@ dets_dao_test_() ->
 		}
 	 }
 	].
-
+%% @todo : make createschema & init if first time running (see below)
 do_start() ->
 	application:start(mqtt_common),
 	lager:start(),
@@ -83,7 +83,9 @@ do_start() ->
 do_stop(Storage) ->
 	?debug_Fmt("::test:: before do_stop -> ~p~n", [Storage]),
 	application:stop(mqtt_common),
-	Storage:close(client).	
+	Storage:close(client),
+	ok = mnesia:delete_schema([node()]),
+	ok.
 
 setup(dets) ->
 	mqtt_dets_storage;
@@ -101,7 +103,7 @@ create(X, Storage) -> {"create [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
  	Storage:session(save, #storage_publish{key = #primary_key{client_id = "orange", packet_id = 101}, document = #publish{topic = "AK", payload = <<"Payload orange 1">>}}, client),
  	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 10101}, document = #publish{topic = "AK", payload = <<"Payload 2">>}}, client),
  	Storage:session(save, #storage_publish{key = #primary_key{client_id = "lemon", packet_id = 201}, document = #publish{topic = "AK", payload = <<"Payload 3">>}}, client),
- 
+
  	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "AKtest", client_id = "lemon"}, options = #subscription_options{max_qos=0}}, client),
  	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "Winter/+", client_id = "orange"}, options = #subscription_options{max_qos=1}}, client),
  	Storage:subscription(save, #storage_subscription{key = #subs_primary_key{topicFilter = "+/December", client_id = "apple"}, options = #subscription_options{max_qos=2}}, client),
@@ -231,3 +233,19 @@ delete(X, Storage) -> {"delete [" ++ atom_to_list(X) ++ "]", timeout, 1, fun() -
 
 	?passed
 end}.
+
+-ifdef(TEST).
+-define(test_code_to_add_tables, 
+%% This code is for testing only. Creates clients and servers tables
+%% in the same mnesia directory and schema
+				Tables_number = length(mnesia:system_info(tables)),
+				lager:info([{endtype, End_Type}], "Mnesia tables: ~p~n", [mnesia:system_info(tables)]),
+				if  (End_Type == client) and (Tables_number == 7) -> init(Nodes, client);
+						(End_Type == server) and (Tables_number == 3) -> init(Nodes, server);
+						true -> ok
+				end,
+).
+-else.
+-define(test_code_to_add_tables, ).
+-endif.
+
