@@ -163,7 +163,7 @@ start(client) ->
 	lager:info([{endtype, client}], "Mnesia directory: ~p~n", [mnesia:system_info(directory)]),
 	lager:info([{endtype, client}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
 	lager:info([{endtype, client}], "Mnesia schema location: ~p~n", [mnesia:system_info(schema_location)]),
-	case mnesia:create_schema([]) of
+	case mnesia:create_schema([node()]) of
 		{error, {_, {already_exists, _}}} = Err ->
 			lager:warning([{endtype, client}], "Mnesia was already initialized: ~p.~n", [Err]),
 			mnesia:start();
@@ -203,10 +203,11 @@ start(server, [Node]) ->
 	
 	wait_for_tables_ready(server);
 %% cluster of servers ( > 1 nodes) :
-start(server, Nodes) ->
-	ok = check_cluster_connections(Nodes),
+start(server, Sys_nodes) ->
+	ok = check_cluster_connections(Sys_nodes),
 	lager:info([{endtype, server}], "current node: ~p~n", [node()]),
-	lager:info([{endtype, server}], "visible nodes: ~p~n", [nodes()]),
+	Nodes = nodes(),
+	lager:info([{endtype, server}], "visible nodes: ~p~n", [Nodes]),
 	Is_master = application:get_env(mqtt_common, mnesia_master, false),
 	lager:info([{endtype, server}], "Is mnesia master: ~p~n", [Is_master]),
 
