@@ -141,7 +141,9 @@ init_tables(Nodes, server) ->
 check_cluster_connections([]) -> ok;
 check_cluster_connections([Node | Nodes]) ->
 	case net_adm:ping(Node) of
-		pong -> check_cluster_connections(Nodes);
+		pong -> 
+			lager:info([{endtype, server}], "Node ~p returns pong.~n", [Node]),
+			check_cluster_connections(Nodes);
 		pang -> 
 			lager:error([{endtype, server}], "Node ~p does not connected to cluster.~n", [Node]),
 			timer:sleep(5000),
@@ -216,8 +218,8 @@ start(server, [Node] = N) ->
 	wait_for_tables_ready(server);
 %% cluster of servers ( > 1 nodes) :
 start(server, Sys_nodes) ->
-	ok = check_cluster_connections(Sys_nodes),
 	lager:info([{endtype, server}], "current node: ~p~n", [node()]),
+	ok = check_cluster_connections(Sys_nodes),
 	Nodes = nodes(),
 	lager:info([{endtype, server}], "visible nodes: ~p~n", [Nodes]),
 	Is_master = application:get_env(mqtt_common, mnesia_master, false),
