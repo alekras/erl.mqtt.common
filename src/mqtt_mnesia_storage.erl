@@ -217,18 +217,22 @@ start(server, [Node] = N) ->
 	
 	wait_for_tables_ready(server);
 %% cluster of servers ( > 1 nodes) :
-start(server, Sys_nodes) ->
+start(server, Nodes) ->
 	lager:info([{endtype, server}], "current node: ~p~n", [node()]),
-	ok = check_cluster_connections(Sys_nodes),
-	Nodes = nodes(),
-	lager:info([{endtype, server}], "visible nodes: ~p~n", [Nodes]),
+	ok = check_cluster_connections(Nodes),
+	lager:info([{endtype, server}], "visible nodes: ~p~n", [nodes()]),
 	Is_master = application:get_env(mqtt_common, mnesia_master, false),
 	lager:info([{endtype, server}], "Is mnesia master: ~p~n", [Is_master]),
 
 	case mnesia:create_schema(Nodes) of
 		{error, {_, {already_exists, _}}} = Err ->
 			lager:warning([{endtype, server}], "Mnesia was already initialized: ~p.~n", [Err]),
-			mnesia:start();
+			lager:debug([{endtype, server}], "Mnesia use_dir: ~p~n", [mnesia:system_info(use_dir)]),
+			case mnesia:system_info(use_dir) of
+				false ->
+					init(Nodes, Is_master);
+				true -> mnesia:start()
+			end;
 		ok ->
 			init(Nodes, Is_master);
 		Error -> 	
@@ -244,7 +248,7 @@ start(server, Sys_nodes) ->
 
 %% init procedure of master node of cluster
 init(Nodes, true) ->
-	mnesia:stop(),
+	stopped = mnesia:stop(),
 	global:register_name(barrier, self()),
 	
 	case mnesia:delete_schema(Nodes) of
@@ -254,7 +258,7 @@ init(Nodes, true) ->
 	end,
 	case mnesia:create_schema(Nodes) of
 		{error, {_, {already_exists, _}}} = Err ->
-			lager:warning([{endtype, server}], "Mnesia was already initialized: ~p.~n", [Err]);
+			lager:error([{endtype, server}], "Mnesia is still initialized: ~p.~n", [Err]);
 		ok ->
 			global:send(barrier, barrier_up),
 			mnesia:start(),
@@ -270,7 +274,7 @@ init(Nodes, true) ->
 	lager:info([{endtype, server}], "Mnesia schema is created. ~n", []);
 %%  init procedure of slave node of cluster
 init(_Nodes, false) ->
-	mnesia:stop(),
+	stopped = mnesia:stop(),
 	global:register_name(barrier, self()),
 	
 %% wait for barrier_up signal from master node
