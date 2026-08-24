@@ -67,6 +67,7 @@ init(#connection_state{end_type = server, packet_id = PkId, client_id = ClId, ve
 	gen_server:enter_loop(?MODULE, [], State#connection_state{timeout = Timeout}, Timeout);
 init(#connection_state{end_type = client, packet_id = PkId, client_id = ClId, version = Vrs} = State) ->
 	lager:debug([{endtype, client}], ?LOGGING_FORMAT ++ " init mqtt connection process with state: ~120p~n", [ClId, PkId, init, Vrs, State]),
+	process_flag(trap_exit, true),
 	Timeout = application:get_env(mqtt_common, timeout, ?MQTT_GEN_SERVER_TIMEOUT),
 	{ok, State#connection_state{timeout = Timeout}};
 init(#mqtt_error{} = Error) ->
@@ -528,6 +529,11 @@ handle_info([Event, Args], #connection_state{client_id = Client_id, version = Ve
 	lager:debug([{endtype, server}],
 							?LOGGING_FORMAT ++ " process receives callback event: ~p args: ~p state:~s",
 							[Client_id, none, callback_event, Ver, Event, Args, mqtt_data:state_to_string(State)]),
+	{noreply, State};
+handle_info({'EXIT', _SenderPid, _Reason} = Info, #connection_state{client_id = Client_id, version = Ver, end_type = client} = State) ->
+	lager:debug([{endtype, client}],
+							?LOGGING_FORMAT ++ " process receives EXIT event: ~p state:~s",
+							[Client_id, none, exit_event, Ver, Info, mqtt_data:state_to_string(State)]),
 	{noreply, State};
 handle_info(Info, #connection_state{client_id = Client_id, version = Ver} = State) ->
 	lager:error([{endtype, State#connection_state.end_type}],
